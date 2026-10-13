@@ -47,7 +47,7 @@ Semua alasan di bawah merujuk ke perilaku aaPanel yang tercantum di brief (`prom
 | OS | Ubuntu 24.04.5 LTS |
 | Resource | **1 vCPU, 1,9 GB RAM + swap 2,8 GB**; disk sistem 19 GB (sisa ±6 GB) untuk OS, aaPanel, dan `/www/wwwroot`; **`/www/storage` adalah disk terpisah 492 GB (`/dev/vdb1`, ext4, hampir kosong)**. CPU/RAM lebih kecil dari asumsi brief (2 vCPU / 2 GB). |
 | aaPanel | 8.0.7, Nginx 1.30.5. Tipe proyek **Reverse Proxy** tersedia dan terbukti bekerja (dipakai site `proxy.kppbwi.app`). |
-| Toolchain | Node 24 ada; Go belum ada (apt hanya 1.22, butuh ≥ 1.25 dari go.dev). `rg` ada; ffmpeg, libvips, poppler, 7zz, unrar belum ada (tersedia di apt). |
+| Toolchain | Node 24 ada; Go 1.27.2 dipasang 14 Okt 2026 dari go.dev (apt hanya 1.22). ffmpeg, libvips, poppler, ripgrep, 7zz, unrar semua belum ada (tersedia di apt; `rg` yang semula terdeteksi ternyata fungsi shell lingkungan Claude Code, bukan binary). |
 | Storage | `/www/storage/FileManager` sudah ada, kosong, masih milik `www:www`; user Linux `filemanager` belum ada. |
 
 Implikasi dibahas di bagian 8 (NFR), 10 (risiko), dan 11 (asumsi, pertanyaan).

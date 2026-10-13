@@ -121,7 +121,7 @@ Milestone: M1 fondasi · M2 operasi file + transfer · M3 arsip + editor + viewe
 - [ ] Menjalankan tanpa `APP_SECRET` → exit code 2, stderr menyebut `APP_SECRET`; `LISTEN_ADDR=0.0.0.0:8080 APP_ENV=production` → exit 2 dengan pesan loopback.
 - [ ] `curl -i /tidak-ada` → `200` index.html SPA; `curl -i /api/v1/x` → `404` JSON envelope `NOT_FOUND`.
 - [ ] Header respons memuat `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Content-Security-Policy`.
-- [ ] `./bin/filemanager check-deps` mencetak tabel: di server ini `rg` ADA, `ffmpeg`/`7zz`/`vipsthumbnail`/`pdftoppm` TIDAK ADA (sesuai kondisi nyata).
+- [ ] `./bin/filemanager check-deps` mencetak tabel: di server ini `ffmpeg`/`ffprobe`/`7zz`/`vipsthumbnail`/`pdftoppm`/`rg` TIDAK ADA, `rar`/`unrar` NONAKTIF (sesuai kondisi nyata; catatan Step 1: `rg` yang semula dikira ada ternyata fungsi shell, bukan binary).
 - [ ] `make lint` dan `make test` bersih; `pnpm build` sukses; CI workflow valid (`actionlint` atau dry-run).
 
 **Test wajib:**

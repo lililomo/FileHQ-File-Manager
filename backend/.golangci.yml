@@ -1,0 +1,66 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - gosec
+    - forbidigo
+    - ineffassign
+    - unused
+    - errorlint
+    - bodyclose
+    - noctx
+    - unconvert
+    - misspell
+  settings:
+    forbidigo:
+      analyze-types: true
+      forbid:
+        # All filesystem access must go through internal/fsjail (SPEC §5).
+        # Exceptions are listed under exclusions.rules; enforcement is
+        # completed in Step 4 when fsjail exists.
+        - pattern: ^os\.(Open|OpenFile|Create|CreateTemp|ReadFile|WriteFile|Remove|RemoveAll|Rename|Mkdir|MkdirAll|MkdirTemp|Symlink|Link|Readlink|Chmod|Chown|Chtimes|Truncate|ReadDir|Stat|Lstat)$
+          msg: use internal/fsjail for filesystem access
+        - pattern: ^exec\.Command(Context)?$
+          msg: use internal/exec (argv runner, no shell)
+    gosec:
+      excludes:
+        - G104 # handled by errcheck
+    errcheck:
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+  exclusions:
+    rules:
+      - path: internal/fsjail/
+        linters: [forbidigo]
+      - path: internal/config/
+        linters: [forbidigo]
+      - path: internal/db/
+        linters: [forbidigo]
+      - path: internal/httpapi/health\.go
+        linters: [forbidigo]
+      - path: internal/exec/
+        linters: [forbidigo]
+      - path: cmd/
+        linters: [forbidigo]
+      - path: _test\.go
+        linters: [forbidigo, gosec, noctx]
+      - path: internal/webassets/
+        linters: [gosec]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - kppbwi.app/filemanager

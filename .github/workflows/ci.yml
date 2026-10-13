@@ -1,0 +1,106 @@
+# CI for FileManager. Git hosting is not decided yet (repo is local on the
+# server); this workflow targets GitHub Actions and is written so it can be
+# ported to GitLab CI / Gitea Actions with minimal changes.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          check-latest: true
+      - name: Build
+        run: CGO_ENABLED=0 go build ./...
+      - name: Test
+        run: go test ./... -race -cover
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          working-directory: backend
+          version: latest
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Prettier
+        run: pnpm format:check
+      - name: Test
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+
+  openapi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Lint OpenAPI
+        run: npx --yes @redocly/cli@latest lint docs/openapi.yaml
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [backend, web]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          check-latest: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm -C web install --frozen-lockfile
+      - name: make build
+        run: make build GOMAXPROCS=2
+      - name: Smoke
+        run: |
+          ./bin/filemanager version
+          ./bin/filemanager check-deps
+      - uses: actions/upload-artifact@v4
+        with:
+          name: filemanager-linux-amd64
+          path: bin/filemanager
+          retention-days: 14

@@ -14,7 +14,7 @@ Konvensi penandaan:
 - **perlu verifikasi** = klaim tentang perangkat lunak pihak ketiga (aaPanel, library) yang belum dicek di server atau registry; wajib dicek saat step terkait.
 - Versi library tidak ditulis; selalu "versi stable terbaru saat implementasi, verifikasi di registry". Versi minimum hanya: Go ≥ 1.25 pada patch terbaru — minimal **1.25.12** (CVE-2026-32282 `Root.Chmod` mengikuti symlink, diperbaiki 1.25.9; CVE-2026-39822 open mengikuti symlink pada komponen terakhir + trailing slash, diperbaiki 1.25.12; 1.26.x terbaru juga boleh) — butuh `os.Root.Rename/RemoveAll/MkdirAll/Symlink` (12 method baru 1.25, diverifikasi di go.dev/doc/go1.25), Node ≥ 22 (Node 24 terpasang di server), Ubuntu 22.04/24.04.
 
-Fakta server yang sudah diverifikasi pada 14 Oktober 2026 (boleh dipakai tanpa tanda verifikasi): Ubuntu 24.04.5, kernel 6.8, **1 vCPU, 1,9 GB RAM + swap 2,8 GB; disk sistem 19 GB (sisa ±6 GB) untuk OS/aaPanel/`/www/wwwroot`; `/www/storage` = disk terpisah `/dev/vdb1` ext4 492 GB**; Go 1.27.2 dipasang 14 Okt 2026 di `/usr/local/go` (apt hanya 1.22), pnpm 12.11.2 via corepack; Node 24.21, npm 11.19, corepack 0.36; `rg` ada, ffmpeg/ffprobe/vipsthumbnail/pdftoppm/7zz/unrar belum ada (tersedia di apt: `ffmpeg`, `libvips-tools`, `poppler-utils`, `7zip` → binary `7zz`, `unrar` multiverse); aaPanel **8.0.7** di `/www/server/panel` (port <PANEL_PORT>), Nginx aaPanel 1.30.5 dengan Lua; tipe proyek **Reverse Proxy** ada dan terbukti bekerja (site `proxy.kppbwi.app`); site `file.kppbwi.app` belum ada; `/www/storage/FileManager` ada, kosong, owner `www:www`; user Linux `filemanager` belum ada; `/proc` tanpa `hidepid`; UFW aktif, 8080 tertutup.
+Fakta server yang sudah diverifikasi pada 14 Oktober 2026 (boleh dipakai tanpa tanda verifikasi): Ubuntu 24.04.5, kernel 6.8, **1 vCPU, 1,9 GB RAM + swap 2,8 GB; disk sistem 19 GB (sisa ±6 GB) untuk OS/aaPanel/`/www/wwwroot`; `/www/storage` = disk terpisah `/dev/vdb1` ext4 492 GB**; Go 1.27.2 dipasang 14 Okt 2026 di `/usr/local/go` (apt hanya 1.22), pnpm 12.11.2 via corepack; Node 24.21, npm 11.19, corepack 0.36; ffmpeg/ffprobe/vipsthumbnail/pdftoppm/7zz/rg/unrar **semua belum ada** (koreksi Step 1: `rg` yang terdeteksi sebelumnya ternyata fungsi shell dari lingkungan Claude Code, bukan `/usr/bin/rg`; tersedia di apt: `ffmpeg`, `libvips-tools`, `poppler-utils`, `ripgrep`, `7zip` → binary `7zz`, `unrar` multiverse); aaPanel **8.0.7** di `/www/server/panel` (port <PANEL_PORT>), Nginx aaPanel 1.30.5 dengan Lua; tipe proyek **Reverse Proxy** ada dan terbukti bekerja (site `proxy.kppbwi.app`); site `file.kppbwi.app` belum ada; `/www/storage/FileManager` ada, kosong, owner `www:www`; user Linux `filemanager` belum ada; `/proc` tanpa `hidepid`; UFW aktif, 8080 tertutup.
 
 ---
 
@@ -381,7 +381,7 @@ Nilai yang ditampilkan di admin panel menunjukkan sumbernya (default / env / ove
 | `SEVENZIP_PATH` | path | `/usr/bin/7zz` | idem; tanpa → 7z & zip AES tulis via 7zz nonaktif (zip AES tetap via library Go) | tidak | Ubuntu 24.04 paket `7zip` → `/usr/bin/7zz`. |
 | `RAR_PATH` | path | kosong | kosong = compress rar nonaktif | tidak | Binary berlisensi, opsional. |
 | `UNRAR_PATH` | path | kosong | kosong = extract rar via mholt/archives (README-nya menyatakan membaca RAR ber-password — diverifikasi 14 Okt 2026; rar5 dicek dengan fixture Step 14a); isi hanya sebagai fallback | tidak | |
-| `RG_PATH` | path | `/usr/bin/rg` | tanpa → fallback worker Go | tidak | Terpasang di server. |
+| `RG_PATH` | path | `/usr/bin/rg` | tanpa → fallback worker Go | tidak | Belum terpasang di server (dipasang `install.sh` via paket `ripgrep`). |
 | `LOG_LEVEL` | enum | `info` | `debug` \| `info` \| `warn` \| `error` | tidak | JSON slog ke stdout (journald). |
 | `METRICS_ADDR` | host:port | kosong | kosong = nonaktif; harus loopback | tidak | Prometheus `/metrics` di listener terpisah. |
 | `CONTENT_BASE_URL` | URL | kosong | kosong = origin sama (ADR-06) | tidak | Jika diisi: `raw`, `thumb`, `download`, `zip`, dan halaman share raw dilayani dari origin ini (butuh site aaPanel kedua). |
@@ -401,6 +401,7 @@ Nilai yang ditampilkan di admin panel menunjukkan sumbernya (default / env / ove
 | `PASSWORD_MIN_LENGTH` | int | `12` | 8–128 | ya | |
 | `APP_NAME` | string | `FileManager` | ≤ 40 karakter | ya | Judul & logo teks. Logo gambar: upload admin → `DATA_DIR/branding/logo.webp`. |
 | `DEFAULT_LANGUAGE` | enum | `id` | `id` \| `en` | ya | |
+| `ALLOW_ROOT` | bool | `false` | hanya untuk uji lokal/CI; **jangan** di production | tidak | Tanpa ini proses yang berjalan sebagai uid 0 di `APP_ENV=production` ditolak saat start (§3.4 butir 6). Ditambahkan Step 1 agar smoke test di server (sebagai root, sebelum user `filemanager` ada) tetap bisa dijalankan. |
 
 Nilai-nilai "Override admin = ya" disimpan di `settings` dengan key sama persis dengan nama env dalam lowercase (`default_user_quota`), value JSON bertipe sesuai (string ukuran/durasi tetap string agar mudah ditampilkan).
 
@@ -846,6 +847,7 @@ Jika tujuan sudah punya baris (mis. memindah `a` ke lokasi yang punya catatan la
 | `ACCOUNT_DISABLED` | 403 | Status disabled (sesi dicabut). |
 | `VALIDATION_FAILED` | 400 | Body/query tidak valid; `details.fields: {name: reason}`. |
 | `NOT_FOUND` | 404 | Path/ID tidak ada. |
+| `METHOD_NOT_ALLOWED` | 405 | Method tidak didukung pada route yang ada (router chi). Ditambahkan Step 1. |
 | `ALREADY_EXISTS` | 409 | Nama tujuan sudah ada dan policy tidak diberikan. `details.existing:{size,mtime,isDir}`. |
 | `CONFLICT` | 409 | `If-Match` tidak cocok (editor), state task tidak memungkinkan aksi. |
 | `OPERATION_IN_PROGRESS` | 409 | Path dikunci task lain; `details.taskId,title`. |
