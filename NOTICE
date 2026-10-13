@@ -1,0 +1,15 @@
+Third-party data and software notices for FileManager (file.kppbwi.app)
+=====================================================================
+
+common password list
+--------------------
+File: backend/internal/auth/common_passwords.txt.gz
+Source: SecLists by Daniel Miessler, Jason Haddix, Ignacio Portillo and contributors
+        https://github.com/danielmiessler/SecLists
+        Passwords/Common-Credentials/Pwdb_top-100000.txt (retrieved 2026-10-14)
+Processing: lower-cased, de-duplicated and sorted (95,667 entries), gzip-compressed.
+License: MIT License, Copyright (c) 2018 Daniel Miessler
+         https://github.com/danielmiessler/SecLists/blob/master/LICENSE
+
+Go module dependencies carry their own licenses; see backend/go.mod and
+`go mod download -json` for details. Frontend dependencies: web/package.json.

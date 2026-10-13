@@ -9,7 +9,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"kppbwi.app/filemanager/internal/auth"
 	"kppbwi.app/filemanager/internal/config"
+	"kppbwi.app/filemanager/internal/db"
 )
 
 // JSONBodyLimit is the maximum JSON request body on /api/v1 (SPEC §6.2
@@ -26,6 +28,8 @@ type Options struct {
 	Version     string
 	Assets      http.Handler   // SPA + static assets (webassets.Handler)
 	ReadyChecks []ReadyChecker // readiness probes; FilesystemChecks is added automatically
+	Store       db.Repository  // database repositories (nil only in Step 1-style tests)
+	Auth        *auth.Service  // authentication service; nil disables the auth routes
 }
 
 // Server holds dependencies shared by handlers.
@@ -35,6 +39,8 @@ type Server struct {
 	version     string
 	assets      http.Handler
 	readyChecks []ReadyChecker
+	store       db.Repository
+	auth        *auth.Service
 }
 
 // New builds the router. The returned handler is safe for http.Server.
@@ -44,6 +50,8 @@ func New(o Options) http.Handler {
 		logger:  o.Logger,
 		version: o.Version,
 		assets:  o.Assets,
+		store:   o.Store,
+		auth:    o.Auth,
 	}
 	s.readyChecks = append([]ReadyChecker{FilesystemChecks(o.Cfg.DataDir, o.Cfg.StorageRoot)}, o.ReadyChecks...)
 
@@ -77,8 +85,11 @@ func New(o Options) http.Handler {
 	return r
 }
 
-// mountAPI registers feature routes. Step 1 has none; later steps add groups.
+// mountAPI registers feature routes; each step adds its group here.
 func (s *Server) mountAPI(api chi.Router) {
+	if s.auth != nil && s.store != nil {
+		s.mountAuth(api)
+	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": s.cfg.AppName})
 	})

@@ -1174,12 +1174,12 @@ Ikon "Tasks (n)" di top bar menampilkan popover daftar task aktif + 20 terakhir:
 1. Rate limit per IP (20/menit) → `RATE_LIMITED`.
 2. Normalisasi username lowercase; ambil user; jika tidak ada → tetap jalankan argon2 pada hash dummy (konstan waktu) → `UNAUTHENTICATED`.
 3. `locked_until > now` → `ACCOUNT_LOCKED` (retryAfter). `status=disabled` → `ACCOUNT_DISABLED`.
-4. Verifikasi argon2id; gagal → `failed_login_count++`, `login_attempts` (success=0); lockout bertahap: gagal ke-5 → 1 menit, ke-10 → 5 menit, ke-15 → 15 menit, ke-20+ → 60 menit (`locked_until`); audit `auth.login_failed`.
+4. Verifikasi argon2id; gagal → `failed_login_count++`, `login_attempts` (success=0); lockout bertahap: gagal ke-5 → 1 menit, ke-10 → 5 menit, ke-15 → 15 menit, ke-20+ → 60 menit (`locked_until`), dengan syarat ≥ 5 kegagalan dalam 15 menit terakhir (`login_attempts`); kegagalan yang memicu kunci tetap dijawab `UNAUTHENTICATED` generik, kunci terlihat (`ACCOUNT_LOCKED`) pada percobaan berikutnya; `failed_login_count` di-reset saat login sukses; audit `auth.login_failed` + `auth.account_locked`.
 5. Jika `totp_enabled` → butuh `totp` (6 digit, window ±1, anti-replay kode terakhir) → `VALIDATION_FAILED totp_required|totp_invalid`.
 6. Sukses: reset counter; **provisioning folder** (§8.2); buat sesi (token 32 byte → cookie; DB simpan hash; `csrf_secret`); `last_login_at`; audit `auth.login`; response user + `csrfToken`.
 7. Jika `must_change_password` → client diarahkan ke `/change-password`; server menolak semua endpoint S+P dengan `PASSWORD_CHANGE_REQUIRED`.
 
-**Ganti password.** Validasi: panjang ≥ `PASSWORD_MIN_LENGTH`, ≤ 128, bukan di daftar password umum (100k entri, embed, dibandingkan lowercase), tidak sama dengan password sekarang maupun hash awal, tidak mengandung username. Sukses → hash baru, `must_change_password=0`, `password_changed_at`, cabut semua sesi lain, audit `auth.password_changed`.
+**Ganti password.** Urutan: (1) kebijakan password baru — panjang ≥ `PASSWORD_MIN_LENGTH`, ≤ 128, UTF-8 valid, bukan di daftar password umum (SecLists `Pwdb_top-100000`, 95.667 entri unik lowercase, embed gzip, lihat `NOTICE`), tidak mengandung username, tidak sama dengan password awal (`settings.initial_password_hash`) maupun dengan `currentPassword` yang dikirim; (2) rate limit 5/15 menit per sesi; (3) verifikasi password sekarang (`VALIDATION_FAILED details.fields.currentPassword: incorrect`). Kebijakan dicek sebelum verifikasi agar kesalahan kebijakan tidak menghabiskan jatah percobaan. Sukses → hash baru, `must_change_password=0`, `password_changed_at`, hapus `initial_password_hash` (untuk admin dari env), cabut semua sesi lain, audit `auth.password_changed`; respons `204`.
 
 **Sesi.** Middleware: baca cookie → hash → baris sesi; cek `revoked_at`, `absolute_expires_at`, `idle_expires_at`; perbarui `last_seen_at`/`idle_expires_at` jika > 5 menit sejak terakhir; muat user (cache 5 detik); `status=disabled` → cabut + `ACCOUNT_DISABLED`. Cookie: `fm_session=<token>; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=<absolute>`. Logout menghapus baris. Perubahan password/role/status oleh admin mencabut semua sesi user itu dan mengirim SSE `session.revoked`.
 
@@ -1542,7 +1542,7 @@ dijalankan dengan `Dir` = host path folder (via `HostPath`), `nice`, timeout 30 
 
 **Aktivitas user** (`activity_logs`, halaman `/activity`): aksi `open`, `edit`, `create`, `upload`, `download` (hanya file tunggal via signed URL yang dibuat user), `rename`, `move`, `copy`, `delete`, `restore`, `purge`, `purge_auto`, `compress`, `extract`, `remote`, `replace`, `share_create`, `share_update`, `share_delete`, `chmod`, `batch_rename`; kolom waktu, aksi, item (link jika masih ada), tujuan, detail; filter aksi/tanggal; pencarian path; tombol "Hapus riwayat saya" (hanya aktivitas, bukan audit).
 
-**Audit (admin)** `action`: `system.seed_admin`, `system.start`, `auth.login`, `auth.login_failed`, `auth.logout`, `auth.password_changed`, `auth.totp_enabled|disabled`, `user.create`, `user.update`, `user.reset_password`, `user.disable|enable`, `user.delete|archive`, `user.home_provisioned|home_reused`, `user.revoke_sessions`, `settings.update|reset`, `share.create|update|delete` (metadata saja), `share.public_access` (unlock_ok/download dari link publik; IP terpotong), `share.admin_revoked`, `file.delete_permanent`, `trash.empty`, `admin.browse_user`, `admin.task_cancel`, `maintenance.<job>`, `quota.drift`. `details_json` tidak pernah berisi password/token. Halaman `/admin/audit`: filter actor/action/tanggal/teks, export CSV (`admin/audit/export.csv`, streaming, maks 100k baris), retensi `AUDIT_RETENTION_DAYS`.
+**Audit (admin)** `action`: `system.seed_admin`, `system.start`, `auth.login`, `auth.login_failed`, `auth.account_locked`, `auth.logout`, `auth.password_changed`, `auth.totp_enabled|disabled`, `user.create`, `user.update`, `user.reset_password`, `user.disable|enable`, `user.delete|archive`, `user.home_provisioned|home_reused`, `user.revoke_sessions`, `settings.update|reset`, `share.create|update|delete` (metadata saja), `share.public_access` (unlock_ok/download dari link publik; IP terpotong), `share.admin_revoked`, `file.delete_permanent`, `trash.empty`, `admin.browse_user`, `admin.task_cancel`, `maintenance.<job>`, `quota.drift`. `details_json` tidak pernah berisi password/token. Halaman `/admin/audit`: filter actor/action/tanggal/teks, export CSV (`admin/audit/export.csv`, streaming, maks 100k baris), retensi `AUDIT_RETENTION_DAYS`.
 
 ### 8.17 Admin
 
@@ -1873,9 +1873,9 @@ Respons `raw/download/thumb/zip`: `Content-Security-Policy: sandbox; default-src
 
 | Key | Batas | Respons |
 | --- | --- | --- |
-| Login per IP | 20 / menit, burst 5 | 429 + `Retry-After` |
+| Login per IP | 20 percobaan per jendela geser 60 detik (bukan token bucket: argon2 ±0,4 s/percobaan membuat bucket terisi ulang sebelum 21 request selesai, sehingga AC "21 request/menit → 429" tidak terpenuhi; bukan burst 5 agar 5 kegagalan + percobaan ke-6 mencapai lockout 423 sebelum 429) | 429 + `Retry-After` |
 | Login per username | lockout 5 gagal/15 menit → 1/5/15/60 menit | 423 |
-| Ganti password / reset | 5 / 15 menit / sesi | 429 |
+| Ganti password / reset | 5 percobaan **terverifikasi** (yang sampai ke pengecekan password sekarang) / 15 menit / sesi; pelanggaran kebijakan password baru tidak dihitung | 429 |
 | Share unlock per (link, IP) | 10 / 10 menit | 429; setelah 50 gagal/jam per link → link `disabled` sementara 1 jam + notifikasi pemilik |
 | Share unlock per IP | 30 / 10 menit | 429 |
 | Endpoint publik lain per IP (meta/list/raw/download/zip/thumb) | 120 / menit, burst 60 | 429 |

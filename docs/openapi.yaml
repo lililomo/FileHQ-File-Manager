@@ -15,6 +15,10 @@ servers:
 tags:
   - name: system
     description: Kesehatan proses dan informasi build
+  - name: auth
+    description: Login, sesi, CSRF, ganti password (SPEC §8.1)
+  - name: me
+    description: Profil dan preferensi user (SPEC §8.18)
 
 paths:
   /healthz:
@@ -75,6 +79,183 @@ paths:
                   appName:
                     type: string
 
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Login dengan username dan password
+      description: |
+        Rate limit 20 request/menit per IP (`429 RATE_LIMITED`). Lima kegagalan dalam 15 menit mengunci akun
+        secara bertahap 1/5/15/60 menit (`423 ACCOUNT_LOCKED`). Kegagalan selalu dijawab `401 UNAUTHENTICATED`
+        dengan pesan generik. Sukses mengirim cookie `fm_session` (HttpOnly, Secure, SameSite=Lax) dan token CSRF.
+        Request lintas situs (`Sec-Fetch-Site: cross-site` atau `Origin` asing) ditolak `403 CSRF_INVALID`.
+      operationId: authLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, maxLength: 64 }
+                password: { type: string, maxLength: 1024, format: password }
+                totp: { type: string, description: "Kode TOTP 6 digit (fase akhir, Step 23a)" }
+      responses:
+        "200":
+          description: Login berhasil
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: "fm_session=<token>; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=<SESSION_ABSOLUTE_TIMEOUT>"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, mustChangePassword, csrfToken]
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+                  mustChangePassword: { type: boolean }
+                  csrfToken: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { description: "UNAUTHENTICATED — username atau password salah", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "ACCOUNT_DISABLED atau CSRF_INVALID", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "423":
+          description: ACCOUNT_LOCKED — `details.retryAfter` detik
+          headers:
+            Retry-After: { schema: { type: integer } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "429":
+          description: RATE_LIMITED
+          headers:
+            Retry-After: { schema: { type: integer } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  /api/v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: Logout (mencabut sesi saat ini)
+      operationId: authLogout
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      responses:
+        "204": { description: Sesi dicabut, cookie dihapus }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/auth/csrf:
+    get:
+      tags: [auth]
+      summary: Token CSRF untuk sesi ini
+      operationId: authCsrf
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [csrfToken]
+                properties:
+                  csrfToken: { type: string }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/auth/me:
+    get:
+      tags: [auth]
+      summary: User saat ini, preferensi ringkas, dan konfigurasi client
+      description: Tetap dapat diakses saat `mustChangePassword` (endpoint lain menjawab `403 PASSWORD_CHANGE_REQUIRED`).
+      operationId: authMe
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, config]
+                properties:
+                  user:
+                    allOf:
+                      - $ref: "#/components/schemas/User"
+                      - type: object
+                        properties:
+                          quota:
+                            type: object
+                            properties:
+                              limit: { type: integer, format: int64 }
+                              used: { type: integer, format: int64, description: "0 sampai Step 10a" }
+                              trash: { type: integer, format: int64 }
+                              versions: { type: integer, format: int64 }
+                          language: { type: string, enum: [id, en] }
+                          prefs: { type: object, additionalProperties: true }
+                  config: { $ref: "#/components/schemas/ClientConfig" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { description: ACCOUNT_DISABLED, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/auth/change-password:
+    post:
+      tags: [auth]
+      summary: Ganti password (wajib saat login pertama)
+      description: |
+        Kebijakan SPEC §10.4: minimal `PASSWORD_MIN_LENGTH` (12), maksimal 128 karakter, bukan password umum,
+        tidak mengandung username, tidak sama dengan password sekarang maupun password awal. Sukses mencabut
+        semua sesi lain dan menghapus `mustChangePassword`. Rate limit 5 percobaan terverifikasi / 15 menit per sesi.
+      operationId: authChangePassword
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string, format: password }
+                newPassword: { type: string, format: password, minLength: 12, maxLength: 128 }
+      responses:
+        "204": { description: Password diganti }
+        "400":
+          description: "VALIDATION_FAILED — `details.fields.newPassword` ∈ too_short|too_long|common|contains_username|same_as_current|same_as_initial|invalid_encoding, atau `details.fields.currentPassword: incorrect`"
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { description: CSRF_INVALID, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429":
+          description: RATE_LIMITED
+          headers:
+            Retry-After: { schema: { type: integer } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  /api/v1/me/preferences:
+    get:
+      tags: [me]
+      summary: Preferensi user (dokumen JSON)
+      operationId: mePreferencesGet
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Preferences" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { description: PASSWORD_CHANGE_REQUIRED, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    put:
+      tags: [me]
+      summary: Merge-patch preferensi (`null` menghapus key)
+      operationId: mePreferencesPut
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Preferences" }
+      responses:
+        "200":
+          description: Preferensi setelah patch
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Preferences" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "413": { description: "PAYLOAD_TOO_LARGE — dokumen > 64 KB", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
 components:
   securitySchemes:
     cookieAuth:
@@ -87,6 +268,47 @@ components:
       in: header
       name: X-CSRF-Token
   schemas:
+    User:
+      type: object
+      required: [id, username, displayName, role, status, mustChangePassword, homeProvisioned, quotaBytes, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        role: { type: string, enum: [admin, user] }
+        status: { type: string, enum: [active, disabled] }
+        mustChangePassword: { type: boolean }
+        homeProvisioned: { type: boolean }
+        homeWarning: { type: string, enum: [existing_dir_reused] }
+        quotaBytes: { type: integer, format: int64 }
+        lastLoginAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+    ClientConfig:
+      type: object
+      properties:
+        appName: { type: string }
+        chunkSize: { type: integer, format: int64 }
+        maxUploadSize: { type: integer, format: int64 }
+        editorMaxFileSize: { type: integer, format: int64 }
+        remoteDownloadEnabled: { type: boolean }
+        publicSharesEnabled: { type: boolean }
+        shareAllowNoExpiry: { type: boolean }
+        shareRequirePassword: { type: boolean }
+        passwordMinLength: { type: integer }
+        defaultLanguage: { type: string, enum: [id, en] }
+        adminCanBrowseUsers: { type: boolean }
+        features:
+          type: object
+          additionalProperties: { type: boolean }
+          description: "ffmpeg, ffprobe, vips, pdftoppm, sevenzip, rar, unrar, rg: tool terdeteksi atau tidak"
+    Preferences:
+      type: object
+      required: [prefs]
+      properties:
+        prefs:
+          type: object
+          additionalProperties: true
+          description: "Key terdaftar di SPEC §8.18 (mis. ui.language, ui.theme)"
     Error:
       type: object
       required: [error]

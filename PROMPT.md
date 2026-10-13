@@ -201,7 +201,7 @@ Milestone: M1 fondasi · M2 operasi file + transfer · M3 arsip + editor + viewe
 6. Middleware: `RequireAuth` (sesi valid, user `active`; nonaktif → `403 ACCOUNT_DISABLED` + hapus cookie), `RequirePasswordChanged` (jika `must_change_password` → `403 PASSWORD_CHANGE_REQUIRED` untuk semua endpoint kecuali `auth/me`, `auth/logout`, `auth/change-password`, `auth/csrf`), `RequireAdmin` (`403 FORBIDDEN`).
 7. Rate limit & lockout (`internal/auth/ratelimit.go`): per IP 20 login/menit (token bucket, `429 RATE_LIMITED` + `Retry-After`); per username: 5 gagal dalam 15 menit → `locked_until` bertahap 1 → 5 → 15 → 60 menit (`423 ACCOUNT_LOCKED`, pesan tanpa membocorkan apakah username ada: respons login gagal selalu `401 UNAUTHENTICATED` dengan pesan sama; lockout hanya terlihat setelah username benar-benar ada dan dikunci — catat pertimbangan enumerasi di SPEC §10.1). Catat di `login_attempts`.
 8. Provisioning (`internal/auth/provision.go` memanggil fsjail minimal atau `os` — **pengecualian lint** sampai Step 4 lalu di-refactor): saat login sukses pertama, `MkdirAll(STORAGE_ROOT/<username>, 0750)` idempoten; jika folder sudah ada sebelum provisioning → tetap pakai, tulis audit `user.home_preexisting` + notifikasi admin (tabel notifikasi baru di Step 11 → sementara audit saja), set `home_provisioned_at`.
-9. Audit: `login.success`, `login.failed` (username yang dicoba, IP), `login.locked`, `password.changed`, `session.revoked`.
+9. Audit (nama aksi mengikuti SPEC §8.16): `auth.login`, `auth.login_failed` (username yang dicoba, IP), `auth.account_locked`, `auth.logout`, `auth.password_changed`, `user.home_provisioned|home_reused`, `system.seed_admin`.
 10. `docs/openapi.yaml`: tambah semua endpoint auth dengan skema request/response dan kode error.
 
 **File yang dibuat/diubah:** `backend/internal/auth/{password,session,csrf,ratelimit,provision,service}.go`, `backend/internal/auth/common_passwords.txt`, `backend/internal/httpapi/{auth,middleware_auth}.go`, `backend/cmd/filemanager/main.go` (seed), `backend/internal/audit/audit.go`, `docs/openapi.yaml`, `NOTICE`.
@@ -209,7 +209,7 @@ Milestone: M1 fondasi · M2 operasi file + transfer · M3 arsip + editor + viewe
 **Acceptance criteria:**
 - [ ] Start pertama dengan DB kosong → log `admin.seeded`; `curl -c c.txt -X POST /api/v1/auth/login -d '{"username":"admin","password":"<dari .env>"}'` → `200`, `must_change_password:true`, `Set-Cookie: fm_session=…; HttpOnly; Secure; SameSite=Lax`.
 - [ ] Dengan cookie itu `GET /api/v1/auth/me` → `200`; endpoint lain (mis. `GET /api/v1/files/list` placeholder atau `/api/v1/me/preferences`) → `403 PASSWORD_CHANGE_REQUIRED`.
-- [ ] `POST /auth/change-password` tanpa `X-CSRF-Token` → `403 CSRF_INVALID`; dengan token dan password baru = password awal → `400 VALIDATION_FAILED`; dengan password kuat → `200`, dan `must_change_password:false` di `/auth/me`.
+- [ ] `POST /auth/change-password` tanpa `X-CSRF-Token` → `403 CSRF_INVALID`; dengan token dan password baru = password awal → `400 VALIDATION_FAILED`; dengan password kuat → `204` (SPEC §6.3), dan `must_change_password:false` di `/auth/me`.
 - [ ] Setelah login sukses, folder `$STORAGE_ROOT/admin` ada dengan mode `0750`; login kedua tidak mengubah mtime folder.
 - [ ] 5 login gagal → percobaan ke-6 `423 ACCOUNT_LOCKED` dengan `Retry-After`; 21 request/menit dari satu IP → `429`.
 - [ ] Restart server dengan `ADMIN_INITIAL_PASSWORD` masih di env → password **tidak** di-reset, log warning muncul.

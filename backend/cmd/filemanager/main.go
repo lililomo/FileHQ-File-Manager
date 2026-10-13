@@ -21,6 +21,8 @@ import (
 	"syscall"
 	"time"
 
+	"kppbwi.app/filemanager/internal/audit"
+	"kppbwi.app/filemanager/internal/auth"
 	"kppbwi.app/filemanager/internal/config"
 	"kppbwi.app/filemanager/internal/db"
 	"kppbwi.app/filemanager/internal/httpapi"
@@ -254,12 +256,21 @@ func runServe(envFile string, noMigrate bool) int {
 	}
 	logger.Info("database ready", slog.String("path", database.Path()))
 
+	store := db.NewStore(database)
+	authSvc := auth.NewService(cfg, store, audit.New(store, logger, nil), logger, nil)
+	if err := authSvc.Seed(context.Background()); err != nil {
+		logger.Error("admin seed failed", slog.String("error", err.Error()))
+		return exitConfig
+	}
+
 	handler := httpapi.New(httpapi.Options{
 		Cfg:         cfg,
 		Logger:      logger,
 		Version:     version,
 		Assets:      webassets.Handler(),
 		ReadyChecks: []httpapi.ReadyChecker{dbReadyCheck(database)},
+		Store:       store,
+		Auth:        authSvc,
 	})
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
@@ -271,6 +282,7 @@ func runServe(envFile string, noMigrate bool) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	go authSvc.RunMaintenance(ctx)
 
 	errCh := make(chan error, 1)
 	go func() {
