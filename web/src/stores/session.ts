@@ -1,0 +1,74 @@
+import { create } from 'zustand'
+
+export type Role = 'admin' | 'user'
+
+export interface Quota {
+  limit: number
+  used: number
+  trash: number
+  versions: number
+}
+
+/** Shape of `user` in `POST /auth/login` and `GET /auth/me` (SPEC §6.3). */
+export interface User {
+  id: string
+  username: string
+  displayName: string
+  role: Role
+  status: 'active' | 'disabled'
+  mustChangePassword: boolean
+  homeProvisioned: boolean
+  quotaBytes: number
+  createdAt: string
+  lastLoginAt?: string
+  homeWarning?: string
+  quota?: Quota
+  language?: string
+  prefs?: Record<string, unknown>
+}
+
+/** `config` in `GET /auth/me`. */
+export interface ClientConfig {
+  appName: string
+  chunkSize: number
+  maxUploadSize: number
+  editorMaxFileSize: number
+  remoteDownloadEnabled: boolean
+  publicSharesEnabled: boolean
+  shareAllowNoExpiry: boolean
+  shareRequirePassword: boolean
+  passwordMinLength: number
+  defaultLanguage: string
+  adminCanBrowseUsers: boolean
+  features: Record<string, boolean>
+}
+
+export type SessionStatus = 'unknown' | 'anonymous' | 'authenticated'
+
+export interface SessionState {
+  status: SessionStatus
+  user: User | null
+  config: ClientConfig | null
+  csrfToken: string | null
+  setAuthenticated: (user: User, config: ClientConfig | null, csrfToken?: string | null) => void
+  setAnonymous: () => void
+  setCsrfToken: (token: string) => void
+  updateUser: (patch: Partial<User>) => void
+}
+
+export const useSessionStore = create<SessionState>((set) => ({
+  status: 'unknown',
+  user: null,
+  config: null,
+  csrfToken: null,
+  setAuthenticated: (user, config, csrfToken) =>
+    set((s) => ({
+      status: 'authenticated',
+      user,
+      config: config ?? s.config,
+      csrfToken: csrfToken ?? s.csrfToken,
+    })),
+  setAnonymous: () => set({ status: 'anonymous', user: null, csrfToken: null }),
+  setCsrfToken: (token) => set({ csrfToken: token }),
+  updateUser: (patch) => set((s) => (s.user ? { user: { ...s.user, ...patch } } : {})),
+}))

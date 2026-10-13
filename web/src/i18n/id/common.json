@@ -1,0 +1,71 @@
+{
+  "app": {
+    "name": "FileManager",
+    "tagline": "File manager multi-user"
+  },
+  "actions": {
+    "save": "Simpan",
+    "cancel": "Batal",
+    "close": "Tutup",
+    "retry": "Coba lagi",
+    "logout": "Keluar",
+    "back": "Kembali",
+    "continue": "Lanjut",
+    "show": "Tampilkan",
+    "hide": "Sembunyikan",
+    "copy": "Salin",
+    "openMenu": "Buka menu",
+    "settings": "Pengaturan"
+  },
+  "theme": {
+    "label": "Tema",
+    "light": "Terang",
+    "dark": "Gelap",
+    "system": "Ikuti sistem"
+  },
+  "accent": {
+    "label": "Warna aksen",
+    "blue": "Biru",
+    "emerald": "Emerald",
+    "violet": "Violet",
+    "amber": "Amber",
+    "rose": "Rose",
+    "slate": "Slate"
+  },
+  "language": {
+    "label": "Bahasa",
+    "id": "Bahasa Indonesia",
+    "en": "English"
+  },
+  "status": {
+    "loading": "Memuat…",
+    "saving": "Menyimpan…",
+    "ready": "Siap"
+  },
+  "a11y": {
+    "skipToContent": "Lompat ke konten",
+    "mainNavigation": "Navigasi utama",
+    "userMenu": "Menu pengguna",
+    "toggleSidebar": "Ciutkan atau lebarkan sidebar",
+    "announcements": "Pengumuman"
+  },
+  "placeholder": {
+    "title": "Halaman ini dibangun di Step {{step}}",
+    "body": "Kerangka aplikasi (Step 6) sudah aktif. Fitur ini menyusul sesuai PROMPT.md."
+  },
+  "notFound": {
+    "title": "Halaman tidak ditemukan",
+    "body": "Alamat yang Anda buka tidak ada.",
+    "action": "Ke File Saya"
+  },
+  "time": {
+    "justNow": "baru saja"
+  },
+  "version": "Versi {{version}}",
+  "roles": {
+    "admin": "Admin",
+    "user": "Pengguna"
+  },
+  "publicShare": "Berkas yang dibagikan",
+  "publicFooter": "Dibagikan lewat {{app}}"
+}

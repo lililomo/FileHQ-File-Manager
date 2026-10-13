@@ -70,3 +70,11 @@ Daftar lengkap variabel, default, dan validasi: `SPEC.md §3`.
 
 Hosting git belum ditentukan (repo lokal di server). `.github/workflows/ci.yml` ditulis untuk GitHub Actions dan
 mudah dipindah ke GitLab CI/Gitea Actions; sampai remote tersedia, `make ci` menjalankan pemeriksaan yang sama secara lokal.
+
+## Frontend (web/)
+
+- `pnpm -C web dev` — Vite dev server on :5173, proxying `/api` to the backend on :8080.
+- `pnpm -C web lint` — eslint + WCAG contrast check (`scripts/check-contrast.mjs`) + i18n key check.
+- `pnpm -C web test` — Vitest; `pnpm -C web e2e` — Playwright against `bin/filemanager` (run `make build` first; browsers via `pnpm -C web e2e:install`).
+- `pnpm -C web gen:api` — regenerate `src/lib/api.gen.ts` from `docs/openapi.yaml`.
+- `/dev/design` shows every token and component (dev builds only, or `VITE_DESIGN_PAGE=1 pnpm build`).

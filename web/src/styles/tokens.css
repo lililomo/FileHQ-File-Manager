@@ -1,0 +1,159 @@
+/* Design tokens — SPEC §9.1. Light = :root, dark = [data-theme="dark"],
+   accent variants = [data-accent]. Values are verified for WCAG AA by
+   scripts/check-contrast.mjs (run by `pnpm lint`). */
+
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('/fonts/inter-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('/fonts/inter-latin-ext-wght-normal.woff2') format('woff2-variations');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('/fonts/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  --bg: #ffffff;
+  --surface: #f7f8fa;
+  --surface-2: #f0f2f5;
+  --border: #e4e7ec;
+  --text: #0f172a;
+  --text-muted: #5b6474;
+  --accent: #2563eb;
+  --accent-fg: #ffffff;
+  --accent-subtle: #eaf1fe;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --focus: var(--accent);
+
+  --icon-folder: #f59e0b;
+  --icon-image: #8b5cf6;
+  --icon-video: #f43f5e;
+  --icon-audio: #ec4899;
+  --icon-archive: #f97316;
+  --icon-code: #0ea5e9;
+  --icon-pdf: #ef4444;
+  --icon-doc: #3b82f6;
+  --icon-sheet: #22c55e;
+  --icon-text: #64748b;
+  --icon-other: #94a3b8;
+
+  --elevation-popover: 0 4px 16px rgb(0 0 0 / 0.12);
+  --font-family-sans:
+    'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-family-mono:
+    'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas,
+    'Liberation Mono', monospace;
+  --motion: 150ms;
+  --motion-fast: 120ms;
+  --motion-slow: 180ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --row-height: 36px;
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --bg: #0e1015;
+  --surface: #14171e;
+  --surface-2: #1b1f28;
+  --border: #262b36;
+  --text: #e6e8ee;
+  --text-muted: #9aa3b2;
+  --accent: #4c8dff;
+  --accent-fg: #0e1015;
+  --accent-subtle: #1a2a4a;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #f87171;
+  --elevation-popover: 0 4px 16px rgb(0 0 0 / 0.4);
+  color-scheme: dark;
+}
+
+[data-density='comfortable'] {
+  --row-height: 40px;
+}
+
+/* Accent variants (pref ui.accent). Light pairs use white text; dark pairs use
+   dark text on a lighter accent, so both stay ≥ 4.5:1 (checked by script). */
+[data-accent='emerald'] {
+  --accent: #047857;
+  --accent-fg: #ffffff;
+  --accent-subtle: #e3f5ec;
+}
+[data-theme='dark'][data-accent='emerald'] {
+  --accent: #34d399;
+  --accent-fg: #0e1015;
+  --accent-subtle: #0f2e22;
+}
+[data-accent='violet'] {
+  --accent: #7c3aed;
+  --accent-fg: #ffffff;
+  --accent-subtle: #f1ebfe;
+}
+[data-theme='dark'][data-accent='violet'] {
+  --accent: #a78bfa;
+  --accent-fg: #0e1015;
+  --accent-subtle: #26194a;
+}
+[data-accent='amber'] {
+  --accent: #b45309;
+  --accent-fg: #ffffff;
+  --accent-subtle: #fdf1db;
+}
+[data-theme='dark'][data-accent='amber'] {
+  --accent: #fbbf24;
+  --accent-fg: #0e1015;
+  --accent-subtle: #3a2a0a;
+}
+[data-accent='rose'] {
+  --accent: #be123c;
+  --accent-fg: #ffffff;
+  --accent-subtle: #fde8ee;
+}
+[data-theme='dark'][data-accent='rose'] {
+  --accent: #fb7185;
+  --accent-fg: #0e1015;
+  --accent-subtle: #3b1420;
+}
+[data-accent='slate'] {
+  --accent: #475569;
+  --accent-fg: #ffffff;
+  --accent-subtle: #edf0f4;
+}
+[data-theme='dark'][data-accent='slate'] {
+  --accent: #94a3b8;
+  --accent-fg: #0e1015;
+  --accent-subtle: #1e2733;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion: 0ms;
+    --motion-fast: 0ms;
+    --motion-slow: 0ms;
+  }
+}

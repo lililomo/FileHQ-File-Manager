@@ -1,0 +1,29 @@
+{
+  "files": "File Saya",
+  "recent": "Recent",
+  "favorites": "Favorit",
+  "sharedWithMe": "Dibagikan ke saya",
+  "myShares": "Share saya",
+  "trash": "Recycle Bin",
+  "activity": "Aktivitas",
+  "storage": "Analisis penyimpanan",
+  "search": "Cari",
+  "editor": "Editor",
+  "settings": "Pengaturan",
+  "admin": "Admin",
+  "adminUsers": "Pengguna",
+  "adminSettings": "Pengaturan sistem",
+  "adminAudit": "Audit log",
+  "adminTasks": "Task",
+  "adminMaintenance": "Maintenance",
+  "adminShares": "Share publik",
+  "searchPlaceholder": "Cari file…",
+  "tasks": "Task",
+  "notifications": "Notifikasi",
+  "quota": {
+    "label": "Kuota",
+    "usage": "{{used}} dari {{limit}}",
+    "percent": "{{percent}}% terpakai",
+    "unlimited": "Tanpa batas"
+  }
+}

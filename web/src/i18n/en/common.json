@@ -1,0 +1,71 @@
+{
+  "app": {
+    "name": "FileManager",
+    "tagline": "Multi-user file manager"
+  },
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "retry": "Retry",
+    "logout": "Sign out",
+    "back": "Back",
+    "continue": "Continue",
+    "show": "Show",
+    "hide": "Hide",
+    "copy": "Copy",
+    "openMenu": "Open menu",
+    "settings": "Settings"
+  },
+  "theme": {
+    "label": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "Follow system"
+  },
+  "accent": {
+    "label": "Accent colour",
+    "blue": "Blue",
+    "emerald": "Emerald",
+    "violet": "Violet",
+    "amber": "Amber",
+    "rose": "Rose",
+    "slate": "Slate"
+  },
+  "language": {
+    "label": "Language",
+    "id": "Bahasa Indonesia",
+    "en": "English"
+  },
+  "status": {
+    "loading": "Loading…",
+    "saving": "Saving…",
+    "ready": "Ready"
+  },
+  "a11y": {
+    "skipToContent": "Skip to content",
+    "mainNavigation": "Main navigation",
+    "userMenu": "User menu",
+    "toggleSidebar": "Collapse or expand the sidebar",
+    "announcements": "Announcements"
+  },
+  "placeholder": {
+    "title": "This page is built in Step {{step}}",
+    "body": "The application shell (Step 6) is live. This feature follows according to PROMPT.md."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "body": "The address you opened does not exist.",
+    "action": "Go to My Files"
+  },
+  "time": {
+    "justNow": "just now"
+  },
+  "version": "Version {{version}}",
+  "roles": {
+    "admin": "Admin",
+    "user": "User"
+  },
+  "publicShare": "Shared item",
+  "publicFooter": "Shared via {{app}}"
+}

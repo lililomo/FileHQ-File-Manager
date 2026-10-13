@@ -1623,7 +1623,7 @@ dijalankan dengan `Dir` = host path folder (via `HostPath`), `nice`, timeout 30 
 
 ### 9.1 Design token
 
-Didefinisikan sebagai CSS variables di `web/src/styles/tokens.css` (`:root` light, `[data-theme="dark"]` dark; `data-theme` diset sebelum render oleh script inline kecil di `index.html` yang membaca `localStorage.theme`/`prefers-color-scheme` → tanpa flash; script ini memakai nonce CSP yang dibuat server saat menyajikan `index.html`) dan dipetakan ke Tailwind lewat `theme.extend.colors` dengan `rgb(var(--x) / <alpha-value>)`.
+Didefinisikan sebagai CSS variables di `web/src/styles/tokens.css` (`:root` light, `[data-theme="dark"]` dark, `[data-accent=…]` aksen; nama internal `--font-family-sans/mono`, `--elevation-popover`). `data-theme` diset sebelum first paint oleh **script eksternal** `web/public/theme-init.js` (classic script di `<head>`, origin sama) yang membaca `localStorage.theme|accent|density` dan `prefers-color-scheme` → tanpa flash dan **tanpa `unsafe-inline` maupun nonce** (deviasi dari rencana awal "script inline ber-nonce"; nonce tetap tersedia di §10.3 bila kelak dibutuhkan). Pemetaan ke Tailwind memakai Tailwind v4 CSS-first: `@theme inline { --color-bg: var(--bg); … }` di `globals.css` (tidak ada `tailwind.config.ts`); nama shadcn (`background`, `foreground`, `primary`, `muted`, …) dipetakan ke token yang sama sehingga komponen yang di-vendor tidak memakai palet default shadcn, dan `accent` versi shadcn (latar hover) diganti `surface-2` di file komponen.
 
 | Token | Light | Dark | Tailwind |
 | --- | --- | --- | --- |
@@ -1641,7 +1641,7 @@ Didefinisikan sebagai CSS variables di `web/src/styles/tokens.css` (`:root` ligh
 | `--danger` | #DC2626 | #F87171 | |
 | `--focus` | = accent | = accent | ring 2 px offset 1 px |
 
-Aksen alternatif (pref `ui.accent`, mengganti `--accent`, `--accent-subtle`, `--accent-fg`): emerald #059669/#34D399, violet #7C3AED/#A78BFA, amber #D97706/#FBBF24 (fg gelap), rose #E11D48/#FB7185, slate #475569/#94A3B8. Script `web/scripts/check-contrast.ts` menghitung rasio WCAG untuk pasangan (text/bg, text-muted/bg, text/surface, accent-fg/accent, text/accent-subtle, danger/bg) di kedua tema dan semua aksen; gagal jika < 4.5:1 untuk teks normal, < 3:1 untuk UI non-teks; dijalankan di CI (`pnpm check:contrast`).
+Aksen alternatif (pref `ui.accent`, mengganti `--accent`, `--accent-subtle`, `--accent-fg`): light memakai teks putih di atas aksen, dark memakai teks gelap (#0E1015) di atas aksen yang lebih terang. Nilai final setelah verifikasi kontras (≥ 4.5:1 teks di atas aksen): emerald #047857/#34D399, violet #7C3AED/#A78BFA, amber #B45309/#FBBF24, rose #BE123C/#FB7185, slate #475569/#94A3B8 (nilai light emerald/amber/rose diturunkan dari usulan awal #059669/#D97706/#E11D48 yang hanya 3,2–3,8:1 dengan teks putih); `--accent-subtle` per aksen ada di `tokens.css`. Script `web/scripts/check-contrast.mjs` menghitung rasio WCAG untuk 14 pasangan (text/bg, text-muted/bg, text/surface, text/surface-2, accent-fg/accent, text/accent-subtle, danger/bg = 4.5:1; accent/bg, focus/bg, success/bg, warning/bg, danger/surface = 3:1) di 2 tema × 6 aksen = 168 pemeriksaan; dijalankan oleh `pnpm lint` dan CI; `/dev/design` menampilkan rasio yang sama di browser.
 
 Warna ikon tipe (`--icon-folder` amber #F59E0B, `--icon-image` violet #8B5CF6, `--icon-video` rose #F43F5E, `--icon-audio` pink #EC4899, `--icon-archive` orange #F97316, `--icon-code` sky #0EA5E9, `--icon-pdf` red #EF4444, `--icon-doc` blue #3B82F6, `--icon-sheet` green #22C55E, `--icon-text` slate #64748B, `--icon-other` slate-400). Ikon tipe: set SVG internal (`components/FileIcon`, 24 px grid, glyph lucide (ISC) di atas bentuk file bulat 4 px), ukuran 16/24/48/96/192 via `currentColor`.
 
@@ -1653,7 +1653,7 @@ Warna ikon tipe (`--icon-folder` amber #F59E0B, `--icon-image` violet #8B5CF6, `
 
 ### 9.2 Inventaris komponen
 
-`components/ui` (shadcn, dikustom ke token): Button (variant `primary|secondary|ghost|danger`, size `sm|md|icon`), IconButton (32 px, tooltip wajib = label + shortcut), Input, Textarea, Select, Checkbox, Switch, RadioGroup, Tabs, Tooltip, DropdownMenu, ContextMenu, Dialog, AlertDialog, Sheet (mobile), Popover, Command (cmdk), Toast (sonner, posisi bottom-left agar tidak menutupi panel transfer kanan-bawah), Progress, Badge, Skeleton, Separator, ScrollArea, Kbd, Breadcrumb (dengan dropdown sibling & collapse "…"), Table (header sticky).
+`components/ui` (shadcn/ui di-vendor ke repo lewat CLI, dikustom ke token): Button (variant shadcn `default|secondary|outline|ghost|destructive|link` + alias `primary|danger`; size `sm` 28 px, `md`/default 32 px, `lg` 36 px, `icon` 32 px, `icon-sm` 28 px; focus ring 2 px accent offset 1 px), IconButton (32 px, `label` wajib = aria-label + tooltip, `shortcut` opsional sebagai `Kbd`), Input, Textarea, Select, Checkbox, Switch, RadioGroup, Tabs, Tooltip, DropdownMenu, ContextMenu, Dialog, AlertDialog, Sheet (mobile), Popover, Command (cmdk), Toast (sonner, posisi bottom-left agar tidak menutupi panel transfer kanan-bawah, tema dari store UI, maks 3), Progress, Badge, Skeleton, Separator, ScrollArea, Kbd/KbdGroup, Breadcrumb (dropdown sibling & collapse "…" ditambahkan Step 7a), Table (header sticky di Step 7a), Empty.
 
 `components/`: `AppShell`, `TopBar`, `Sidebar` (+ `QuotaIndicator`), `AddressBar` (back/forward/up/refresh, breadcrumb ↔ input path editable (klik area kosong/`Alt+D`), filter cepat), `Toolbar` (grup + overflow "⋯"), `FolderTabs`, `FileGrid` (Details/List/Tiles/Large/XLarge; ARIA grid), `ColumnPicker`, `SortMenu`, `SelectionBar` (mobile), `StatusBar`, `PreviewPanel`, `FileIcon`, `Thumb`, `EmptyState`, `ErrorState`, `TaskPopover`, `TransferPanel`, `NotificationBell`, `UserMenu`, `ThemeToggle`, `ConflictDialog`, `FolderPicker`, `BatchRenameDialog`, `PropertiesDialog`, `ShareDialog`, `PermissionDialog`, `ChecksumPanel`, `VersionsPanel`, `CompressDialog`, `ExtractDialog`, `RemoteDownloadDialog`, `SearchPanel`, `ShortcutHelp`, `CommandPalette`, `MiniPlayer`, `ViewerShell` + viewer per tipe, `Treemap`.
 
@@ -1789,7 +1789,7 @@ Semua toast: sukses 3 detik, error sampai ditutup (atau 8 detik), undo 10 detik 
 
 - `i18next` + `react-i18next`, bahasa `id` (default) dan `en`, deteksi: pref user → `Accept-Language` → `DEFAULT_LANGUAGE`.
 - File: `web/src/i18n/{id,en}/{common,auth,browser,fileops,upload,tasks,trash,meta,archive,search,editor,viewer,share,admin,profile,errors}.json`; key `area.component.key` dalam camelCase (`browser.toolbar.newFolder`), kode error di `errors.<CODE>`; plural dengan suffix i18next (`_one`, `_other`), interpolasi `{{count}}`; tidak ada string UI hardcoded (eslint rule `i18next/no-literal-string` untuk JSX).
-- Format: `Intl.DateTimeFormat` (id-ID: `12 Okt 2026, 14.05`), relatif via `Intl.RelativeTimeFormat` (≤ 7 hari) + tooltip absolut; byte via helper `formatBytes(locale)` (id: `1,2 MB`, en: `1.2 MB`, basis 1024 dengan label KB/MB/GB); angka `Intl.NumberFormat`.
+- Format: `Intl.DateTimeFormat` (id-ID: `12 Okt 2026, 14.05`), relatif via `Intl.RelativeTimeFormat` (≤ 7 hari) + tooltip absolut; byte via helper `formatBytes(locale)` (id: `1,2 MB`, en: `1.2 MB`, basis 1024 dengan label KB/MB/GB); angka `Intl.NumberFormat`. Locale Intl: `id` → `id-ID`, `en` → `en-GB` (urutan hari-bulan-tahun dan jam 24 jam konsisten dengan id; `1.2 MB`). Helper: `formatBytes`, `formatDate` (`{time}` → "12 Okt 2026, 14.05"), `formatRelativeTime` (≤ 7 hari relatif, `numeric: 'auto'` → "kemarin"), `formatDateTimeFull` untuk tooltip.
 - Backend mengirim `message` sesuai `Accept-Language` memakai katalog kecil (`internal/httpapi/i18n`), tetapi client selalu mengutamakan terjemahannya sendiri per `code`.
 - Semua `aria-label`, judul dialog, placeholder, tooltip berasal dari katalog.
 
@@ -1856,7 +1856,7 @@ Cache-Control: no-store   (API & index.html; aset hash: immutable)
 X-Robots-Tag: noindex, nofollow   (seluruh aplikasi; tidak ada halaman publik yang perlu diindeks)
 ```
 
-CSP untuk `index.html` (nonce per request untuk script inline tema):
+CSP untuk `index.html` (sejak Step 6 tidak ada script inline: tema diterapkan oleh `theme-init.js` eksternal, jadi `script-src 'self'` cukup; `'nonce-<nonce>'` dipertahankan sebagai opsi bila suatu saat script inline dibutuhkan — tanpa `'unsafe-inline'` untuk script):
 
 ```text
 Content-Security-Policy:

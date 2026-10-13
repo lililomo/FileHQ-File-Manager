@@ -1,0 +1,29 @@
+{
+  "files": "My Files",
+  "recent": "Recent",
+  "favorites": "Favorites",
+  "sharedWithMe": "Shared with me",
+  "myShares": "My shares",
+  "trash": "Recycle Bin",
+  "activity": "Activity",
+  "storage": "Storage analysis",
+  "search": "Search",
+  "editor": "Editor",
+  "settings": "Settings",
+  "admin": "Admin",
+  "adminUsers": "Users",
+  "adminSettings": "System settings",
+  "adminAudit": "Audit log",
+  "adminTasks": "Tasks",
+  "adminMaintenance": "Maintenance",
+  "adminShares": "Public shares",
+  "searchPlaceholder": "Search files…",
+  "tasks": "Tasks",
+  "notifications": "Notifications",
+  "quota": {
+    "label": "Quota",
+    "usage": "{{used}} of {{limit}}",
+    "percent": "{{percent}}% used",
+    "unlimited": "Unlimited"
+  }
+}

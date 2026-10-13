@@ -1,0 +1,67 @@
+import i18next from 'i18next'
+import { initReactI18next } from 'react-i18next'
+import { readStored, STORAGE_KEYS } from '@/lib/theme'
+import idCommon from './id/common.json'
+import idNav from './id/nav.json'
+import idAuth from './id/auth.json'
+import idErrors from './id/errors.json'
+import enCommon from './en/common.json'
+import enNav from './en/nav.json'
+import enAuth from './en/auth.json'
+import enErrors from './en/errors.json'
+
+export const LANGUAGES = ['id', 'en'] as const
+export type Language = (typeof LANGUAGES)[number]
+export const DEFAULT_LANGUAGE: Language = 'id'
+
+export const resources = {
+  id: { common: idCommon, nav: idNav, auth: idAuth, errors: idErrors },
+  en: { common: enCommon, nav: enNav, auth: enAuth, errors: enErrors },
+} as const
+
+export function isLanguage(v: unknown): v is Language {
+  return v === 'id' || v === 'en'
+}
+
+/** Stored choice → browser language → default (SPEC §9.8). */
+export function detectLanguage(): Language {
+  const stored = readStored('lang')
+  if (isLanguage(stored)) return stored
+  const nav =
+    typeof navigator !== 'undefined' ? (navigator.languages?.[0] ?? navigator.language ?? '') : ''
+  return nav.toLowerCase().startsWith('en') ? 'en' : DEFAULT_LANGUAGE
+}
+
+export function currentLanguage(): Language {
+  const l = i18next.resolvedLanguage ?? i18next.language
+  return isLanguage(l) ? l : DEFAULT_LANGUAGE
+}
+
+export async function setLanguage(lang: Language, persist = true): Promise<void> {
+  if (persist) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.lang, lang)
+    } catch {
+      /* ignore */
+    }
+  }
+  await i18next.changeLanguage(lang)
+  if (typeof document !== 'undefined') document.documentElement.lang = lang
+}
+
+if (!i18next.isInitialized) {
+  void i18next.use(initReactI18next).init({
+    resources,
+    lng: detectLanguage(),
+    fallbackLng: DEFAULT_LANGUAGE,
+    supportedLngs: [...LANGUAGES],
+    defaultNS: 'common',
+    ns: ['common', 'nav', 'auth', 'errors'],
+    interpolation: { escapeValue: false },
+    initAsync: false,
+    returnNull: false,
+  })
+  if (typeof document !== 'undefined') document.documentElement.lang = currentLanguage()
+}
+
+export default i18next
