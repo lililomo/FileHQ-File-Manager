@@ -1,6 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { PlaceholderPage } from '@/components/PlaceholderPage'
+import { BrowserLayout } from '@/features/browser/BrowserLayout'
+import { splatToPath } from '@/features/browser/path'
 
 export const Route = createFileRoute('/_app/files/$')({
-  component: () => <PlaceholderPage step="7a" titleKey="files" />,
+  component: FilesRoute,
 })
+
+function FilesRoute() {
+  const { _splat } = Route.useParams()
+  return <BrowserLayout path={splatToPath(_splat)} />
+}

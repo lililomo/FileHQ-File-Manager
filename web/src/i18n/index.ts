@@ -5,18 +5,20 @@ import idCommon from './id/common.json'
 import idNav from './id/nav.json'
 import idAuth from './id/auth.json'
 import idErrors from './id/errors.json'
+import idFiles from './id/files.json'
 import enCommon from './en/common.json'
 import enNav from './en/nav.json'
 import enAuth from './en/auth.json'
 import enErrors from './en/errors.json'
+import enFiles from './en/files.json'
 
 export const LANGUAGES = ['id', 'en'] as const
 export type Language = (typeof LANGUAGES)[number]
 export const DEFAULT_LANGUAGE: Language = 'id'
 
 export const resources = {
-  id: { common: idCommon, nav: idNav, auth: idAuth, errors: idErrors },
-  en: { common: enCommon, nav: enNav, auth: enAuth, errors: enErrors },
+  id: { common: idCommon, nav: idNav, auth: idAuth, errors: idErrors, files: idFiles },
+  en: { common: enCommon, nav: enNav, auth: enAuth, errors: enErrors, files: enFiles },
 } as const
 
 export function isLanguage(v: unknown): v is Language {
@@ -56,7 +58,7 @@ if (!i18next.isInitialized) {
     fallbackLng: DEFAULT_LANGUAGE,
     supportedLngs: [...LANGUAGES],
     defaultNS: 'common',
-    ns: ['common', 'nav', 'auth', 'errors'],
+    ns: ['common', 'nav', 'auth', 'errors', 'files'],
     interpolation: { escapeValue: false },
     initAsync: false,
     returnNull: false,

@@ -2,7 +2,7 @@
 // Credentials here must match e2e/fixtures.ts.
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -15,6 +15,8 @@ if (!existsSync(bin)) {
 const dir = mkdtempSync(join(tmpdir(), 'fm-e2e-'))
 const storage = join(dir, 'storage')
 mkdirSync(join(storage, '.system'), { recursive: true })
+// Specs that need direct filesystem fixtures (10k files) read the storage root from here.
+writeFileSync(join(tmpdir(), 'fm-e2e-storage.txt'), storage)
 
 const env = {
   PATH: process.env.PATH,

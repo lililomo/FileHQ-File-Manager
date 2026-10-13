@@ -125,3 +125,19 @@
     }
   }
 }
+
+/* Loading skeletons appear only when a load takes longer than 300 ms (SPEC §9.7). */
+@keyframes fm-reveal {
+  to {
+    opacity: 1;
+  }
+}
+.delayed-reveal {
+  opacity: 0;
+  animation: fm-reveal 120ms var(--ease) 300ms forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .delayed-reveal {
+    animation-duration: 1ms;
+  }
+}

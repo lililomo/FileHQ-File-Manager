@@ -2,6 +2,21 @@
 
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'] as const
 
+// Intl constructors are expensive (≈ 0.5–2 ms each); listings call these per cell,
+// so instances are cached per locale + options.
+const cache = new Map<string, Intl.NumberFormat | Intl.DateTimeFormat | Intl.RelativeTimeFormat>()
+function cached<T extends Intl.NumberFormat | Intl.DateTimeFormat | Intl.RelativeTimeFormat>(
+  key: string,
+  make: () => T,
+): T {
+  let inst = cache.get(key) as T | undefined
+  if (!inst) {
+    inst = make()
+    cache.set(key, inst)
+  }
+  return inst
+}
+
 export function toIntlLocale(language: string): string {
   if (language === 'id') return 'id-ID'
   if (language === 'en') return 'en-GB'
@@ -18,9 +33,10 @@ export function formatBytes(bytes: number, language = 'id'): string {
     unit += 1
   }
   const digits = unit === 0 ? 0 : value < 10 ? 1 : 0
-  const n = new Intl.NumberFormat(toIntlLocale(language), { maximumFractionDigits: digits }).format(
-    value,
-  )
+  const n = cached(
+    `bytes:${language}:${digits}`,
+    () => new Intl.NumberFormat(toIntlLocale(language), { maximumFractionDigits: digits }),
+  ).format(value)
   return `${n} ${UNITS[unit]}`
 }
 
@@ -29,14 +45,18 @@ export function formatNumber(
   language = 'id',
   options?: Intl.NumberFormatOptions,
 ): string {
-  return new Intl.NumberFormat(toIntlLocale(language), options).format(n)
+  return cached(
+    `num:${language}:${JSON.stringify(options ?? {})}`,
+    () => new Intl.NumberFormat(toIntlLocale(language), options),
+  ).format(n)
 }
 
 export function formatPercent(ratio: number, language = 'id'): string {
-  return new Intl.NumberFormat(toIntlLocale(language), {
-    style: 'percent',
-    maximumFractionDigits: 0,
-  }).format(ratio)
+  return cached(
+    `pct:${language}`,
+    () =>
+      new Intl.NumberFormat(toIntlLocale(language), { style: 'percent', maximumFractionDigits: 0 }),
+  ).format(ratio)
 }
 
 function toDate(input: string | number | Date): Date | null {
@@ -54,14 +74,16 @@ export function formatDate(
   if (!d) return '—'
   const loc = toIntlLocale(language)
   const tz = options.timeZone ? { timeZone: options.timeZone } : {}
-  const date = new Intl.DateTimeFormat(loc, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    ...tz,
-  }).format(d)
+  const tzKey = options.timeZone ?? ''
+  const date = cached(
+    `date:${loc}:${tzKey}`,
+    () => new Intl.DateTimeFormat(loc, { day: 'numeric', month: 'short', year: 'numeric', ...tz }),
+  ).format(d)
   if (!options.time) return date
-  const time = new Intl.DateTimeFormat(loc, { hour: '2-digit', minute: '2-digit', ...tz }).format(d)
+  const time = cached(
+    `time:${loc}:${tzKey}`,
+    () => new Intl.DateTimeFormat(loc, { hour: '2-digit', minute: '2-digit', ...tz }),
+  ).format(d)
   return `${date}, ${time}`
 }
 
@@ -69,10 +91,11 @@ export function formatDate(
 export function formatDateTimeFull(input: string | number | Date, language = 'id'): string {
   const d = toDate(input)
   if (!d) return '—'
-  return new Intl.DateTimeFormat(toIntlLocale(language), {
-    dateStyle: 'medium',
-    timeStyle: 'medium',
-  }).format(d)
+  return cached(
+    `full:${language}`,
+    () =>
+      new Intl.DateTimeFormat(toIntlLocale(language), { dateStyle: 'medium', timeStyle: 'medium' }),
+  ).format(d)
 }
 
 /** Relative within 7 days ("2 jam yang lalu", "kemarin"), absolute date beyond. */
@@ -85,7 +108,10 @@ export function formatRelativeTime(
   if (!d) return '—'
   const diffSec = Math.round((d.getTime() - now) / 1000)
   const abs = Math.abs(diffSec)
-  const rtf = new Intl.RelativeTimeFormat(toIntlLocale(language), { numeric: 'auto' })
+  const rtf = cached(
+    `rtf:${language}`,
+    () => new Intl.RelativeTimeFormat(toIntlLocale(language), { numeric: 'auto' }),
+  )
   if (abs < 45) return rtf.format(0, 'second')
   if (abs < 3600) return rtf.format(Math.round(diffSec / 60), 'minute')
   if (abs < 86_400) return rtf.format(Math.round(diffSec / 3600), 'hour')

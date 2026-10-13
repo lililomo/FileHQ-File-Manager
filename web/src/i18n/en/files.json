@@ -1,0 +1,232 @@
+{
+  "type": {
+    "folder": "Folder",
+    "other": "File",
+    "archive": {
+      "7z": "7z archive",
+      "bzip2": "bzip2 archive",
+      "deb": "Debian package",
+      "gzip": "gzip archive",
+      "iso": "ISO image",
+      "jar": "JAR archive",
+      "lz4": "LZ4 archive",
+      "rar": "RAR archive",
+      "rpm": "RPM package",
+      "tar": "tar archive",
+      "tarbz2": "tar.bz2 archive",
+      "targz": "tar.gz archive",
+      "tarxz": "tar.xz archive",
+      "tarzst": "tar.zst archive",
+      "war": "WAR archive",
+      "xz": "xz archive",
+      "zip": "ZIP archive",
+      "zstd": "zstd archive"
+    },
+    "audio": {
+      "aac": "AAC audio",
+      "aiff": "AIFF audio",
+      "flac": "FLAC audio",
+      "m4a": "M4A audio",
+      "midi": "MIDI audio",
+      "mp3": "MP3 audio",
+      "ogg": "OGG audio",
+      "opus": "Opus audio",
+      "wav": "WAV audio",
+      "wma": "WMA audio"
+    },
+    "code": {
+      "apache": "Apache config",
+      "batch": "Batch script",
+      "c": "C source",
+      "conf": "Config file",
+      "cpp": "C++ source",
+      "csharp": "C# source",
+      "css": "CSS stylesheet",
+      "dockerfile": "Dockerfile",
+      "env": "Env file",
+      "go": "Go source",
+      "html": "HTML document",
+      "ini": "INI file",
+      "java": "Java source",
+      "javascript": "JavaScript source",
+      "json": "JSON data",
+      "jsx": "JSX source",
+      "kotlin": "Kotlin source",
+      "less": "LESS stylesheet",
+      "lua": "Lua source",
+      "makefile": "Makefile",
+      "perl": "Perl source",
+      "php": "PHP source",
+      "powershell": "PowerShell script",
+      "python": "Python source",
+      "r": "R source",
+      "ruby": "Ruby source",
+      "rust": "Rust source",
+      "sass": "Sass stylesheet",
+      "scala": "Scala source",
+      "scss": "SCSS stylesheet",
+      "shell": "Shell script",
+      "sql": "SQL script",
+      "svelte": "Svelte component",
+      "swift": "Swift source",
+      "toml": "TOML file",
+      "tsx": "TSX source",
+      "typescript": "TypeScript source",
+      "vb": "Visual Basic source",
+      "vbscript": "VBScript",
+      "verilog": "Verilog source",
+      "vue": "Vue component",
+      "xml": "XML document",
+      "yaml": "YAML file"
+    },
+    "document": {
+      "odt": "OpenDocument text",
+      "pages": "Pages document",
+      "rtf": "RTF document",
+      "word": "Word document"
+    },
+    "font": {
+      "otf": "OpenType font",
+      "ttf": "TrueType font",
+      "woff": "WOFF font",
+      "woff2": "WOFF2 font"
+    },
+    "image": {
+      "avif": "AVIF image",
+      "bmp": "BMP image",
+      "gif": "GIF image",
+      "heic": "HEIC image",
+      "heif": "HEIF image",
+      "ico": "ICO icon",
+      "jpeg": "JPEG image",
+      "png": "PNG image",
+      "psd": "Photoshop document",
+      "svg": "SVG image",
+      "tiff": "TIFF image",
+      "webp": "WebP image"
+    },
+    "pdf": {
+      "pdf": "PDF document"
+    },
+    "presentation": {
+      "keynote": "Keynote presentation",
+      "odp": "OpenDocument presentation",
+      "powerpoint": "PowerPoint presentation"
+    },
+    "spreadsheet": {
+      "csv": "CSV data",
+      "excel": "Excel spreadsheet",
+      "ods": "OpenDocument spreadsheet",
+      "tsv": "TSV data"
+    },
+    "text": {
+      "log": "Log file",
+      "markdown": "Markdown document",
+      "plain": "Plain text",
+      "subtitle": "Subtitle"
+    },
+    "video": {
+      "3gp": "3GP video",
+      "avi": "AVI video",
+      "flv": "FLV video",
+      "mkv": "MKV video",
+      "mov": "MOV video",
+      "mp4": "MP4 video",
+      "mpeg": "MPEG video",
+      "ogv": "OGV video",
+      "webm": "WebM video",
+      "wmv": "WMV video"
+    },
+    "symlink": "Symbolic link",
+    "fallback": "{{ext}} file"
+  },
+  "nav": {
+    "back": "Back",
+    "forward": "Forward",
+    "up": "Up to parent folder",
+    "refresh": "Refresh",
+    "editPath": "Type a path",
+    "pathLabel": "Folder path",
+    "pathPlaceholder": "/folder/subfolder",
+    "pathInvalid": "Invalid path",
+    "siblings": "Other folders in {{name}}",
+    "children": "Subfolders",
+    "hiddenSegments": "Hidden segments",
+    "root": "My Files",
+    "breadcrumb": "Location"
+  },
+  "toolbar": {
+    "new": "New",
+    "newFolder": "New folder",
+    "newFile": "New file",
+    "upload": "Upload",
+    "remote": "Remote download",
+    "copy": "Copy",
+    "cut": "Cut",
+    "paste": "Paste",
+    "rename": "Rename",
+    "delete": "Delete",
+    "more": "More",
+    "view": "View",
+    "columns": "Columns",
+    "sort": "Sort",
+    "comingSoon": "Available in a later step"
+  },
+  "columns": {
+    "name": "Name",
+    "size": "Size",
+    "type": "Type",
+    "mtime": "Modified",
+    "note": "Note"
+  },
+  "grid": {
+    "label": "Files in {{path}}",
+    "items_one": "{{n}} item",
+    "items_other": "{{n}} items",
+    "folderItems_one": "{{n}} item",
+    "folderItems_other": "{{n}} items",
+    "loadingMore": "Loading more items…",
+    "broken": "Broken link"
+  },
+  "status": {
+    "items_one": "{{n}} item",
+    "items_other": "{{n}} items",
+    "selected_one": "{{count}} selected ({{size}})",
+    "selected_other": "{{count}} selected ({{size}})",
+    "quota": "{{used}} of {{limit}}",
+    "quotaUnknown": "Quota —"
+  },
+  "empty": {
+    "title": "This folder is empty",
+    "description": "Upload files or create a new folder.",
+    "upload": "Upload",
+    "newFolder": "New folder"
+  },
+  "error": {
+    "title": "Could not load folder",
+    "notFound": "Folder not found",
+    "notDirectory": "This is a file, not a folder",
+    "code": "Code: {{code}}",
+    "retry": "Retry",
+    "goHome": "Go to My Files",
+    "goParent": "Go to parent folder"
+  },
+  "dialog": {
+    "newFolderTitle": "New folder",
+    "newFileTitle": "New file",
+    "nameLabel": "Name",
+    "folderPlaceholder": "New folder",
+    "filePlaceholder": "document.txt",
+    "create": "Create",
+    "created": "{{name}} created",
+    "windowsIncompatible": "This name is problematic on Windows, but it was created anyway."
+  },
+  "viewer": {
+    "notYet": "Viewer not available yet (Step 17). File: {{name}}"
+  },
+  "announce": {
+    "opened": "Opened folder {{name}}, {{n}} items",
+    "refreshed": "List refreshed",
+    "error": "Failed to load folder"
+  }
+}

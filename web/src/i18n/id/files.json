@@ -1,0 +1,232 @@
+{
+  "type": {
+    "folder": "Folder",
+    "other": "File",
+    "archive": {
+      "7z": "Arsip 7z",
+      "bzip2": "Arsip bzip2",
+      "deb": "Paket Debian",
+      "gzip": "Arsip gzip",
+      "iso": "Image ISO",
+      "jar": "Arsip JAR",
+      "lz4": "Arsip LZ4",
+      "rar": "Arsip RAR",
+      "rpm": "Paket RPM",
+      "tar": "Arsip tar",
+      "tarbz2": "Arsip tar.bz2",
+      "targz": "Arsip tar.gz",
+      "tarxz": "Arsip tar.xz",
+      "tarzst": "Arsip tar.zst",
+      "war": "Arsip WAR",
+      "xz": "Arsip xz",
+      "zip": "Arsip ZIP",
+      "zstd": "Arsip zstd"
+    },
+    "audio": {
+      "aac": "Audio AAC",
+      "aiff": "Audio AIFF",
+      "flac": "Audio FLAC",
+      "m4a": "Audio M4A",
+      "midi": "Audio MIDI",
+      "mp3": "Audio MP3",
+      "ogg": "Audio OGG",
+      "opus": "Audio Opus",
+      "wav": "Audio WAV",
+      "wma": "Audio WMA"
+    },
+    "code": {
+      "apache": "Konfigurasi Apache",
+      "batch": "Skrip Batch",
+      "c": "Kode C",
+      "conf": "File konfigurasi",
+      "cpp": "Kode C++",
+      "csharp": "Kode C#",
+      "css": "Stylesheet CSS",
+      "dockerfile": "Dockerfile",
+      "env": "File env",
+      "go": "Kode Go",
+      "html": "Dokumen HTML",
+      "ini": "File INI",
+      "java": "Kode Java",
+      "javascript": "Kode JavaScript",
+      "json": "Data JSON",
+      "jsx": "Kode JSX",
+      "kotlin": "Kode Kotlin",
+      "less": "Stylesheet LESS",
+      "lua": "Kode Lua",
+      "makefile": "Makefile",
+      "perl": "Kode Perl",
+      "php": "Kode PHP",
+      "powershell": "Skrip PowerShell",
+      "python": "Kode Python",
+      "r": "Kode R",
+      "ruby": "Kode Ruby",
+      "rust": "Kode Rust",
+      "sass": "Stylesheet Sass",
+      "scala": "Kode Scala",
+      "scss": "Stylesheet SCSS",
+      "shell": "Skrip shell",
+      "sql": "Skrip SQL",
+      "svelte": "Komponen Svelte",
+      "swift": "Kode Swift",
+      "toml": "File TOML",
+      "tsx": "Kode TSX",
+      "typescript": "Kode TypeScript",
+      "vb": "Kode Visual Basic",
+      "vbscript": "Skrip VBScript",
+      "verilog": "Kode Verilog",
+      "vue": "Komponen Vue",
+      "xml": "Dokumen XML",
+      "yaml": "File YAML"
+    },
+    "document": {
+      "odt": "Dokumen OpenDocument",
+      "pages": "Dokumen Pages",
+      "rtf": "Dokumen RTF",
+      "word": "Dokumen Word"
+    },
+    "font": {
+      "otf": "Font OpenType",
+      "ttf": "Font TrueType",
+      "woff": "Font WOFF",
+      "woff2": "Font WOFF2"
+    },
+    "image": {
+      "avif": "Gambar AVIF",
+      "bmp": "Gambar BMP",
+      "gif": "Gambar GIF",
+      "heic": "Gambar HEIC",
+      "heif": "Gambar HEIF",
+      "ico": "Ikon ICO",
+      "jpeg": "Gambar JPEG",
+      "png": "Gambar PNG",
+      "psd": "Dokumen Photoshop",
+      "svg": "Gambar SVG",
+      "tiff": "Gambar TIFF",
+      "webp": "Gambar WebP"
+    },
+    "pdf": {
+      "pdf": "Dokumen PDF"
+    },
+    "presentation": {
+      "keynote": "Presentasi Keynote",
+      "odp": "Presentasi OpenDocument",
+      "powerpoint": "Presentasi PowerPoint"
+    },
+    "spreadsheet": {
+      "csv": "Data CSV",
+      "excel": "Spreadsheet Excel",
+      "ods": "Spreadsheet OpenDocument",
+      "tsv": "Data TSV"
+    },
+    "text": {
+      "log": "File log",
+      "markdown": "Dokumen Markdown",
+      "plain": "Teks biasa",
+      "subtitle": "Subtitle"
+    },
+    "video": {
+      "3gp": "Video 3GP",
+      "avi": "Video AVI",
+      "flv": "Video FLV",
+      "mkv": "Video MKV",
+      "mov": "Video MOV",
+      "mp4": "Video MP4",
+      "mpeg": "Video MPEG",
+      "ogv": "Video OGV",
+      "webm": "Video WebM",
+      "wmv": "Video WMV"
+    },
+    "symlink": "Tautan simbolik",
+    "fallback": "File {{ext}}"
+  },
+  "nav": {
+    "back": "Kembali",
+    "forward": "Maju",
+    "up": "Ke folder induk",
+    "refresh": "Muat ulang",
+    "editPath": "Ketik path",
+    "pathLabel": "Path folder",
+    "pathPlaceholder": "/folder/subfolder",
+    "pathInvalid": "Path tidak valid",
+    "siblings": "Folder lain di {{name}}",
+    "children": "Subfolder",
+    "hiddenSegments": "Segmen tersembunyi",
+    "root": "File Saya",
+    "breadcrumb": "Lokasi"
+  },
+  "toolbar": {
+    "new": "Baru",
+    "newFolder": "Folder baru",
+    "newFile": "File baru",
+    "upload": "Upload",
+    "remote": "Remote download",
+    "copy": "Copy",
+    "cut": "Cut",
+    "paste": "Paste",
+    "rename": "Rename",
+    "delete": "Hapus",
+    "more": "Lainnya",
+    "view": "View",
+    "columns": "Kolom",
+    "sort": "Urutkan",
+    "comingSoon": "Tersedia di step berikutnya"
+  },
+  "columns": {
+    "name": "Nama",
+    "size": "Ukuran",
+    "type": "Tipe",
+    "mtime": "Diubah",
+    "note": "Catatan"
+  },
+  "grid": {
+    "label": "Daftar file di {{path}}",
+    "items_one": "{{n}} item",
+    "items_other": "{{n}} item",
+    "folderItems_one": "{{n}} item",
+    "folderItems_other": "{{n}} item",
+    "loadingMore": "Memuat item berikutnya…",
+    "broken": "Tautan rusak"
+  },
+  "status": {
+    "items_one": "{{n}} item",
+    "items_other": "{{n}} item",
+    "selected_one": "{{count}} dipilih ({{size}})",
+    "selected_other": "{{count}} dipilih ({{size}})",
+    "quota": "{{used}} dari {{limit}}",
+    "quotaUnknown": "Kuota —"
+  },
+  "empty": {
+    "title": "Folder ini kosong",
+    "description": "Upload file atau buat folder baru.",
+    "upload": "Upload",
+    "newFolder": "Folder baru"
+  },
+  "error": {
+    "title": "Tidak bisa memuat folder",
+    "notFound": "Folder tidak ditemukan",
+    "notDirectory": "Ini adalah file, bukan folder",
+    "code": "Kode: {{code}}",
+    "retry": "Coba lagi",
+    "goHome": "Ke File Saya",
+    "goParent": "Ke folder induk"
+  },
+  "dialog": {
+    "newFolderTitle": "Folder baru",
+    "newFileTitle": "File baru",
+    "nameLabel": "Nama",
+    "folderPlaceholder": "Folder baru",
+    "filePlaceholder": "dokumen.txt",
+    "create": "Buat",
+    "created": "{{name}} dibuat",
+    "windowsIncompatible": "Nama ini bermasalah di Windows, tetapi tetap dibuat."
+  },
+  "viewer": {
+    "notYet": "Viewer belum tersedia (Step 17). File: {{name}}"
+  },
+  "announce": {
+    "opened": "Membuka folder {{name}}, {{n}} item",
+    "refreshed": "Daftar dimuat ulang",
+    "error": "Gagal memuat folder"
+  }
+}
