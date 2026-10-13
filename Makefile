@@ -18,7 +18,7 @@ BIN     := bin/filemanager
 WEBDIST := backend/internal/webassets/dist
 
 .PHONY: help deps dev build build-backend build-web test test-backend test-web lint lint-backend lint-web \
-        format check-deps clean ci vuln openapi-lint
+        format check-deps clean ci vuln openapi-lint sqlc sqlc-check migrate
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -29,6 +29,7 @@ deps: ## Install Go modules, web packages and dev tools
 	$(GO) mod download
 	@command -v golangci-lint >/dev/null || echo ">> golangci-lint missing: install the prebuilt binary (see README)"
 	@command -v govulncheck >/dev/null || go install golang.org/x/vuln/cmd/govulncheck@latest
+	@command -v sqlc >/dev/null || echo ">> sqlc missing: install the prebuilt binary (see README)"
 
 dev: ## Run backend (APP_ENV=development, ./.devdata) and Vite together
 	@mkdir -p .devdata/storage
@@ -79,10 +80,19 @@ vuln: ## govulncheck + pnpm audit
 openapi-lint: ## Validate docs/openapi.yaml (structure check; redocly/spectral in CI)
 	@python3 -c "import yaml,sys; d=yaml.safe_load(open('docs/openapi.yaml')); assert d['openapi'].startswith('3.'); assert 'paths' in d; print('openapi.yaml: ok,', len(d['paths']), 'paths')"
 
+sqlc: ## Regenerate type-safe queries (backend/internal/db/sqlc) from migrations + queries
+	cd backend && sqlc generate
+
+sqlc-check: sqlc ## Fail if the committed sqlc output is stale
+	git diff --exit-code -- backend/internal/db/sqlc
+
+migrate: ## Run goose migrations against the .env database: make migrate ARGS=status|up|down
+	./$(BIN) migrate $(or $(ARGS),status) --env-file .env
+
 check-deps: ## Print external tool table from the built binary
 	./$(BIN) check-deps --env-file .env
 
-ci: lint test build openapi-lint ## What CI runs (lint, test, build, openapi)
+ci: lint test build openapi-lint sqlc-check ## What CI runs (lint, test, build, openapi, sqlc freshness)
 
 clean: ## Remove build outputs
 	rm -rf bin web/dist $(WEBDIST)/* backend/coverage.out

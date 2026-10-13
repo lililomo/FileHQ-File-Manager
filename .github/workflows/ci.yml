@@ -32,6 +32,11 @@ jobs:
         run: CGO_ENABLED=0 go build ./...
       - name: Test
         run: go test ./... -race -cover
+      - name: sqlc (generated code must be committed and current)
+        uses: sqlc-dev/setup-sqlc@v4
+        with:
+          sqlc-version: "1.31.1"
+      - run: sqlc generate && git diff --exit-code -- internal/db/sqlc
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:

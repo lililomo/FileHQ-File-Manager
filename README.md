@@ -31,6 +31,7 @@ bin/       hasil build: bin/filemanager (frontend ter-embed)
   tarball resmi go.dev karena apt hanya menyediakan 1.22 — lihat `/etc/profile.d/go.sh`).
 - **Node ≥ 22** + pnpm via corepack (`corepack enable && corepack prepare pnpm@latest --activate`).
 - `golangci-lint` (binary prebuilt dari rilis GitHub ke `/usr/local/bin`), `govulncheck` (`go install golang.org/x/vuln/cmd/govulncheck@latest`).
+- `sqlc` (binary prebuilt dari rilis GitHub `sqlc-dev/sqlc` ke `/usr/local/bin`; dipakai `make sqlc` untuk meregenerasi `backend/internal/db/sqlc` — hasilnya di-commit dan CI memeriksa dengan `git diff --exit-code`).
 - Tool runtime opsional (ffmpeg, libvips-tools, poppler-utils, ripgrep, 7zip) dipasang oleh `deploy/install.sh`; `bin/filemanager check-deps` menampilkan statusnya.
 
 Server produksi hanya 1 vCPU / 1,9 GB RAM: `Makefile` memakai `GOMAXPROCS=1`; jalankan build dan test secara serial.
@@ -41,6 +42,8 @@ Server produksi hanya 1 vCPU / 1,9 GB RAM: `Makefile` memakai `GOMAXPROCS=1`; ja
 make deps        # pnpm install + go mod download
 make dev         # backend (APP_ENV=development, data di ./.devdata) + Vite dev server (proxy /api → 8080)
 make lint        # golangci-lint, eslint, tsc, prettier
+make sqlc        # regenerasi query type-safe (setelah mengubah migrations/ atau internal/db/queries/)
+make migrate ARGS=status|up|down   # goose migrations memakai .env (DATA_DIR/db/app.db)
 make test        # go test -race -cover + vitest
 make build       # pnpm build → embed → bin/filemanager
 make check-deps  # tabel tool eksternal (memakai .env)
