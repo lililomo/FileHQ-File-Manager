@@ -58,3 +58,34 @@ export async function apiMkdir(
   })
   expect(res.status(), await res.text()).toBe(201)
 }
+
+export async function apiCreateFile(
+  request: APIRequestContext,
+  path: string,
+  name: string,
+  content = '',
+): Promise<void> {
+  const token = await csrfToken(request)
+  const res = await request.post('/api/v1/files/create', {
+    data: { path, name, content },
+    headers: { 'X-CSRF-Token': token, Origin: 'http://127.0.0.1:18090' },
+  })
+  expect(res.status(), await res.text()).toBe(201)
+}
+
+/** Reset the server-side preferences (so suites do not leak columns/sort/tabs). */
+export async function apiResetPrefs(request: APIRequestContext): Promise<void> {
+  const token = await csrfToken(request)
+  const res = await request.put('/api/v1/me/preferences', {
+    data: {
+      prefs: {
+        'view.columns': null,
+        'view.sort': null,
+        'tabs.open': null,
+        'ui.preview_panel': null,
+      },
+    },
+    headers: { 'X-CSRF-Token': token, Origin: 'http://127.0.0.1:18090' },
+  })
+  expect(res.status(), await res.text()).toBe(200)
+}

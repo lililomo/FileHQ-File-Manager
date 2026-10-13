@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, ArrowUp, RotateCw } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
@@ -22,6 +22,8 @@ export interface AddressBarProps {
   onEditingChange: (editing: boolean) => void
   compact?: boolean
   refreshing?: boolean
+  /** Right-hand slot (quick filter). */
+  children?: ReactNode
 }
 
 export function AddressBar({
@@ -38,6 +40,7 @@ export function AddressBar({
   onEditingChange,
   compact = false,
   refreshing = false,
+  children,
 }: AddressBarProps) {
   const { t } = useTranslation('files')
 
@@ -100,6 +103,7 @@ export function AddressBar({
       ) : (
         <Breadcrumb path={path} compact={compact} onEditRequest={() => onEditingChange(true)} />
       )}
+      {children ? <div className="ml-auto flex shrink-0 items-center pl-2">{children}</div> : null}
     </div>
   )
 }

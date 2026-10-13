@@ -27,7 +27,11 @@ export function StatusBar({ total, selectedCount = 0, selectedBytes = 0 }: Statu
       </span>
       {selectedCount > 0 ? (
         <span>
-          {t('status.selected', { count: selectedCount, size: formatBytes(selectedBytes, lang) })}
+          {t('status.selected', {
+            count: selectedCount,
+            n: formatNumber(selectedCount, lang),
+            size: formatBytes(selectedBytes, lang),
+          })}
         </span>
       ) : null}
       <span className="ml-auto">

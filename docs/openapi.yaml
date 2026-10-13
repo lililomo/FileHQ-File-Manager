@@ -256,6 +256,74 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "413": { description: "PAYLOAD_TOO_LARGE — dokumen > 64 KB", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
+  /api/v1/me/folder-prefs:
+    get:
+      tags: [me]
+      summary: Preferensi tampilan satu folder (view, sort, kolom)
+      operationId: meFolderPrefGet
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string }, description: Path virtual folder }
+      responses:
+        "200":
+          description: "`pref` null jika belum ada"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pref]
+                properties:
+                  pref: { oneOf: [{ $ref: "#/components/schemas/FolderViewPref" }, { type: "null" }] }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { description: "NOT_FOUND — path reserved (.system)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    put:
+      tags: [me]
+      summary: Simpan preferensi tampilan satu folder (maks 500 folder per user, LRU)
+      operationId: meFolderPrefPut
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path: { type: string }
+                view: { type: string, enum: [details, list, tiles, large, xlarge], default: details }
+                sort: { type: string, enum: [name, size, type, ext, mtime, btime, atime, mode, note, dimensions, duration], default: name }
+                dir: { type: string, enum: [asc, desc], default: asc }
+                sort2: { type: string }
+                dir2: { type: string, enum: [asc, desc] }
+                columns: { $ref: "#/components/schemas/ColumnsPref" }
+      responses:
+        "200":
+          description: Preferensi tersimpan
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pref]
+                properties:
+                  pref: { $ref: "#/components/schemas/FolderViewPref" }
+        "400": { description: "VALIDATION_FAILED — details.fields.{view,sort,dir,sort2,dir2,columns}", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [me]
+      summary: Hapus preferensi tampilan satu folder
+      operationId: meFolderPrefDelete
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Dihapus (idempoten) }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+
   /api/v1/files/list:
     get:
       summary: List a folder (sorted in the server, cursor paging)
@@ -493,6 +561,29 @@ components:
           type: object
           additionalProperties: { type: boolean }
           description: "ffmpeg, ffprobe, vips, pdftoppm, sevenzip, rar, unrar, rg: tool terdeteksi atau tidak"
+    ColumnsPref:
+      type: object
+      description: "Kolom Details view (SPEC §8.4): id ∈ name,size,type,mtime,note,btime,atime,ext,mode,itemCount,dimensions,duration,shared,location; `name` wajib ada di visible"
+      properties:
+        visible: { type: array, items: { type: string } }
+        order: { type: array, items: { type: string } }
+        widths: { type: object, additionalProperties: { type: integer, minimum: 40, maximum: 2000 } }
+    FolderViewPref:
+      type: object
+      required: [path, view, sort, columns, updatedAt]
+      properties:
+        path: { type: string }
+        view: { type: string, enum: [details, list, tiles, large, xlarge] }
+        sort:
+          type: object
+          required: [field, dir]
+          properties:
+            field: { type: string }
+            dir: { type: string, enum: [asc, desc] }
+            field2: { type: string }
+            dir2: { type: string, enum: [asc, desc] }
+        columns: { oneOf: [{ $ref: "#/components/schemas/ColumnsPref" }, { type: "null" }] }
+        updatedAt: { type: string, format: date-time }
     Preferences:
       type: object
       required: [prefs]
@@ -500,7 +591,7 @@ components:
         prefs:
           type: object
           additionalProperties: true
-          description: "Key terdaftar di SPEC §8.18 (mis. ui.language, ui.theme)"
+          description: "Key terdaftar di SPEC §8.18 (mis. ui.language, ui.theme, view.columns, view.sort, tabs.open); key tak dikenal → 400 VALIDATION_FAILED details.fields.<key>=unknown_key, nilai salah bentuk → invalid_value"
     Error:
       type: object
       required: [error]

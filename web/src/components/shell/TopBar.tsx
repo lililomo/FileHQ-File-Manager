@@ -5,6 +5,7 @@ import { AppLogo } from '@/components/AppLogo'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Kbd, KbdGroup } from '@/components/ui/kbd'
+import { useOverlaysStore } from '@/stores/overlays'
 import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { LanguageToggle } from './LanguageToggle'
@@ -18,6 +19,7 @@ export function TopBar() {
   const { t } = useTranslation(['common', 'nav'])
   const appName = useSessionStore((s) => s.config?.appName) || t('common:app.name')
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
+  const openPalette = useOverlaysStore((s) => s.setPalette)
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 border-b border-border bg-surface px-2">
       <IconButton
@@ -40,8 +42,9 @@ export function TopBar() {
         <Button
           variant="outline"
           className="h-8 w-full justify-start gap-2 bg-bg font-normal text-text-muted"
-          disabled
+          onClick={() => openPalette(true)}
           title={t('nav:searchPlaceholder')}
+          data-testid="topbar-search"
         >
           <Search aria-hidden="true" />
           <span className="truncate">{t('nav:searchPlaceholder')}</span>

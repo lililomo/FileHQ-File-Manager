@@ -1,4 +1,5 @@
 import { ApiError } from '@/lib/api'
+import { usePrefsStore } from '@/stores/prefs'
 import { useSessionStore, type User } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { isLanguage, setLanguage } from '@/i18n'
@@ -8,6 +9,7 @@ let inflight: Promise<User | null> | null = null
 
 /** Apply server-side preferences that affect the shell (theme, accent, language). */
 export function applyUserPrefs(user: User): void {
+  usePrefsStore.getState().hydrate(user.prefs)
   useUIStore.getState().applyServerPrefs(user.prefs)
   const lang = user.prefs?.['ui.language'] ?? user.language
   if (isLanguage(lang)) void setLanguage(lang, false)

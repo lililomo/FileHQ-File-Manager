@@ -908,7 +908,8 @@ Kolom "Auth" memakai kode §6.1. Request/response ditulis ringkas; skema lengkap
 
 | Method & path | Auth | Request | Response |
 | --- | --- | --- | --- |
-| `GET /me/preferences` · `PUT /me/preferences` | S+P | `{prefs}` (merge patch, key terdaftar §8.18) | `200 {prefs}` |
+| `GET /me/preferences` · `PUT /me/preferences` | S+P | `{prefs}` (merge patch, key terdaftar §8.18; key tak dikenal → `400 VALIDATION_FAILED details.fields.<key>=unknown_key`, bentuk salah → `invalid_value`) | `200 {prefs}` |
+| `GET /me/folder-prefs?path=` · `PUT /me/folder-prefs` · `DELETE /me/folder-prefs?path=` | S+P (CSRF non-GET) | PUT `{path, view?, sort?, dir?, sort2?, dir2?, columns?}`; hanya dipakai bila `view.remember_per_folder` | `200 {pref}` (`pref: null` bila belum ada) · `204`; maks 500 baris/user (LRU `updated_at`) |
 | `GET /me/sessions` | S+P | — | `200 {items:[{id (prefix 8 hex), current, ip, deviceLabel, createdAt, lastSeenAt}]}` |
 | `DELETE /me/sessions/{id}` · `POST /me/sessions/revoke-others` | S+P | — | `204` |
 | `GET /me/folder-views?path=` · `PUT /me/folder-views` · `DELETE /me/folder-views?path=` | S+P | `{path, viewMode, sort…, columns}` | `200` |
@@ -1256,7 +1257,7 @@ Pembuatan terjadi lewat `os.Root` pada `STORAGE_ROOT` (`OpenRoot(STORAGE_ROOT).M
 
 ### 8.4 Views & pipeline thumbnail
 
-**Mode view** (preferensi `view.mode` + `folder_view_prefs`): `details`, `list`, `tiles`, `large`, `xlarge` sesuai tabel prompt bagian 5. Komponen `FileGrid` memakai TanStack Virtual: Details = baris 36 px virtual (header 32 px sticky); List = kolom mengalir atas→bawah lalu kiri→kanan: tinggi kontainer menentukan baris per kolom, virtualisasi per kolom horizontal; Tiles = grid 220×64 px; Large = 128 px cell + nama 2 baris (`text-overflow` tengah via JS: `abc…xyz.ext`); Extra large = 256 px.
+**Mode view** (preferensi `view.mode` + `folder_view_prefs`): `details`, `list`, `tiles`, `large`, `xlarge` sesuai tabel prompt bagian 5. Komponen `FileGrid` memakai TanStack Virtual (TanStack **Table** tidak dipakai sejak Step 7b: row model-nya membangun ulang 10.000 objek `Row` di setiap halaman cursor dan menjadi long task terbesar di E2E 10k; kolom didefinisikan sendiri di `features/browser/columns.tsx` — `{id, header, cell, meta}` — dan state kolom/sort hidup di preferensi server): Details = baris 36 px virtual (header 32 px sticky); List = kolom mengalir atas→bawah lalu kiri→kanan: tinggi kontainer menentukan baris per kolom, virtualisasi per kolom horizontal; Tiles = grid 220×64 px; Large = 128 px cell + nama 2 baris (`text-overflow` tengah via JS: `abc…xyz.ext`); Extra large = 256 px.
 
 **Thumbnail (server):**
 
@@ -1613,7 +1614,7 @@ dijalankan dengan `Dir` = host path folder (via `HostPath`), `nice`, timeout 30 
 | `tabs.restore` | bool (pulihkan tab folder saat login) | true |
 | `tabs.open` | `[{path}]` ≤ 10 | |
 
-`PUT /me/preferences` adalah merge patch (JSON Merge Patch RFC 7386) dengan validasi key terdaftar; key tak dikenal ditolak `VALIDATION_FAILED`.
+`PUT /me/preferences` adalah merge patch (JSON Merge Patch RFC 7386) dengan validasi key terdaftar (`httpapi/prefs.go`: enum/bool/angka/objek per key; `editor.*` bebas ≤ 4 KB); key tak dikenal ditolak `VALIDATION_FAILED details.fields.<key>=unknown_key`, nilai salah bentuk `invalid_value`. Client (`stores/prefs.ts`) menerapkan perubahan lokal seketika dan mengirim patch ter-debounce 500 ms (pending dikirim `keepalive` saat `pagehide`). `view.columns` = `{visible, order, widths}` (id kolom §8.4, `name` wajib); `view.sort` = `{field, dir, field2?, dir2?}`; `tabs.open` dipulihkan saat login: URL yang dibuka dicari di daftar tab, bila tidak ada → tab pertama melanjutkan ke URL itu (path lamanya tetap di riwayat Back); path duplikat diizinkan.
 
 > Catatan: kolom `shares.token_enc` dan `shares.hide_listing` (§4.2) ada karena keputusan di §8.15; keduanya masuk migrasi awal.
 
@@ -2251,8 +2252,8 @@ Format: Konteks → Keputusan → Konsekuensi. Nomor sesuai OUTLINE bersama; dir
 ### ADR-20 Deploy: binary + systemd hardening; aaPanel Reverse Proxy project; Docker opsional
 **Konteks.** Server dikelola aaPanel dengan Nginx-nya; prompt meminta domain lewat UI aaPanel, user khusus non-`www`, port hanya loopback. Verifikasi: aaPanel 8.0.7 di server ini memiliki tipe proyek Reverse Proxy yang bekerja. **Keputusan.** Unit systemd `User=filemanager`, `ProtectSystem=strict`, `ReadWritePaths` storage, `NoNewPrivileges`, dll.; site aaPanel tipe Reverse Proxy → `127.0.0.1:8080` (alternatif PHP Static + fitur reverse proxy); snippet Nginx lewat editor Config UI; Docker hanya sebagai opsi dev/alternatif. **Konsekuensi.** Tidak bentrok dengan Nginx aaPanel; konfigurasi kustom harus diverifikasi bertahan setelah aaPanel menulis ulang vhost (didokumentasikan); storage 0750 milik `filemanager` tidak terbaca situs PHP (`www`).
 
-### ADR-21 Frontend: React + TS + Vite + TanStack + Zustand + Tailwind/shadcn
-**Konteks.** UI padat, tabel virtual 10k baris, komponen accessible yang bisa dikustom, i18n. **Keputusan.** Stack sesuai prompt; lucide-react (ISC) untuk ikon; sonner; cmdk; react-hook-form + zod; i18next; `marked` + DOMPurify; pdfjs-dist; font self-host; pnpm via corepack; tanpa CDN/Google Fonts (CSP `'self'`). **Konsekuensi.** Bundle awal < 300 KB gzip dengan code-splitting per route dan lazy Monaco/pdf.js/Video.js; `shadcn/ui` di-vendor ke repo (bukan dependency) sehingga bisa diubah ke token.
+### ADR-21 Frontend: React + TS + Vite + TanStack (Router/Query/Virtual) + Zustand + Tailwind/shadcn
+**Konteks.** UI padat, tabel virtual 10k baris, komponen accessible yang bisa dikustom, i18n. **Keputusan.** Stack sesuai prompt, kecuali TanStack Table yang dihapus di Step 7b (lihat §8.4: row model 10k dibangun ulang per halaman; kolom didefinisikan sendiri); lucide-react (ISC) untuk ikon; sonner; cmdk; react-hook-form + zod; i18next; `marked` + DOMPurify; pdfjs-dist; font self-host; pnpm via corepack; tanpa CDN/Google Fonts (CSP `'self'`). **Konsekuensi.** Bundle awal < 300 KB gzip dengan code-splitting per route dan lazy Monaco/pdf.js/Video.js; `shadcn/ui` di-vendor ke repo (bukan dependency) sehingga bisa diubah ke token.
 
 ### ADR-22 Build & CI: embed frontend, build di CI, GitHub Actions (asumsi)
 **Konteks.** RAM server 1,9 GB (+ swap 2,8 GB); belum ada remote git (keputusan pemilik 14 Okt 2026: repo lokal, build di server). **Keputusan.** `make build` menghasilkan satu binary dengan `embed.FS`; CI (GitHub Actions diasumsikan; workflow ditulis agar mudah dipindah ke GitLab CI/Gitea Actions) menjalankan lint/test/vuln/e2e dan merilis `tar.gz`; `install.sh --binary` dan `update.sh --release` memasang hasil CI; build di server tetap bisa dengan swap ≥ 2 GB. **Konsekuensi.** Rollback = ganti binary; pipeline butuh apt tool untuk test CLI; jika hosting bukan GitHub, Step 1 menyesuaikan file workflow.

@@ -32,6 +32,7 @@ func (s *Server) mountAuth(api chi.Router) {
 				p.Use(RequirePasswordChanged)
 				p.Get("/me/preferences", s.handleGetPreferences)
 				p.Put("/me/preferences", s.handlePutPreferences)
+				s.mountFolderPrefs(p)
 			})
 		})
 	})
@@ -200,8 +201,8 @@ type preferencesRequest struct {
 }
 
 // handlePutPreferences applies a merge patch: a JSON null removes the key.
-// Key validation against the registered list (SPEC §8.18) is added with the
-// preferences UI (Step 6).
+// Keys must be registered (prefs.go, SPEC §8.18) and values must match the
+// declared shape.
 func (s *Server) handlePutPreferences(w http.ResponseWriter, r *http.Request) {
 	var req preferencesRequest
 	if !ReadJSON(w, r, &req) {
@@ -223,10 +224,18 @@ func (s *Server) handlePutPreferences(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if string(v) == "null" {
+			if _, known := prefRegistry[k]; !known && !strings.HasPrefix(k, "editor.") {
+				WriteError(w, r, CodeValidationFailed, 0, "unknown preference key", map[string]any{"fields": map[string]any{k: "unknown_key"}})
+				return
+			}
 			delete(prefs, k)
-		} else {
-			prefs[k] = v
+			continue
 		}
+		if reason := validatePref(k, v); reason != "" {
+			WriteError(w, r, CodeValidationFailed, 0, "invalid preference", map[string]any{"fields": map[string]any{k: reason}})
+			return
+		}
+		prefs[k] = v
 	}
 	if err := s.store.SetPrefs(r.Context(), u.ID, prefs); err != nil {
 		WriteError(w, r, CodePayloadTooLarge, 0, "preferences too large", nil)

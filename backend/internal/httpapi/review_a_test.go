@@ -216,6 +216,9 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		{http.MethodGet, "/api/v1/files/stat?path=/"},
 		{http.MethodPost, "/api/v1/files/mkdir"},
 		{http.MethodPost, "/api/v1/files/create"},
+		{http.MethodGet, "/api/v1/me/folder-prefs?path=/"},
+		{http.MethodPut, "/api/v1/me/folder-prefs"},
+		{http.MethodDelete, "/api/v1/me/folder-prefs?path=/"},
 	}
 	for _, b := range blocked {
 		var body any
@@ -248,6 +251,7 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		"POST /api/v1/auth/login": true, "POST /api/v1/auth/logout": true, "GET /api/v1/auth/csrf": true,
 		"GET /api/v1/auth/me": true, "POST /api/v1/auth/change-password": true,
 		"GET /api/v1/me/preferences": true, "PUT /api/v1/me/preferences": true,
+		"GET /api/v1/me/folder-prefs": true, "PUT /api/v1/me/folder-prefs": true, "DELETE /api/v1/me/folder-prefs": true,
 		"GET /api/v1/files/list": true, "GET /api/v1/files/stat": true,
 		"POST /api/v1/files/mkdir": true, "POST /api/v1/files/create": true,
 	}

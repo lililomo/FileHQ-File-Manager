@@ -1,12 +1,12 @@
 import {
   ChevronDown,
-  Columns3,
   Copy,
   FilePlus2,
   FolderPlus,
   Globe,
   LayoutGrid,
   MoreHorizontal,
+  PanelRight,
   Pencil,
   Plus,
   Scissors,
@@ -14,6 +14,7 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,15 +25,29 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { IconButton } from '@/components/ui/icon-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 
 export interface ToolbarProps {
   onNewFolder: () => void
   onNewFile: () => void
   compact?: boolean
+  previewOpen?: boolean
+  onTogglePreview?: () => void
+  columnsMenu?: ReactNode
+  sortMenu?: ReactNode
 }
 
-/** Placeholder-aware toolbar (SPEC §9.3): "Baru" works now; the rest activates in 9b/12a/13/7b. */
-export function Toolbar({ onNewFolder, onNewFile, compact = false }: ToolbarProps) {
+/** Toolbar (SPEC §9.3): "Baru", preview, sort and columns work; file operations
+ *  (9b), upload (12a), remote download (13) and grid views (8) are placeholders. */
+export function Toolbar({
+  onNewFolder,
+  onNewFile,
+  compact = false,
+  previewOpen = false,
+  onTogglePreview,
+  columnsMenu,
+  sortMenu,
+}: ToolbarProps) {
   const { t } = useTranslation('files')
   const soon = t('toolbar.comingSoon')
   const disabledIcon = (label: string, Icon: typeof Copy) => (
@@ -59,7 +74,7 @@ export function Toolbar({ onNewFolder, onNewFile, compact = false }: ToolbarProp
     <div
       className="flex h-10 shrink-0 items-center gap-1 border-b border-border bg-surface px-2"
       role="toolbar"
-      aria-label={t('toolbar.new')}
+      aria-label={t('toolbar.label')}
       data-testid="toolbar"
     >
       <DropdownMenu>
@@ -105,11 +120,25 @@ export function Toolbar({ onNewFolder, onNewFile, compact = false }: ToolbarProp
           {disabledIcon(t('toolbar.delete'), Trash2)}
           <div className="ml-auto flex items-center gap-1">
             {disabledIcon(t('toolbar.view'), LayoutGrid)}
-            {disabledIcon(t('toolbar.columns'), Columns3)}
+            {sortMenu}
+            {columnsMenu}
+            {onTogglePreview ? (
+              <IconButton
+                label={t('toolbar.preview')}
+                shortcut="Alt+P"
+                onClick={onTogglePreview}
+                aria-pressed={previewOpen}
+                className={cn(previewOpen && 'bg-surface-2 text-text')}
+                data-testid="toolbar-preview"
+              >
+                <PanelRight aria-hidden="true" />
+              </IconButton>
+            ) : null}
           </div>
         </>
       ) : (
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
+          {sortMenu}
           <IconButton label={t('toolbar.more')} disabled>
             <MoreHorizontal aria-hidden="true" />
           </IconButton>

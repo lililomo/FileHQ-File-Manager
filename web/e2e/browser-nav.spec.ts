@@ -231,7 +231,9 @@ test('keyboard: Tab reaches address bar, toolbar and grid with a visible focus r
   await page.goto('/files/kbd')
   await expect(page.getByTestId('details-grid')).toBeVisible()
   const seen = new Set<string>()
-  for (let i = 0; i < 25; i++) {
+  // 7b added the folder tab bar, quick filter, sort/columns/preview buttons and the
+  // select-all checkbox before the grid, so allow more Tab presses.
+  for (let i = 0; i < 45; i++) {
     await page.keyboard.press('Tab')
     const id = await page.evaluate(() => {
       const el = document.activeElement as HTMLElement | null
