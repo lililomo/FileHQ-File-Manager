@@ -1,0 +1,38 @@
+# Rahasia & konfigurasi lokal
+.env
+.env.*
+!.env.example
+
+# Build output
+/bin/
+/backend/internal/webassets/dist/
+/web/dist/
+/web/node_modules/
+/node_modules/
+*.log
+
+# Go
+/backend/vendor/
+coverage.out
+*.test
+
+# Frontend / tooling
+/web/.vite/
+/web/playwright-report/
+/web/test-results/
+.eslintcache
+.turbo/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Data runtime (tidak pernah ada di repo, hanya berjaga-jaga)
+/data/
+/storage/
+*.db
+*.db-wal
+*.db-shm
