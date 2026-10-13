@@ -15,7 +15,7 @@
 
 ## Status saat ini
 
-Belum ada step yang dikerjakan. Dokumen perencanaan (PRD/SPEC/PROMPT) dibuat 14 Oktober 2026, menunggu persetujuan pemilik sebelum Step 1.
+Dokumen perencanaan (PRD/SPEC/PROMPT) dibuat 14 Oktober 2026 dan **disetujui pemilik pada hari yang sama** (jawaban Q1–Q7 di PRD §11.3). Pemilik meminta semua step dijalankan berurutan. Prasyarat toolchain sudah dipasang di server: Go 1.27.2 (`/usr/local/go/bin`, `/etc/profile.d/go.sh`), pnpm 12.11.2 (corepack); swap 2,8 GB sudah ada. Belum ada step yang dikerjakan.
 
 Step yang sedang berjalan: — · Langkah terakhir yang selesai di dalamnya: — · Perintah terakhir yang gagal (jika ada): —
 
@@ -129,4 +129,4 @@ Step yang sedang berjalan: — · Langkah terakhir yang selesai di dalamnya: —
 
 | Tanggal | Asal | Catatan | Status |
 | --- | --- | --- | --- |
-| — | — | — | — |
+| 2026-10-14 | Pra-Step 1 | Keputusan pemilik: kuota default 10 GB (storage disk terpisah 492 GB), Reverse Proxy aaPanel, origin konten sama, repo lokal + build di server, tanpa rar/unrar, 7z password via spike stdin, `ADMIN_CAN_BROWSE_USERS=true`. Toolchain: Go 1.27.2, pnpm 12.11.2. | Diterapkan di PRD §11.3, SPEC, `.env` |
