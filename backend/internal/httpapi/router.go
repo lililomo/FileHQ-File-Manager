@@ -12,6 +12,8 @@ import (
 	"kppbwi.app/filemanager/internal/auth"
 	"kppbwi.app/filemanager/internal/config"
 	"kppbwi.app/filemanager/internal/db"
+	"kppbwi.app/filemanager/internal/fsjail"
+	"kppbwi.app/filemanager/internal/listing"
 )
 
 // JSONBodyLimit is the maximum JSON request body on /api/v1 (SPEC §6.2
@@ -26,10 +28,12 @@ type Options struct {
 	Cfg         *config.Config
 	Logger      *slog.Logger
 	Version     string
-	Assets      http.Handler   // SPA + static assets (webassets.Handler)
-	ReadyChecks []ReadyChecker // readiness probes; FilesystemChecks is added automatically
-	Store       db.Repository  // database repositories (nil only in Step 1-style tests)
-	Auth        *auth.Service  // authentication service; nil disables the auth routes
+	Assets      http.Handler        // SPA + static assets (webassets.Handler)
+	ReadyChecks []ReadyChecker      // readiness probes; FilesystemChecks is added automatically
+	Store       db.Repository       // database repositories (nil only in Step 1-style tests)
+	Auth        *auth.Service       // authentication service; nil disables the auth routes
+	Listing     *listing.Service    // directory listing; built from Cfg when nil
+	Locks       *fsjail.LockManager // per-user path locks shared with tasks; created when nil
 }
 
 // Server holds dependencies shared by handlers.
@@ -41,6 +45,9 @@ type Server struct {
 	readyChecks []ReadyChecker
 	store       db.Repository
 	auth        *auth.Service
+	listing     *listing.Service
+	locks       *fsjail.LockManager
+	jails       *jailCache
 }
 
 // New builds the router. The returned handler is safe for http.Server.
@@ -52,6 +59,15 @@ func New(o Options) http.Handler {
 		assets:  o.Assets,
 		store:   o.Store,
 		auth:    o.Auth,
+		listing: o.Listing,
+		locks:   o.Locks,
+		jails:   newJailCache(nil),
+	}
+	if s.listing == nil {
+		s.listing = listing.New(listing.Options{Secret: o.Cfg.AppSecret, PageSize: o.Cfg.ListingPageSize})
+	}
+	if s.locks == nil {
+		s.locks = fsjail.NewLockManager()
 	}
 	s.readyChecks = append([]ReadyChecker{FilesystemChecks(o.Cfg.DataDir, o.Cfg.StorageRoot)}, o.ReadyChecks...)
 
@@ -89,6 +105,7 @@ func New(o Options) http.Handler {
 func (s *Server) mountAPI(api chi.Router) {
 	if s.auth != nil && s.store != nil {
 		s.mountAuth(api)
+		s.mountFiles(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": s.cfg.AppName})

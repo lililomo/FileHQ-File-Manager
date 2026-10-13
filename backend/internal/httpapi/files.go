@@ -1,0 +1,416 @@
+package httpapi
+
+import (
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
+
+	"kppbwi.app/filemanager/internal/files"
+	"kppbwi.app/filemanager/internal/fsjail"
+	"kppbwi.app/filemanager/internal/listing"
+)
+
+// scopeOwn is the listing scope of a user's own files; share/as_user scopes
+// arrive in Step 18b/19a.
+const scopeOwn = ""
+
+// maxCreateContent bounds the inline content of POST /files/create (the JSON
+// body limit is 1 MiB anyway).
+const maxCreateContent = 512 << 10
+
+// mountFiles registers /files/* (SPEC §6.3 "Files"): all S+P, CSRF on
+// non-GET, same-origin only.
+func (s *Server) mountFiles(api chi.Router) {
+	api.Group(func(g chi.Router) {
+		g.Use(OriginCheck(s.cfg.AppBaseURL))
+		g.Use(s.RequireAuth)
+		g.Use(s.RequireCSRF)
+		g.Use(RequirePasswordChanged)
+		g.Get("/files/list", s.handleFilesList)
+		g.Get("/files/stat", s.handleFilesStat)
+		g.Post("/files/mkdir", s.handleFilesMkdir)
+		g.Post("/files/create", s.handleFilesCreate)
+	})
+}
+
+// cleanPath validates a client path. The reserved top-level name (.system)
+// is answered as NOT_FOUND: it can never exist inside a user root.
+func cleanPath(w http.ResponseWriter, r *http.Request, raw string) (fsjail.VPath, bool) {
+	p, err := fsjail.Clean(raw)
+	if err != nil {
+		var fe *fsjail.Error
+		if errors.As(err, &fe) && fe.Reason == "reserved" {
+			WriteError(w, r, CodeNotFound, 0, fsMessages[CodeNotFound], map[string]any{"path": raw})
+			return "", false
+		}
+		WriteFSError(w, r, err)
+		return "", false
+	}
+	return p, true
+}
+
+// rejectScope refuses share=/as_user= until those scopes exist.
+func rejectScope(w http.ResponseWriter, r *http.Request) bool {
+	q := r.URL.Query()
+	for _, k := range []string{"share", "as_user"} {
+		if q.Get(k) != "" {
+			WriteError(w, r, CodeValidationFailed, 0, "scope not available yet", map[string]any{"fields": map[string]any{k: "not_implemented"}})
+			return true
+		}
+	}
+	return false
+}
+
+func parseBoolDefault(s string, def bool) (bool, bool) {
+	switch strings.ToLower(s) {
+	case "":
+		return def, true
+	case "1", "true", "yes":
+		return true, true
+	case "0", "false", "no":
+		return false, true
+	}
+	return def, false
+}
+
+// userLocale reads ui.language from preferences (default DEFAULT_LANGUAGE).
+func (s *Server) userLocale(r *http.Request, userID string) string {
+	lang := s.cfg.DefaultLanguage
+	prefs, err := s.store.GetPrefs(r.Context(), userID)
+	if err != nil {
+		return lang
+	}
+	if raw, ok := prefs["ui.language"]; ok {
+		var l string
+		if json.Unmarshal(raw, &l) == nil && (l == "id" || l == "en") {
+			lang = l
+		}
+	}
+	return lang
+}
+
+func (s *Server) writeListingError(w http.ResponseWriter, r *http.Request, err error, path string) {
+	switch {
+	case errors.Is(err, listing.ErrNotDirectory):
+		WriteError(w, r, CodeValidationFailed, 0, "path is not a folder", map[string]any{"reason": "not_a_directory", "path": path})
+	case errors.Is(err, listing.ErrBadCursor):
+		WriteError(w, r, CodeValidationFailed, 0, "invalid cursor", map[string]any{"fields": map[string]any{"cursor": "invalid"}})
+	case WriteFSError(w, r, err):
+	default:
+		s.logger.ErrorContext(r.Context(), "listing failed", slog.String("path", path), slog.String("error", err.Error()))
+		WriteError(w, r, CodeInternal, 0, "internal server error", nil)
+	}
+}
+
+func (s *Server) handleFilesList(w http.ResponseWriter, r *http.Request) {
+	if rejectScope(w, r) {
+		return
+	}
+	q := r.URL.Query()
+	dir, ok := cleanPath(w, r, q.Get("path"))
+	if !ok {
+		return
+	}
+	fields := map[string]any{}
+	foldersFirst, ok := parseBoolDefault(q.Get("foldersFirst"), true)
+	if !ok {
+		fields["foldersFirst"] = "invalid"
+	}
+	hidden, ok := parseBoolDefault(q.Get("hidden"), true)
+	if !ok {
+		fields["hidden"] = "invalid"
+	}
+	counts, ok := parseBoolDefault(q.Get("counts"), false)
+	if !ok {
+		fields["counts"] = "invalid"
+	}
+	spec, badField, err := listing.ParseSortSpec(q.Get("sort"), q.Get("dir"), q.Get("sort2"), q.Get("dir2"), foldersFirst)
+	if err != nil {
+		fields[badField] = "invalid"
+	}
+	limit := 0
+	if raw := q.Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > listing.MaxPageSize {
+			fields["limit"] = "must be 1..1000"
+		} else {
+			limit = n
+		}
+	}
+	var types []files.Category
+	if raw := q.Get("types"); raw != "" {
+		for _, t := range strings.Split(raw, ",") {
+			c, ok := files.ParseCategory(strings.TrimSpace(t))
+			if !ok {
+				fields["types"] = "unknown category " + t
+				break
+			}
+			types = append(types, c)
+		}
+	}
+	filter := q.Get("filter")
+	if len(filter) > 255 {
+		fields["filter"] = "too_long"
+	}
+	if len(fields) > 0 {
+		WriteError(w, r, CodeValidationFailed, 0, "invalid query parameters", map[string]any{"fields": fields})
+		return
+	}
+
+	j, u, release, ok := s.userJail(w, r)
+	if !ok {
+		return
+	}
+	defer release()
+	res, err := s.listing.List(r.Context(), j, listing.ListRequest{
+		UserID: u.ID, Scope: scopeOwn, Dir: dir, Sort: spec, Cursor: q.Get("cursor"), Limit: limit,
+		Hidden: hidden, Filter: filter, Types: types, Counts: counts, Locale: s.userLocale(r, u.ID),
+	})
+	if err != nil {
+		s.writeListingError(w, r, err, string(dir))
+		return
+	}
+	WriteJSON(w, http.StatusOK, res)
+}
+
+// itemView merges an Item with extra keys for stat/mkdir/create responses.
+func itemView(it *listing.Item, extra map[string]any) map[string]any {
+	raw, _ := json.Marshal(it)
+	m := map[string]any{}
+	_ = json.Unmarshal(raw, &m)
+	for k, v := range extra {
+		m[k] = v
+	}
+	return m
+}
+
+func nameWarnings(p fsjail.VPath) []string {
+	if p.IsRoot() {
+		return []string{}
+	}
+	warnings, _ := fsjail.ValidateName(p.Base())
+	if warnings == nil {
+		warnings = []string{}
+	}
+	return warnings
+}
+
+func (s *Server) handleFilesStat(w http.ResponseWriter, r *http.Request) {
+	if rejectScope(w, r) {
+		return
+	}
+	p, ok := cleanPath(w, r, r.URL.Query().Get("path"))
+	if !ok {
+		return
+	}
+	j, u, release, ok := s.userJail(w, r)
+	if !ok {
+		return
+	}
+	defer release()
+	it, err := s.listing.Stat(j, u.ID, scopeOwn, p)
+	if err != nil {
+		s.writeListingError(w, r, err, string(p))
+		return
+	}
+	WriteJSON(w, http.StatusOK, itemView(it, map[string]any{
+		"stat":          it.StatView(),
+		"warnings":      nameWarnings(p),
+		"versionsCount": 0,
+		"shares":        []any{},
+	}))
+}
+
+type targetRequest struct {
+	Path string `json:"path"`
+	Name string `json:"name,omitempty"`
+}
+
+// resolveTarget accepts either {path:"/dir/new"} (SPEC) or {path:"/dir",
+// name:"new"} (PROMPT) and returns the validated target plus name warnings.
+func resolveTarget(w http.ResponseWriter, r *http.Request, req targetRequest) (fsjail.VPath, []string, bool) {
+	if req.Name != "" {
+		dir, ok := cleanPath(w, r, req.Path)
+		if !ok {
+			return "", nil, false
+		}
+		warnings, err := fsjail.ValidateName(req.Name)
+		if err != nil {
+			WriteFSError(w, r, err)
+			return "", nil, false
+		}
+		target, err := fsjail.Join(dir, req.Name)
+		if err != nil {
+			WriteFSError(w, r, err)
+			return "", nil, false
+		}
+		if warnings == nil {
+			warnings = []string{}
+		}
+		return target, warnings, true
+	}
+	target, ok := cleanPath(w, r, req.Path)
+	if !ok {
+		return "", nil, false
+	}
+	if target.IsRoot() {
+		WriteError(w, r, CodeValidationFailed, 0, "path of the new item is required", map[string]any{"fields": map[string]any{"path": "required"}})
+		return "", nil, false
+	}
+	return target, nameWarnings(target), true
+}
+
+func (s *Server) writeExists(w http.ResponseWriter, r *http.Request, j *fsjail.Jail, target fsjail.VPath) {
+	details := map[string]any{"path": string(target)}
+	if info, err := j.Lstat(target); err == nil {
+		details["existing"] = map[string]any{"size": info.Size, "mtime": listing.ISO(info.ModTime), "isDir": info.IsDir}
+	}
+	WriteError(w, r, CodeAlreadyExists, 0, fsMessages[CodeAlreadyExists], details)
+}
+
+func (s *Server) lockTarget(w http.ResponseWriter, r *http.Request, userID, owner string, target fsjail.VPath) (func(), bool) {
+	release, err := s.locks.TryAcquire(userID, fsjail.Write, owner, target)
+	if err != nil {
+		if !WriteFSError(w, r, err) {
+			WriteError(w, r, CodeOperationInProgress, 0, fsMessages[CodeOperationInProgress], map[string]any{"path": string(target)})
+		}
+		return nil, false
+	}
+	return release, true
+}
+
+func (s *Server) invalidateUpTo(userID string, dir fsjail.VPath, ancestors bool) {
+	s.listing.Invalidate(userID, scopeOwn, dir)
+	if !ancestors {
+		return
+	}
+	for !dir.IsRoot() {
+		dir = dir.Dir()
+		s.listing.Invalidate(userID, scopeOwn, dir)
+	}
+}
+
+type mkdirRequest struct {
+	targetRequest
+	Parents bool `json:"parents,omitempty"`
+}
+
+func (s *Server) handleFilesMkdir(w http.ResponseWriter, r *http.Request) {
+	if rejectScope(w, r) {
+		return
+	}
+	var req mkdirRequest
+	if !ReadJSON(w, r, &req) {
+		return
+	}
+	target, warnings, ok := resolveTarget(w, r, req.targetRequest)
+	if !ok {
+		return
+	}
+	j, u, release, ok := s.userJail(w, r)
+	if !ok {
+		return
+	}
+	defer release()
+	unlock, ok := s.lockTarget(w, r, u.ID, "mkdir", target)
+	if !ok {
+		return
+	}
+	defer unlock()
+	if req.Parents && !target.Dir().IsRoot() {
+		if err := j.MkdirAll(target.Dir()); err != nil {
+			s.writeListingError(w, r, err, string(target))
+			return
+		}
+	}
+	if err := j.Mkdir(target); err != nil {
+		if errors.Is(err, fsjail.ErrExists) {
+			s.writeExists(w, r, j, target)
+			return
+		}
+		s.writeListingError(w, r, err, string(target))
+		return
+	}
+	s.invalidateUpTo(u.ID, target.Dir(), req.Parents)
+	it, err := s.listing.Stat(j, u.ID, scopeOwn, target)
+	if err != nil {
+		s.writeListingError(w, r, err, string(target))
+		return
+	}
+	WriteJSON(w, http.StatusCreated, map[string]any{"item": it, "warnings": warnings})
+}
+
+type createRequest struct {
+	targetRequest
+	Template string  `json:"template,omitempty"`
+	Content  *string `json:"content,omitempty"`
+}
+
+func (s *Server) handleFilesCreate(w http.ResponseWriter, r *http.Request) {
+	if rejectScope(w, r) {
+		return
+	}
+	var req createRequest
+	if !ReadJSON(w, r, &req) {
+		return
+	}
+	var content []byte
+	switch {
+	case req.Content != nil:
+		if len(*req.Content) > maxCreateContent {
+			WriteError(w, r, CodePayloadTooLarge, 0, "content too large", map[string]any{"limit": maxCreateContent})
+			return
+		}
+		content = []byte(*req.Content)
+	case req.Template != "":
+		tpl, ok := files.Template(req.Template)
+		if !ok {
+			WriteError(w, r, CodeValidationFailed, 0, "unknown template", map[string]any{"fields": map[string]any{"template": "unknown"}, "templates": files.TemplateNames()})
+			return
+		}
+		content = tpl
+	}
+	target, warnings, ok := resolveTarget(w, r, req.targetRequest)
+	if !ok {
+		return
+	}
+	j, u, release, ok := s.userJail(w, r)
+	if !ok {
+		return
+	}
+	defer release()
+	unlock, ok := s.lockTarget(w, r, u.ID, "create", target)
+	if !ok {
+		return
+	}
+	defer unlock()
+	f, err := j.Create(target, true)
+	if err != nil {
+		if errors.Is(err, fsjail.ErrExists) {
+			s.writeExists(w, r, j, target)
+			return
+		}
+		s.writeListingError(w, r, err, string(target))
+		return
+	}
+	_, werr := f.Write(content)
+	cerr := f.Close()
+	if werr != nil || cerr != nil {
+		_ = j.Remove(target)
+		s.logger.ErrorContext(r.Context(), "create write failed", slog.String("path", string(target)), slog.Any("error", errors.Join(werr, cerr)))
+		WriteError(w, r, CodeInternal, 0, "could not write file", nil)
+		return
+	}
+	s.invalidateUpTo(u.ID, target.Dir(), false)
+	it, err := s.listing.Stat(j, u.ID, scopeOwn, target)
+	if err != nil {
+		s.writeListingError(w, r, err, string(target))
+		return
+	}
+	WriteJSON(w, http.StatusCreated, map[string]any{"item": it, "warnings": warnings})
+}

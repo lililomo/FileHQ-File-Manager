@@ -256,6 +256,93 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "413": { description: "PAYLOAD_TOO_LARGE — dokumen > 64 KB", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
+  /api/v1/files/list:
+    get:
+      summary: List a folder (sorted in the server, cursor paging)
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string }, description: Virtual folder path ("/" = user root) }
+        - { name: sort, in: query, schema: { type: string, enum: [name, size, type, ext, mtime, btime, atime, mode, note, dimensions, duration], default: name } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: asc } }
+        - { name: sort2, in: query, schema: { type: string } }
+        - { name: dir2, in: query, schema: { type: string, enum: [asc, desc] } }
+        - { name: cursor, in: query, schema: { type: string }, description: Opaque cursor from nextCursor }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000 }, description: Default LISTING_PAGE_SIZE }
+        - { name: foldersFirst, in: query, schema: { type: boolean, default: true } }
+        - { name: hidden, in: query, schema: { type: boolean, default: true }, description: Include dotfiles }
+        - { name: filter, in: query, schema: { type: string, maxLength: 255 }, description: Case-insensitive substring on the whole folder }
+        - { name: types, in: query, schema: { type: string }, description: Comma-separated categories (folder,image,video,audio,archive,code,document,spreadsheet,presentation,pdf,text,font,other) }
+        - { name: counts, in: query, schema: { type: boolean, default: false }, description: Fill itemCount for folders on the page (max 2000 per request) }
+      responses:
+        "200":
+          description: One page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ListResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/files/stat:
+    get:
+      summary: Describe one item
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Item plus stat details
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/files/mkdir:
+    post:
+      summary: Create a folder
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MkdirRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ItemResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/files/create:
+    post:
+      summary: Create an empty file or one from a template
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ItemResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     cookieAuth:
@@ -268,6 +355,111 @@ components:
       in: header
       name: X-CSRF-Token
   schemas:
+    Item:
+      type: object
+      description: One directory entry (SPEC §6.3 Item). Metadata slots are null/false until later steps fill them.
+      required: [name, path, type, isDir, isSymlink, size, typeLabel, category, ext, mtime, ctime, atime, mode, modeOctal, favorite, pinned, shared, thumb, etag]
+      properties:
+        name: { type: string }
+        path: { type: string, description: Virtual path }
+        type: { type: string, enum: [dir, file, symlink] }
+        isDir: { type: boolean }
+        isSymlink: { type: boolean }
+        symlinkTarget: { type: string }
+        broken: { type: boolean, description: Symlink that escapes the root, is missing or loops }
+        brokenReason: { type: string, enum: [escape, missing, loop, error] }
+        size: { type: integer, format: int64 }
+        itemCount: { type: integer, format: int64, nullable: true, description: Folder children (null = unknown or more than 10000) }
+        mime: { type: string, nullable: true }
+        typeLabel: { type: string, description: i18n key such as type.image.jpeg }
+        category: { type: string, enum: [folder, image, video, audio, archive, code, document, spreadsheet, presentation, pdf, text, font, other] }
+        ext: { type: string }
+        mtime: { type: string, format: date-time }
+        ctime: { type: string, format: date-time }
+        btime: { type: string, format: date-time, nullable: true }
+        atime: { type: string, format: date-time }
+        mode: { type: string, example: rwxr-xr-x }
+        modeOctal: { type: string, example: "755" }
+        note: { type: string, nullable: true }
+        tag: { type: string, nullable: true }
+        favorite: { type: boolean }
+        pinned: { type: boolean }
+        shared: { type: string, enum: [none, public, users, both] }
+        media:
+          type: object
+          nullable: true
+          properties:
+            width: { type: integer }
+            height: { type: integer }
+            durationMs: { type: integer, format: int64 }
+        thumb: { type: boolean, description: Server can render a thumbnail }
+        etag: { type: string }
+    DirInfo:
+      type: object
+      required: [path, etag, mtime, itemCount]
+      properties:
+        path: { type: string }
+        etag: { type: string, description: Weak ETag W/"<mtime>-<count>" }
+        mtime: { type: string, format: date-time }
+        itemCount: { type: integer }
+    ListResponse:
+      type: object
+      required: [items, nextCursor, total, path, parentPath, dir]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Item" }
+        nextCursor: { type: string, nullable: true }
+        total: { type: integer, description: Entries after hidden/filter/types }
+        path: { type: string }
+        parentPath: { type: string, nullable: true }
+        dir: { $ref: "#/components/schemas/DirInfo" }
+    StatResponse:
+      allOf:
+        - $ref: "#/components/schemas/Item"
+        - type: object
+          required: [stat, warnings, versionsCount, shares]
+          properties:
+            stat:
+              type: object
+              properties:
+                mode: { type: string }
+                modeOctal: { type: string }
+                atime: { type: string, format: date-time }
+                mtime: { type: string, format: date-time }
+                ctime: { type: string, format: date-time }
+                btime: { type: string, format: date-time, nullable: true }
+                nlink: { type: integer }
+            warnings:
+              type: array
+              items: { type: string, enum: [windows_incompatible] }
+            versionsCount: { type: integer }
+            shares:
+              type: array
+              items: { type: object }
+    MkdirRequest:
+      type: object
+      required: [path]
+      properties:
+        path: { type: string, description: Full path of the new folder, or the parent folder when name is given }
+        name: { type: string }
+        parents: { type: boolean, default: false }
+    CreateRequest:
+      type: object
+      required: [path]
+      properties:
+        path: { type: string, description: Full path of the new file, or the parent folder when name is given }
+        name: { type: string }
+        template: { type: string, enum: [txt, md, html, css, js, ts, json, php, py, sh, yaml] }
+        content: { type: string, maxLength: 524288, description: Inline content (wins over template) }
+    ItemResponse:
+      type: object
+      required: [item, warnings]
+      properties:
+        item: { $ref: "#/components/schemas/Item" }
+        warnings:
+          type: array
+          items: { type: string, enum: [windows_incompatible] }
     User:
       type: object
       required: [id, username, displayName, role, status, mustChangePassword, homeProvisioned, quotaBytes, createdAt]

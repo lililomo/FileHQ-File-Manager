@@ -37,6 +37,9 @@ jobs:
         with:
           sqlc-version: "1.31.1"
       - run: sqlc generate && git diff --exit-code -- internal/db/sqlc
+      - name: Sort policy (no collate.Numeric, SPEC §8.3)
+        run: |
+          if grep -rn --include='*.go' 'collate\.Numeric' .; then echo 'collate.Numeric is forbidden'; exit 1; fi
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:

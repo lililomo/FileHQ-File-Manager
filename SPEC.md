@@ -745,6 +745,7 @@ func (j *Jail) Chmod(p VPath, mode fs.FileMode) error   // hanya bit rwx (0777);
 func (j *Jail) ChmodRecursive(ctx context.Context, p VPath, fileMode, dirMode fs.FileMode, progress func(n int)) error
 func (j *Jail) WalkDir(ctx context.Context, p VPath, fn fs.WalkDirFunc) error // tidak mengikuti symlink dir
 func (j *Jail) DirSize(ctx context.Context, p VPath, progress func(files, dirs int, bytes int64)) (DirStats, error)
+func (j *Jail) CountEntries(p VPath, max int) (n int, truncated bool, err error) // getdents saja, untuk itemCount (§8.3)
 func (j *Jail) FS() fs.FS                               // os.Root.FS() untuk ripgrep fallback & pencarian nama
 func (j *Jail) Statfs() (free, total uint64, err error) // unix.Statfs pada root
 
@@ -920,8 +921,8 @@ Kolom "Auth" memakai kode §6.1. Request/response ditulis ringkas; skema lengkap
 | --- | --- | --- | --- |
 | `GET /files/list?path&sort&dir&sort2&dir2&cursor&limit&foldersFirst&filter&hidden` | `sort ∈ name|size|type|ext|mtime|btime|atime|mode|note|dimensions|duration` | `200 {items:[Item], nextCursor, total, dir:{path, etag, mtime, itemCount}, parentPath}` | `NOT_FOUND`, `PATH_INVALID` |
 | `GET /files/stat?path` | — | `200 {Item + stat:{mode,modeOctal,atime,mtime,ctime,btime,nlink}, counts? (folder: dihitung terpisah), checksums? (cache), versionsCount, shares:[…], note, tag, favorite, pinned}` | |
-| `POST /files/mkdir` | `{path}` (path lengkap folder baru), `parents?:bool` | `201 {item}` | `ALREADY_EXISTS`, `NAME_INVALID` |
-| `POST /files/create` | `{path, template?: "txt|md|html|css|js|ts|json|php|py|sh|yaml", content?}` | `201 {item}` | idem |
+| `POST /files/mkdir` | `{path}` (path lengkap folder baru) **atau** `{path: folder induk, name}`, `parents?:bool` | `201 {item, warnings:[]}` (`warnings` dari §5.2, mis. `windows_incompatible`) | `ALREADY_EXISTS` (`details.existing`), `NAME_INVALID`, `OPERATION_IN_PROGRESS` |
+| `POST /files/create` | `{path}` atau `{path, name}`, `template?: "txt|md|html|css|js|ts|json|php|py|sh|yaml"`, `content?` (≤ 512 KB; menang atas template) | `201 {item, warnings:[]}` | idem, `PAYLOAD_TOO_LARGE` |
 | `POST /files/rename` | `{path, newName}` | `200 {item, undo:{op:"rename", path:newPath, newName:oldName}}` | `ALREADY_EXISTS`, `OPERATION_IN_PROGRESS` |
 | `POST /files/batch-rename/preview` | `{paths:[…], rule:{find?, replace?, regex?:bool, caseSensitive?:bool, numbering?:{template:"{n}", start:1, pad:3}, case?: "upper|lower|title|none", extension?: "keep|lower|upper"}}` | `200 {items:[{path, newName, conflict?:bool, invalid?:string}]}` | |
 | `POST /files/batch-rename` | sama + `confirm:true` | `200 {results, undo:{op:"batch-rename", pairs}}` | |
@@ -1245,6 +1246,8 @@ Pembuatan terjadi lewat `os.Root` pada `STORAGE_ROOT` (`OpenRoot(STORAGE_ROOT).M
 **Filter cepat & hidden.** `filter=` menyaring substring nama case-insensitive (setelah fold Unicode) pada seluruh folder di server (bukan hanya halaman). `hidden=false` menyembunyikan dotfile. `types=` (`image,video,audio,document,archive,code,folder`) untuk pemilih tipe.
 
 **Response Item** juga membawa `itemCount` untuk folder hanya jika murah: dihitung lazy di background untuk folder dengan ≤ 10.000 entri (ReadDir tanpa stat) dan di-cache 60 detik; jika tidak tersedia → `null` dan UI menampilkan "—".
+
+**Catatan implementasi (Step 5).** Handler membuka jail per user lewat cache handle (`httpapi/jails.go`: satu `*os.Root` per user, refcount saat dipakai, ditutup setelah idle 5 menit; operasi panjang/task membuka jail sendiri). Cursor = base64url(JSON `{v:1, s:<SortSpec>, k, k2, n, p, i}` ‖ HMAC-SHA256 8 byte dari kunci turunan `APP_SECRET`); cursor untuk spec sort lain/dimanipulasi → `VALIDATION_FAILED fields.cursor`. `path=/.system` dijawab `404 NOT_FOUND` (nama reserved tidak pernah ada di dalam root user). `counts=1` mengisi `itemCount` hanya untuk folder di halaman (≤ 2.000/permintaan, cache 60 s, folder > 10.000 entri → `null`). Kolasi: `é` berkolasi tepat setelah `e` (sebelum `f`), jadi `é.txt` mendahului `file1`. Parameter `share=`/`as_user=` ditolak `VALIDATION_FAILED not_implemented` sampai Step 18b/19a.
 
 **Target:** folder 10.000 item: API p95 < 500 ms (dingin) / < 50 ms (cache); payload halaman 500 item ≈ 120 KB JSON gzip 20 KB (Nginx gzip on untuk `application/json`).
 

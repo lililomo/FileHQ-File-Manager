@@ -18,7 +18,7 @@ BIN     := bin/filemanager
 WEBDIST := backend/internal/webassets/dist
 
 .PHONY: help deps dev build build-backend build-web test test-backend test-web lint lint-backend lint-web \
-        format check-deps clean ci vuln openapi-lint sqlc sqlc-check migrate
+        format check-deps clean ci vuln openapi-lint sqlc sqlc-check migrate check-sort-policy bench
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -59,8 +59,12 @@ test-web: ## Vitest
 
 test: test-backend test-web ## All tests
 
-lint-backend: ## golangci-lint
+lint-backend: ## golangci-lint + sort-policy check
 	cd backend && golangci-lint run ./...
+	$(MAKE) check-sort-policy
+
+check-sort-policy: ## Natural sort must not rely on collate.Numeric (golang/go#67997, SPEC §8.3)
+	@if grep -rn --include='*.go' 'collate\.Numeric' backend/; then echo 'collate.Numeric is forbidden (SPEC §8.3)'; exit 1; fi; echo 'sort policy: ok'
 
 lint-web: ## eslint + tsc + prettier check
 	$(PNPM) lint
@@ -91,6 +95,9 @@ migrate: ## Run goose migrations against the .env database: make migrate ARGS=st
 
 check-deps: ## Print external tool table from the built binary
 	./$(BIN) check-deps --env-file .env
+
+bench: ## Listing benchmarks (10k entries)
+	$(GO) test ./internal/listing/ -run '^$$' -bench . -benchmem
 
 ci: lint test build openapi-lint sqlc-check ## What CI runs (lint, test, build, openapi, sqlc freshness)
 

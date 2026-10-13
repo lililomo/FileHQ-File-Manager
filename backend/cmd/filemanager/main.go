@@ -25,7 +25,9 @@ import (
 	"kppbwi.app/filemanager/internal/auth"
 	"kppbwi.app/filemanager/internal/config"
 	"kppbwi.app/filemanager/internal/db"
+	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/httpapi"
+	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/webassets"
 )
 
@@ -263,6 +265,10 @@ func runServe(envFile string, noMigrate bool) int {
 		return exitConfig
 	}
 
+	// Shared by handlers and (from Step 11) background tasks.
+	listingSvc := listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize})
+	locks := fsjail.NewLockManager()
+
 	handler := httpapi.New(httpapi.Options{
 		Cfg:         cfg,
 		Logger:      logger,
@@ -271,6 +277,8 @@ func runServe(envFile string, noMigrate bool) int {
 		ReadyChecks: []httpapi.ReadyChecker{dbReadyCheck(database)},
 		Store:       store,
 		Auth:        authSvc,
+		Listing:     listingSvc,
+		Locks:       locks,
 	})
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,

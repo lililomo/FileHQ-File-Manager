@@ -284,22 +284,22 @@ Milestone: M1 fondasi · M2 operasi file + transfer · M3 arsip + editor + viewe
 1. `internal/listing/entry.go`: DTO `Entry` sesuai SPEC §8.3: `name`, `path`, `type` (`dir|file|symlink`), `size`, `mtime`, `ctime`, `btime` (via `statx`, `null` jika tidak didukung), `atime`, `mode` (`"rwxr-xr-x"` + oktal), `mime` (dari ekstensi untuk listing; `null` jika tidak diketahui), `type_label` (i18n key, mis. `type.image.jpeg`), `ext`, `broken` (symlink), `item_count` (folder, hanya jika murah: opsi `?counts=1` dengan batas 2.000 folder/permintaan), serta slot `note`, `tags`, `favorite`, `pinned`, `share_status`, `dimension`, `duration` (diisi step 8/10b/18b; sekarang `null`).
 2. `internal/listing/sort.go`: comparator per field dari SPEC §8.3 (`name` natural via komparator kustom `NaturalLess` — run digit dibandingkan numerik, run non-digit via `x/text/collate` `IgnoreCase` locale `id`/`en` dari preferensi user; **bukan** `collate.Numeric` karena bug golang/go#67997 —, `size`, `type`, `ext`, `mtime`, `btime`, `atime`, `mode`, `note`, `dimension`, `duration`); nilai tidak diketahui selalu terakhir; tie-break nama lalu path; `folders_first` default true; item pinned paling atas (hook 10b).
 3. `internal/listing/cache.go`: cache per (user_id, vpath, sort, dir, folders_first) berisi slice terurut; TTL 15 s; validasi `mtime` folder pada tiap hit; `Invalidate(user, path)` dipanggil semua mutasi (fungsi diekspos untuk step berikutnya); batas memori 20 MB per proses (LRU).
-4. Cursor opaque: base64url(JSON `{f,d,k,n}`) = field, dir, nilai sort terakhir, nama terakhir; `limit` default `LISTING_PAGE_SIZE` (500), maks 1000; respons `{items, next_cursor, total, path, parent, folder: {…stat}}`.
+4. Cursor opaque: base64url(JSON `{v,s,k,k2,n,p,i}` + HMAC 8 byte) = versi, spec sort, nilai sort terakhir (+ sekunder), nama, pinned, isDir; `limit` default `LISTING_PAGE_SIZE` (500), maks 1000; respons `{items, nextCursor, total, path, parentPath, dir: {path, etag, mtime, itemCount}}` (camelCase sesuai SPEC §6.3).
 5. Endpoint: `GET /api/v1/files/list?path=&sort=&dir=&cursor=&limit=&folders_first=&counts=`; `GET /api/v1/files/stat?path=` (satu item + `warnings`); `POST /api/v1/files/mkdir {path, name, parents?}`; `POST /api/v1/files/create {path, name, template?}` dengan template `txt|md|html|css|js|ts|json|php|py|sh|yaml` dari `internal/files/templates/*` (konten kecil, tanpa secret); respons `201` + entry; konflik → `409 ALREADY_EXISTS`.
 6. Semua endpoint di atas memakai `RequireAuth + RequirePasswordChanged`; `path` divalidasi `fsjail.Normalize`; jail dibuka per request dari `STORAGE_ROOT/<username>` (helper `userJail(ctx)` dengan cache handle per user, ditutup saat idle 5 menit).
 7. `internal/files/types.go`: tabel ekstensi → MIME + label manusiawi (gambar, video, audio, arsip, kode, dokumen, spreadsheet, PDF, teks) dipakai listing dan ikon di UI.
-8. Fixture generator `internal/listing/testdata/gen.go` membuat 10.000 entri (nama campuran `file1…file10000`, Unicode, folder) di temp dir untuk test & benchmark.
+8. Fixture generator `internal/listing/fixture/gen.go` (package biasa agar bisa di-import test lain; direktori `testdata` diabaikan go tool) membuat 10.000 entri (nama campuran `file1…file10000`, Unicode, folder) di temp dir untuk test & benchmark.
 9. `docs/openapi.yaml`: tambah endpoint di atas + skema `Entry`, `ListResponse`.
 
 **File yang dibuat/diubah:** `backend/internal/listing/{entry,sort,cache,cursor,service}.go` + test, `backend/internal/files/{types,templates.go,templates/*}`, `backend/internal/httpapi/files.go`, `docs/openapi.yaml`.
 
 **Acceptance criteria:**
-- [ ] Folder berisi `file1, file2, file10, File3, é.txt` → `sort=name` menghasilkan `file1, file2, File3, file10, é.txt` (natural, case-insensitive, locale-aware).
+- [ ] Folder berisi `file1, file2, file10, File3, é.txt` → `sort=name` menghasilkan `é.txt, file1, file2, File3, file10` (natural, case-insensitive, locale-aware: `é` berkolasi tepat setelah `e`, yaitu sebelum `f` — SPEC §8.3).
 - [ ] Unit test `NaturalLess`: `0.0` < `1.0`, `a-21` < `a-123`, `file2` < `file10`, `01` vs `1` deterministik (tie-break byte), nama NFD/NFC setara; tidak ada pemakaian `collate.Numeric` di kode (`grep` di CI).
 - [ ] `limit=2` → `next_cursor` ada; request kedua dengan cursor melanjutkan tanpa duplikat/lompat meski ada file baru ditambahkan di antaranya.
 - [ ] `path=../x` atau `%00` → `400 PATH_INVALID`; `path=/.system` → `404 NOT_FOUND`.
 - [ ] `go test -bench ListDir10k` → p95 < 500 ms pada 10.000 entri (dicatat di PROGRESS).
-- [ ] `POST mkdir` nama `con` → `201` dengan `warnings:["windows_reserved"]`; nama `a/b` → `400 NAME_INVALID`.
+- [ ] `POST mkdir` nama `con` → `201` dengan `warnings:["windows_incompatible"]` (kode warning SPEC §5.2); nama `a/b` → `400 NAME_INVALID`.
 
 **Test wajib:**
 - `internal/listing/sort_test.go`: tiap field, unknown-last, folders_first, stabilitas.
