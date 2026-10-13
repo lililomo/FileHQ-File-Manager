@@ -3,10 +3,11 @@ package httpapi
 import (
 	"context"
 	"net/http"
-	"os"
 	"path/filepath"
 	"sort"
 	"time"
+
+	"kppbwi.app/filemanager/internal/config"
 )
 
 // CheckResult is one readiness probe outcome.
@@ -30,23 +31,14 @@ func FilesystemChecks(dataDir, storageRoot string) ReadyChecker {
 }
 
 func checkWritable(dir string) CheckResult {
-	f, err := os.CreateTemp(dir, ".readyz-*")
-	if err != nil {
+	if err := config.ProbeWritable(dir); err != nil {
 		return CheckResult{OK: false, Error: err.Error()}
 	}
-	name := f.Name()
-	_ = f.Close()
-	_ = os.Remove(name)
 	return CheckResult{OK: true}
 }
 
 func checkReadableDir(dir string) CheckResult {
-	f, err := os.Open(dir) //nolint:gosec // operator-configured root directory
-	if err != nil {
-		return CheckResult{OK: false, Error: err.Error()}
-	}
-	defer f.Close()
-	if _, err := f.Readdirnames(1); err != nil && err.Error() != "EOF" {
+	if err := config.ProbeReadableDir(dir); err != nil {
 		return CheckResult{OK: false, Error: err.Error()}
 	}
 	return CheckResult{OK: true}

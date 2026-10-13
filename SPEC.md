@@ -12,7 +12,7 @@ Dokumen ini menjawab "bagaimana". Setiap angka batas, nama tabel, kode error, ro
 Konvensi penandaan:
 
 - **perlu verifikasi** = klaim tentang perangkat lunak pihak ketiga (aaPanel, library) yang belum dicek di server atau registry; wajib dicek saat step terkait.
-- Versi library tidak ditulis; selalu "versi stable terbaru saat implementasi, verifikasi di registry". Versi minimum hanya: Go ≥ 1.25 pada patch terbaru — minimal **1.25.12** (CVE-2026-32282 `Root.Chmod` mengikuti symlink, diperbaiki 1.25.9; CVE-2026-39822 open mengikuti symlink pada komponen terakhir + trailing slash, diperbaiki 1.25.12; 1.26.x terbaru juga boleh) — butuh `os.Root.Rename/RemoveAll/MkdirAll/Symlink` (12 method baru 1.25, diverifikasi di go.dev/doc/go1.25), Node ≥ 22 (Node 24 terpasang di server), Ubuntu 22.04/24.04.
+- Versi library tidak ditulis; selalu "versi stable terbaru saat implementasi, verifikasi di registry". Versi minimum hanya: **Go ≥ 1.26 pada patch terbaru** (`go.mod`: `go 1.26.0` — diwajibkan oleh dependensi `modernc.org/sqlite`, `goose`, `golang.org/x/crypto`, `golang.org/x/sys` yang semuanya mendeklarasikan `go 1.26`; seri 1.25 punya CVE `os.Root`: CVE-2026-32282 `Root.Chmod` mengikuti symlink, diperbaiki 1.25.9; CVE-2026-39822 open mengikuti symlink pada komponen terakhir + trailing slash, diperbaiki 1.25.12 — patch 1.26.x terbaru memuat keduanya; server memakai 1.27.2) — butuh `os.Root.Rename/RemoveAll/MkdirAll/Symlink` (12 method baru 1.25, diverifikasi di go.dev/doc/go1.25), Node ≥ 22 (Node 24 terpasang di server), Ubuntu 22.04/24.04.
 
 Fakta server yang sudah diverifikasi pada 14 Oktober 2026 (boleh dipakai tanpa tanda verifikasi): Ubuntu 24.04.5, kernel 6.8, **1 vCPU, 1,9 GB RAM + swap 2,8 GB; disk sistem 19 GB (sisa ±6 GB) untuk OS/aaPanel/`/www/wwwroot`; `/www/storage` = disk terpisah `/dev/vdb1` ext4 492 GB**; Go 1.27.2 dipasang 14 Okt 2026 di `/usr/local/go` (apt hanya 1.22), pnpm 12.11.2 via corepack; Node 24.21, npm 11.19, corepack 0.36; ffmpeg/ffprobe/vipsthumbnail/pdftoppm/7zz/rg/unrar **semua belum ada** (koreksi Step 1: `rg` yang terdeteksi sebelumnya ternyata fungsi shell dari lingkungan Claude Code, bukan `/usr/bin/rg`; tersedia di apt: `ffmpeg`, `libvips-tools`, `poppler-utils`, `ripgrep`, `7zip` → binary `7zz`, `unrar` multiverse); aaPanel **8.0.7** di `/www/server/panel` (port <PANEL_PORT>), Nginx aaPanel 1.30.5 dengan Lua; tipe proyek **Reverse Proxy** ada dan terbukti bekerja (site `proxy.kppbwi.app`); site `file.kppbwi.app` belum ada; `/www/storage/FileManager` ada, kosong, owner `www:www`; user Linux `filemanager` belum ada; `/proc` tanpa `hidepid`; UFW aktif, 8080 tertutup.
 
@@ -748,6 +748,22 @@ func (j *Jail) DirSize(ctx context.Context, p VPath, progress func(files, dirs i
 func (j *Jail) FS() fs.FS                               // os.Root.FS() untuk ripgrep fallback & pencarian nama
 func (j *Jail) Statfs() (free, total uint64, err error) // unix.Statfs pada root
 
+// Pertahanan tambahan (implementasi Step 4):
+//  - Setiap method publik memanggil checkVPath(p): VPath yang dibangun manual
+//    dan tidak bersih ("/a/..", "a", "/a/") ditolak PATH_INVALID sebelum menyentuh os.Root.
+//  - Create membuka komponen terakhir dengan openat(dirfd, name, O_NOFOLLOW|O_EXCL?)
+//    pada handle folder yang diperoleh dari os.Root: os.Root sendiri mengikuti symlink
+//    terakhir, jadi O_NOFOLLOW harus diterapkan oleh satu openat satu komponen → tulisan
+//    tidak pernah melewati symlink, bebas race.
+//  - Chmod memakai fchmodat2(AT_SYMLINK_NOFOLLOW) (kernel ≥ 6.6); pada symlink menjadi no-op
+//    (kelas CVE-2026-32282); fallback lstat+chmod bila ENOSYS.
+//  - Lstat/ReadDir memakai statx(AT_SYMLINK_NOFOLLOW) relatif ke handle folder (btime, ctime);
+//    ReadDir tidak mengurutkan (listing yang mengurutkan). Symlink diklasifikasi:
+//    SymlinkReason ∈ escape | missing | loop | error.
+//  - MoveOut/MoveIn memakai renameat2(RENAME_NOREPLACE) antara dua handle folder dari dua
+//    os.Root (tanpa path absolut), fallback copy+remove saat EXDEV.
+//  - ProvisionHome(storageRoot, username, provisionedBefore) hidup di fsjail; auth memanggilnya.
+
 // Operasi komposit (dipakai files/tasks); semua memakai Rename atomik bila bisa.
 func (j *Jail) CopyFile(ctx context.Context, src, dst VPath, progress ProgressFn) error   // copy_file_range → fallback io.Copy 1 MiB
 func (j *Jail) CopyTree(ctx context.Context, src, dst VPath, progress ProgressFn) error
@@ -778,7 +794,7 @@ Kontrak: semua error dibungkus `fsjail.Error{Code, Path, Err}` dengan `Code` ∈
 
 ### 5.5 Lock manager per path
 
-`internal/files/lock.go`, satu instance per proses, keyed per user:
+`internal/fsjail/lock.go` (dipindah dari `internal/files` di Step 4 agar paket keamanan utuh), satu instance per proses, keyed per user:
 
 ```go
 type LockManager struct{ mu sync.Mutex; held map[string][]heldLock; cond *sync.Cond }
@@ -1984,7 +2000,7 @@ Target: Ubuntu 24.04 + aaPanel 8.0.7 di server ini; binary + systemd; Nginx aaPa
     - verifikasi binary: /usr/bin/7zz (paket 7zip; pada Ubuntu 22.04 paket mungkin bernama 7zip juga, verifikasi; fallback p7zip-full → /usr/bin/7z dan set SEVENZIP_PATH)
     - unrar: hanya jika --with-unrar (multiverse, non-free): add-apt-repository multiverse; apt-get install unrar → UNRAR_PATH=/usr/bin/unrar
     - ionice ada di util-linux (sudah ada)
- 4. Go: jika `go version` tidak ada atau < 1.25.12 (CVE `os.Root`) → unduh tarball resmi go.dev untuk linux-amd64 (versi stable terbaru; checksum diverifikasi dari halaman unduhan — tulis URL dan sha256 di script saat implementasi) ke /usr/local/go; tambah /usr/local/go/bin ke /etc/profile.d/go.sh. Dilewati jika --no-build (binary dari CI).
+ 4. Go: jika `go version` tidak ada atau < 1.26 (patch terbaru; CVE `os.Root`) → unduh tarball resmi go.dev untuk linux-amd64 (versi stable terbaru; checksum diverifikasi dari halaman unduhan — tulis URL dan sha256 di script saat implementasi) ke /usr/local/go; tambah /usr/local/go/bin ke /etc/profile.d/go.sh. Dilewati jika --no-build (binary dari CI).
  5. Node: cek node ≥ 22 (server: 24); corepack enable; corepack prepare pnpm@<stable> --activate. Dilewati jika --no-build.
  6. useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin filemanager (jika belum ada).
  7. mkdir -p $STORAGE; chown filemanager:filemanager $STORAGE; chmod 0750 $STORAGE
@@ -2168,8 +2184,8 @@ Release dari CI: `tar.gz` berisi `bin/filemanager`, `deploy/`, `docs/`; `update.
 
 Format: Konteks → Keputusan → Konsekuensi. Nomor sesuai OUTLINE bersama; dirujuk dari PRD/PROMPT.
 
-### ADR-01 Backend Go ≥ 1.25 + `net/http` + chi, CGO_ENABLED=0
-**Konteks.** Butuh streaming file besar, HTTP Range, concurrency task, binary tunggal, memori kecil, dan akses filesystem yang tahan traversal/symlink. Server hanya 1,9 GB RAM; apt menyediakan Go 1.22. **Keputusan.** Go ≥ 1.25 pada patch terbaru (minimal 1.25.12: CVE-2026-32282 dan CVE-2026-39822 pada `os.Root`; `os.Root` dengan `Rename/RemoveAll/MkdirAll/Symlink`), dipasang dari tarball go.dev; router `chi` (ringan, middleware idiomatik, `chi.Walk` untuk audit route); module `kppbwi.app/filemanager`; `CGO_ENABLED=0`. **Konsekuensi.** Binary statis mudah di-deploy/rollback; tidak ada cgo → SQLite pure-Go dan libvips via CLI (ADR-02, ADR-09); `install.sh` mengelola Go sendiri.
+### ADR-01 Backend Go ≥ 1.26 + `net/http` + chi, CGO_ENABLED=0
+**Konteks.** Butuh streaming file besar, HTTP Range, concurrency task, binary tunggal, memori kecil, dan akses filesystem yang tahan traversal/symlink. Server hanya 1,9 GB RAM; apt menyediakan Go 1.22. **Keputusan.** Go ≥ 1.26 pada patch terbaru (`go.mod` `go 1.26.0`, dipaksa oleh dependensi inti yang mendeklarasikan 1.26 — diputuskan Step 4; 1.26.x juga memuat perbaikan CVE-2026-32282 dan CVE-2026-39822 pada `os.Root`; `os.Root` dengan `Rename/RemoveAll/MkdirAll/Symlink` ada sejak 1.25), dipasang dari tarball go.dev; router `chi` (ringan, middleware idiomatik, `chi.Walk` untuk audit route); module `kppbwi.app/filemanager`; `CGO_ENABLED=0`. **Konsekuensi.** Binary statis mudah di-deploy/rollback; tidak ada cgo → SQLite pure-Go dan libvips via CLI (ADR-02, ADR-09); `install.sh` mengelola Go sendiri.
 
 ### ADR-02 SQLite WAL via modernc.org/sqlite + goose + sqlc
 **Konteks.** Single-server, tanpa service DB terpisah; kebutuhan query type-safe dan migrasi. **Keputusan.** `modernc.org/sqlite` (pure Go) dengan WAL, `busy_timeout`, satu writer; `goose` (SQL migrations embedded), `sqlc` (`emit_interface` untuk mock); repository interface per domain. Backup `VACUUM INTO`. **Konsekuensi.** Sedikit lebih lambat dari cgo driver (diterima pada skala ini); PostgreSQL nanti = implementasi repository + migrasi dialek (sqlc mendukung); tidak ada `LISTEN/NOTIFY` → SSE in-process cukup (single node).

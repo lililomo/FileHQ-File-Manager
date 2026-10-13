@@ -24,10 +24,13 @@ linters:
       analyze-types: true
       forbid:
         # All filesystem access must go through internal/fsjail (SPEC §5).
-        # Exceptions are listed under exclusions.rules; enforcement is
-        # completed in Step 4 when fsjail exists.
-        - pattern: ^os\.(Open|OpenFile|Create|CreateTemp|ReadFile|WriteFile|Remove|RemoveAll|Rename|Mkdir|MkdirAll|MkdirTemp|Symlink|Link|Readlink|Chmod|Chown|Chtimes|Truncate|ReadDir|Stat|Lstat)$
+        # Allowed packages are listed under exclusions.rules: fsjail itself,
+        # config (operator directories), db (SQLite file), thumbs and upload
+        # (caches/chunks in DATA_DIR) and cmd.
+        - pattern: ^os\.(Open|OpenFile|OpenRoot|Create|CreateTemp|ReadFile|WriteFile|Remove|RemoveAll|Rename|Mkdir|MkdirAll|MkdirTemp|Symlink|Link|Readlink|Chmod|Chown|Chtimes|Truncate|ReadDir|DirFS|Stat|Lstat)$
           msg: use internal/fsjail for filesystem access
+        - pattern: ^filepath\.(Walk|WalkDir|EvalSymlinks)$
+          msg: use internal/fsjail (Jail.WalkDir) for filesystem traversal
         - pattern: ^exec\.Command(Context)?$
           msg: use internal/exec (argv runner, no shell)
     gosec:
@@ -45,14 +48,16 @@ linters:
         linters: [forbidigo]
       - path: internal/db/
         linters: [forbidigo]
-      - path: internal/httpapi/health\.go
+      - path: internal/thumbs/
         linters: [forbidigo]
-      - path: internal/exec/
+      - path: internal/upload/
+        linters: [forbidigo]
+      - path: internal/exec/   # only the exec.Command rule is meant for it; os.* stays forbidden there by review
         linters: [forbidigo]
       - path: cmd/
         linters: [forbidigo]
       - path: _test\.go
-        linters: [forbidigo, gosec, noctx]
+        linters: [forbidigo, gosec, noctx, errcheck]
       - path: internal/webassets/
         linters: [gosec]
 

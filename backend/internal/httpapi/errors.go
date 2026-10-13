@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+
+	"kppbwi.app/filemanager/internal/fsjail"
 )
 
 // ErrorCode is the machine-readable error identifier (SPEC §6.2).
@@ -149,5 +151,38 @@ func ReadJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 		WriteError(w, r, CodeValidationFailed, 0, "invalid JSON body", map[string]any{"reason": err.Error()})
 		return false
 	}
+	return true
+}
+
+var fsMessages = map[ErrorCode]string{
+	CodeNotFound:            "file or folder not found",
+	CodeAlreadyExists:       "a file or folder with that name already exists",
+	CodePathInvalid:         "invalid path",
+	CodeNameInvalid:         "invalid name",
+	CodeSymlinkEscape:       "symbolic link points outside your storage",
+	CodeForbidden:           "operation not permitted",
+	CodeConflict:            "folder is not empty",
+	CodeOperationInProgress: "another operation is using this path",
+	CodeValidationFailed:    "invalid operation for this item",
+	CodeInternal:            "filesystem error",
+}
+
+// WriteFSError maps a fsjail error to the API envelope (SPEC §5.3, §6.2).
+// It returns false when err is not a jail error, so callers can fall back
+// to their own handling.
+func WriteFSError(w http.ResponseWriter, r *http.Request, err error) bool {
+	code, details, ok := fsjail.APIError(err)
+	if !ok {
+		return false
+	}
+	ec := ErrorCode(code)
+	msg, known := fsMessages[ec]
+	if !known {
+		ec, msg = CodeInternal, fsMessages[CodeInternal]
+	}
+	if _, isStatus := statusByCode[ec]; !isStatus {
+		ec = CodeInternal
+	}
+	WriteError(w, r, ec, 0, msg, details)
 	return true
 }
