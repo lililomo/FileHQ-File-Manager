@@ -25,6 +25,7 @@ const (
 	touchInterval      = 5 * time.Minute
 	MaxSessionsPerUser = 20
 	CleanupInterval    = 10 * time.Minute
+	MaxUserAgentLen    = 256 // sessions.user_agent, SPEC §4.2
 )
 
 // Session errors.
@@ -91,7 +92,7 @@ func (s *Sessions) Create(ctx context.Context, userID, ip, userAgent string) (st
 		IdleExpiresAt:     db.FormatTime(s.idleDeadline(now, now.Add(s.absolute))),
 		AbsoluteExpiresAt: db.FormatTime(now.Add(s.absolute)),
 		Ip:                ip,
-		UserAgent:         truncate(userAgent, 512),
+		UserAgent:         truncate(userAgent, MaxUserAgentLen),
 		DeviceLabel:       &label,
 	})
 	if err != nil {

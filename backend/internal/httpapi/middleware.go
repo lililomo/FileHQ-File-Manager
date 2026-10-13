@@ -140,22 +140,41 @@ func RealIP(cfg *config.Config) func(http.Handler) http.Handler {
 	}
 }
 
-// InitialCSP is the Step 1 policy; the final policy with nonces is Step 20.
+// InitialCSP is the Step 1 policy for HTML; the final policy with nonces is Step 20.
 const InitialCSP = "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
+
+// APICSP is the policy of JSON responses (SPEC §10.3): nothing may load.
+const APICSP = "default-src 'none'; frame-ancestors 'none'"
+
+// PermissionsPolicy is the SPEC §10.3 feature policy.
+const PermissionsPolicy = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), fullscreen=(self), picture-in-picture=(self), autoplay=(self)"
+
+// isAPIPath reports whether the response is a JSON API answer (never
+// cacheable, CSP 'none'): /api/* plus the health endpoints.
+func isAPIPath(p string) bool {
+	return strings.HasPrefix(p, "/api/") || p == "/healthz" || p == "/readyz"
+}
 
 // SecurityHeaders sets the baseline response headers (SPEC §10.3). HSTS is
 // added only when the request is known to be HTTPS (TLS or trusted
-// X-Forwarded-Proto).
+// X-Forwarded-Proto). API responses are never cacheable (review A, M-01);
+// webassets overrides Cache-Control for hashed assets and index.html.
 func SecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+		h.Set("Permissions-Policy", PermissionsPolicy)
 		h.Set("Cross-Origin-Opener-Policy", "same-origin")
+		h.Set("Cross-Origin-Resource-Policy", "same-origin")
 		h.Set("X-Robots-Tag", "noindex, nofollow")
-		h.Set("Content-Security-Policy", InitialCSP)
+		if isAPIPath(r.URL.Path) {
+			h.Set("Cache-Control", "no-store")
+			h.Set("Content-Security-Policy", APICSP)
+		} else {
+			h.Set("Content-Security-Policy", InitialCSP)
+		}
 		https := r.TLS != nil || (PeerTrustedFrom(r.Context()) && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"))
 		if https {
 			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")

@@ -62,7 +62,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if req.Password == "" {
 		fields["password"] = "required"
 	}
-	if len(req.Username) > 64 || len(req.Password) > 1024 {
+	if len(req.Username) > 64 {
+		fields["username"] = "too_long"
+	}
+	if len(req.Password) > 1024 {
 		fields["password"] = "too_long"
 	}
 	if len(fields) > 0 {

@@ -52,7 +52,7 @@ func TestSessionCreateTruncatesUserAgent(t *testing.T) {
 	u := createUser(t, store, "ua")
 	s := NewSessions(store, time.Hour, 2*time.Hour, nil)
 	_, sess, err := s.Create(context.Background(), u.ID, "10.0.0.1", strings.Repeat("x", 2000))
-	if err != nil || len(sess.UserAgent) != 512 {
+	if err != nil || len(sess.UserAgent) != MaxUserAgentLen {
 		t.Fatalf("user agent not truncated: %d %v", len(sess.UserAgent), err)
 	}
 }

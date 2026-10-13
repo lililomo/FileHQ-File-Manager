@@ -69,7 +69,7 @@ func (r *Recorder) RecordWith(ctx context.Context, repo db.AuditRepo, e Entry) {
 		At:        db.FormatTime(r.now()),
 		Action:    e.Action,
 		Ip:        orDash(e.IP),
-		UserAgent: truncate(orDash(e.UserAgent), 512),
+		UserAgent: truncate(orDash(e.UserAgent), 256), // audit_logs.user_agent <= 256 (SPEC §4.2)
 	}
 	if e.ActorID != "" {
 		p.ActorUserID = db.Ptr(e.ActorID)

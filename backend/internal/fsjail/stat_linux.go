@@ -37,7 +37,7 @@ func (i Info) IsRegular() bool { return i.Mode.IsRegular() }
 
 // Lstat describes p without following a final symlink.
 func (j *Jail) Lstat(p VPath) (Info, error) {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return Info{}, err
 	}
 	if p.IsRoot() {
@@ -71,7 +71,7 @@ func (j *Jail) Lstat(p VPath) (Info, error) {
 
 // Stat describes p following symlinks (inside the root only).
 func (j *Jail) Stat(p VPath) (Info, error) {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return Info{}, err
 	}
 	if p.IsRoot() {
@@ -99,7 +99,7 @@ func (j *Jail) Stat(p VPath) (Info, error) {
 // ReadDir lists p (one statx per entry, no symlink following). Order is the
 // directory's own; callers sort.
 func (j *Jail) ReadDir(p VPath) ([]Info, error) {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return nil, err
 	}
 	df, err := j.root.Open(p.Rel())

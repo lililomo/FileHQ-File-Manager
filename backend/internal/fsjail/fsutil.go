@@ -26,10 +26,10 @@ const (
 // ALREADY_EXISTS if dst exists). Mode is src's rwx bits (never setuid),
 // mtime is preserved. Uses copy_file_range with an io.Copy fallback.
 func (j *Jail) CopyFile(ctx context.Context, src, dst VPath, progress ProgressFn) error {
-	if err := checkVPath(src); err != nil {
+	if err := j.check(src); err != nil {
 		return err
 	}
-	if err := checkVPath(dst); err != nil {
+	if err := j.check(dst); err != nil {
 		return err
 	}
 	if err := j.mutable("copy_file", dst); err != nil {
@@ -149,10 +149,10 @@ func copyContent(ctx context.Context, in, out *os.File, size int64, progress Pro
 // so a directory swapped for an escaping symlink mid-copy fails with
 // SYMLINK_ESCAPE and nothing outside the root is read.
 func (j *Jail) CopyTree(ctx context.Context, src, dst VPath, progress ProgressFn) error {
-	if err := checkVPath(src); err != nil {
+	if err := j.check(src); err != nil {
 		return err
 	}
-	if err := checkVPath(dst); err != nil {
+	if err := j.check(dst); err != nil {
 		return err
 	}
 	if err := j.mutable("copy_tree", dst); err != nil {
@@ -252,10 +252,10 @@ func readDirNames(r *os.Root, rel string) ([]string, error) {
 // it copies to dst + ".fm-partial-<id>", renames into place and removes src.
 // On failure the partial copy is removed and src is left untouched.
 func (j *Jail) MoveTree(ctx context.Context, src, dst VPath, progress ProgressFn) error {
-	if err := checkVPath(src); err != nil {
+	if err := j.check(src); err != nil {
 		return err
 	}
-	if err := checkVPath(dst); err != nil {
+	if err := j.check(dst); err != nil {
 		return err
 	}
 	if err := j.mutable("move_tree", dst); err != nil {
@@ -354,7 +354,7 @@ func moveAcross(ctx context.Context, sr *os.Root, srel string, dr *os.Root, drel
 
 // MoveOut moves src from the jail into sys under name (trash, versions).
 func (j *Jail) MoveOut(ctx context.Context, src VPath, sys *SysDir, name string) error {
-	if err := checkVPath(src); err != nil {
+	if err := j.check(src); err != nil {
 		return err
 	}
 	if err := j.mutable("move_out", src); err != nil {
@@ -373,7 +373,7 @@ func (j *Jail) MoveOut(ctx context.Context, src VPath, sys *SysDir, name string)
 // MoveIn moves sys/name into the jail at dst (restore, upload finalize,
 // extract). dst must not exist.
 func (j *Jail) MoveIn(ctx context.Context, sys *SysDir, name string, dst VPath) error {
-	if err := checkVPath(dst); err != nil {
+	if err := j.check(dst); err != nil {
 		return err
 	}
 	if err := j.mutable("move_in", dst); err != nil {

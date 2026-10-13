@@ -12,7 +12,7 @@ import (
 // column (SPEC §8.3). When max > 0 and the directory holds more than max
 // entries, counting stops early and truncated is true.
 func (j *Jail) CountEntries(p VPath, max int) (n int, truncated bool, err error) {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return 0, false, err
 	}
 	df, err := j.root.Open(p.Rel())

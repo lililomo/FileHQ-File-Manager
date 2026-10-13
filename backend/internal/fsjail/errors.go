@@ -45,6 +45,7 @@ var (
 	ErrHomeMissing = errors.New("fsjail: user home does not exist")
 	ErrHomeNotDir  = errors.New("fsjail: user home exists but is not a directory")
 	ErrInternal    = errors.New("fsjail: internal filesystem error")
+	ErrClosed      = errors.New("fsjail: jail is closed")
 )
 
 var sentinelByCode = map[Code]error{

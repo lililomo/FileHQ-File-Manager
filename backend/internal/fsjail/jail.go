@@ -29,6 +29,7 @@ type Jail struct {
 	base     VPath  // for sub-roots: where this jail sits inside the parent (informational)
 	userID   string // owner of the files (empty for generic Open)
 	readOnly bool
+	shared   bool   // root is owned by a parent jail (SubRoot("/")); Close must not close it
 	hostPath string // absolute host directory; only ever exposed by AbsForCLI
 	renameFn func(oldpath, newpath string) error
 }
@@ -82,11 +83,13 @@ func newJail(r *os.Root, base VPath, userID string, readOnly bool, hostPath stri
 // to the sub-jail are relative to dir; symlinks that leave dir are escapes
 // even when they stay inside the parent root.
 func (j *Jail) SubRoot(dir VPath, readOnly bool) (*Jail, error) {
-	if err := checkVPath(dir); err != nil {
+	if err := j.check(dir); err != nil {
 		return nil, err
 	}
 	if dir.IsRoot() {
-		return newJail(j.root, j.base, j.userID, readOnly || j.readOnly, j.hostPath), nil
+		sub := newJail(j.root, j.base, j.userID, readOnly || j.readOnly, j.hostPath)
+		sub.shared = true
+		return sub, nil
 	}
 	info, err := j.Lstat(dir)
 	if err != nil {
@@ -113,9 +116,13 @@ func (j *Jail) SubRoot(dir VPath, readOnly bool) (*Jail, error) {
 func (j *Jail) Sub(dir VPath) (*Jail, error) { return j.SubRoot(dir, false) }
 
 // Close releases the directory handle. A sub-root that shares the parent's
-// handle (SubRoot("/")) does not close it.
+// handle (SubRoot("/")) only forgets it: the parent stays usable.
 func (j *Jail) Close() error {
 	if j.root == nil {
+		return nil
+	}
+	if j.shared {
+		j.root = nil
 		return nil
 	}
 	err := j.root.Close()
@@ -136,6 +143,15 @@ func (j *Jail) ReadOnly() bool { return j.readOnly }
 // home itself).
 func (j *Jail) Base() VPath { return j.base }
 
+// check validates p (see checkVPath) and refuses use after Close with
+// ErrClosed instead of dereferencing a nil root (review A).
+func (j *Jail) check(p VPath) error {
+	if j.root == nil {
+		return newErr(CodeInternal, "jail", p, "closed", ErrClosed)
+	}
+	return checkVPath(p)
+}
+
 func (j *Jail) mutable(op string, p VPath) error {
 	if j.readOnly {
 		return newErr(CodeForbidden, op, p, "read_only", ErrReadOnly)
@@ -146,7 +162,7 @@ func (j *Jail) mutable(op string, p VPath) error {
 // Open opens p read-only. Symlinks are followed only inside the root; an
 // escaping link yields SYMLINK_ESCAPE.
 func (j *Jail) Open(p VPath) (*os.File, error) {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return nil, err
 	}
 	f, err := j.root.Open(p.Rel())
@@ -161,7 +177,7 @@ const writeFlags = os.O_WRONLY | os.O_RDWR | os.O_CREATE | os.O_TRUNC | os.O_APP
 // OpenFile is the general form. Write flags are refused on read-only jails.
 // perm is restricted to rwx bits (never setuid/setgid/sticky).
 func (j *Jail) OpenFile(p VPath, flag int, perm fs.FileMode) (*os.File, error) {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return nil, err
 	}
 	if flag&writeFlags != 0 {
@@ -183,7 +199,7 @@ func (j *Jail) OpenFile(p VPath, flag int, perm fs.FileMode) (*os.File, error) {
 // 0640. The final component is never followed through a symlink
 // (O_NOFOLLOW), so a link can not redirect a write.
 func (j *Jail) Create(p VPath, excl bool) (*os.File, error) {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return nil, err
 	}
 	if err := j.mutable("create", p); err != nil {
@@ -223,7 +239,7 @@ func (j *Jail) Create(p VPath, excl bool) (*os.File, error) {
 
 // Mkdir creates one directory (0750). The parent must exist.
 func (j *Jail) Mkdir(p VPath) error {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return err
 	}
 	if err := j.mutable("mkdir", p); err != nil {
@@ -237,7 +253,7 @@ func (j *Jail) Mkdir(p VPath) error {
 
 // MkdirAll creates p and any missing parents (0750); existing dirs are kept.
 func (j *Jail) MkdirAll(p VPath) error {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return err
 	}
 	if err := j.mutable("mkdir_all", p); err != nil {
@@ -252,10 +268,10 @@ func (j *Jail) MkdirAll(p VPath) error {
 // Rename moves old to new atomically inside the root (rename(2) semantics:
 // an existing empty directory or file at new is replaced).
 func (j *Jail) Rename(oldp, newp VPath) error {
-	if err := checkVPath(oldp); err != nil {
+	if err := j.check(oldp); err != nil {
 		return err
 	}
-	if err := checkVPath(newp); err != nil {
+	if err := j.check(newp); err != nil {
 		return err
 	}
 	if err := j.mutable("rename", oldp); err != nil {
@@ -272,7 +288,7 @@ func (j *Jail) Rename(oldp, newp VPath) error {
 
 // Remove deletes a file, symlink (the link itself) or empty directory.
 func (j *Jail) Remove(p VPath) error {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return err
 	}
 	if err := j.mutable("remove", p); err != nil {
@@ -287,7 +303,7 @@ func (j *Jail) Remove(p VPath) error {
 // RemoveAll deletes p recursively. A symlink is removed as a link; its target
 // is never entered.
 func (j *Jail) RemoveAll(p VPath) error {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return err
 	}
 	if err := j.mutable("remove_all", p); err != nil {
@@ -303,7 +319,7 @@ func (j *Jail) RemoveAll(p VPath) error {
 // the root when computed from link's directory (SPEC §5.4); dangling targets
 // are allowed.
 func (j *Jail) Symlink(target string, link VPath) error {
-	if err := checkVPath(link); err != nil {
+	if err := j.check(link); err != nil {
 		return err
 	}
 	if err := j.mutable("symlink", link); err != nil {
@@ -328,7 +344,7 @@ func (j *Jail) Symlink(target string, link VPath) error {
 
 // Readlink returns the raw target of a symlink.
 func (j *Jail) Readlink(p VPath) (string, error) {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return "", err
 	}
 	t, err := j.root.Readlink(p.Rel())
@@ -343,7 +359,7 @@ func (j *Jail) Readlink(p VPath) (string, error) {
 // no-op. Uses fchmodat2 with AT_SYMLINK_NOFOLLOW (kernel >= 6.6); older
 // kernels fall back to lstat + chmod.
 func (j *Jail) Chmod(p VPath, mode fs.FileMode) error {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return err
 	}
 	if err := j.mutable("chmod", p); err != nil {
@@ -385,7 +401,7 @@ func (j *Jail) Chmod(p VPath, mode fs.FileMode) error {
 // ChmodRecursive applies fileMode to files and dirMode to directories under
 // p (including p). Symlinks are skipped. progress receives the running count.
 func (j *Jail) ChmodRecursive(ctx context.Context, p VPath, fileMode, dirMode fs.FileMode, progress func(n int)) error {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return err
 	}
 	if err := j.mutable("chmod_recursive", p); err != nil {
@@ -416,7 +432,7 @@ func (j *Jail) ChmodRecursive(ctx context.Context, p VPath, fileMode, dirMode fs
 
 // Chtimes sets access and modification times.
 func (j *Jail) Chtimes(p VPath, atime, mtime time.Time) error {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return err
 	}
 	if err := j.mutable("chtimes", p); err != nil {
@@ -429,7 +445,7 @@ func (j *Jail) Chtimes(p VPath, atime, mtime time.Time) error {
 // followed (they appear as symlink entries). fn receives virtual paths. The
 // walk stops when ctx is done or fn returns an error (fs.SkipDir honored).
 func (j *Jail) WalkDir(ctx context.Context, p VPath, fn fs.WalkDirFunc) error {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return err
 	}
 	fsys := j.root.FS()
@@ -467,7 +483,7 @@ type DirStats struct {
 
 // DirSize sums sizes below p without following symlinks (SPEC §5.4).
 func (j *Jail) DirSize(ctx context.Context, p VPath, progress func(files, dirs int64, bytes int64)) (DirStats, error) {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return DirStats{}, err
 	}
 	var st DirStats
@@ -502,11 +518,26 @@ func (j *Jail) DirSize(ctx context.Context, p VPath, progress func(files, dirs i
 }
 
 // FS exposes the root as an fs.FS (name search, ripgrep fallback). It is
-// read-only and symlink-escape safe by construction.
-func (j *Jail) FS() fs.FS { return j.root.FS() }
+// read-only and symlink-escape safe by construction. A closed jail yields
+// an empty filesystem.
+func (j *Jail) FS() fs.FS {
+	if j.root == nil {
+		return closedFS{}
+	}
+	return j.root.FS()
+}
+
+type closedFS struct{}
+
+func (closedFS) Open(name string) (fs.File, error) {
+	return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrClosed}
+}
 
 // Statfs reports free and total bytes of the filesystem holding the root.
 func (j *Jail) Statfs() (free, total uint64, err error) {
+	if err := j.check(Root); err != nil {
+		return 0, 0, err
+	}
 	f, err := j.root.Open(".")
 	if err != nil {
 		return 0, 0, wrap("statfs", Root, err)
@@ -526,7 +557,7 @@ func (j *Jail) Statfs() (free, total uint64, err error) {
 // not use the root) could be redirected. The result must never reach a
 // client.
 func (j *Jail) AbsForCLI(p VPath) (string, error) {
-	if err := checkVPath(p); err != nil {
+	if err := j.check(p); err != nil {
 		return "", err
 	}
 	segs := p.Segments()

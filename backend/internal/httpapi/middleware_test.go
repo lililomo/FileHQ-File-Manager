@@ -115,8 +115,14 @@ func TestSecurityHeadersAndHSTS(t *testing.T) {
 			t.Errorf("%s = %q want %q", k, got, v)
 		}
 	}
-	if !strings.Contains(rec.Header().Get("Content-Security-Policy"), "default-src 'self'") {
-		t.Error("CSP missing")
+	if csp := rec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'none'") {
+		t.Errorf("API CSP: %q", csp)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("API Cache-Control: %q", cc)
+	}
+	if page := do(h, "GET", "/", "203.0.113.9:1", nil); !strings.Contains(page.Header().Get("Content-Security-Policy"), "default-src 'self'") {
+		t.Errorf("page CSP: %q", page.Header().Get("Content-Security-Policy"))
 	}
 	if rec.Header().Get("Permissions-Policy") == "" {
 		t.Error("Permissions-Policy missing")

@@ -3,8 +3,10 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -136,8 +138,8 @@ func (s *Server) handleFilesList(w http.ResponseWriter, r *http.Request) {
 	limit := 0
 	if raw := q.Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
-		if err != nil || n < 1 || n > listing.MaxPageSize {
-			fields["limit"] = "must be 1..1000"
+		if err != nil || n < 1 || n > s.cfg.ListingPageSize || n > listing.MaxPageSize {
+			fields["limit"] = fmt.Sprintf("must be 1..%d", min(s.cfg.ListingPageSize, listing.MaxPageSize))
 		} else {
 			limit = n
 		}
@@ -200,6 +202,45 @@ func nameWarnings(p fsjail.VPath) []string {
 	return warnings
 }
 
+// validateTargetNames applies the name rules of SPEC §5.2 to a target given
+// as a full path: the final segment always, every segment when all is true
+// (mkdir with parents=true creates them). fsjail.Clean only enforces path
+// rules, so e.g. a backslash would otherwise slip through (review A, M-03).
+func validateTargetNames(target fsjail.VPath, all bool) ([]string, error) {
+	segs := target.Segments()
+	if !all && len(segs) > 0 {
+		segs = segs[len(segs)-1:]
+	}
+	warnings := []string{}
+	for _, seg := range segs {
+		w, err := fsjail.ValidateName(seg)
+		if err != nil {
+			return nil, err
+		}
+		for _, code := range w {
+			if !slices.Contains(warnings, code) {
+				warnings = append(warnings, code)
+			}
+		}
+	}
+	return warnings, nil
+}
+
+// blockedExtension reports whether name's extension is in BLOCKED_EXTENSIONS
+// (SPEC §3.3, §5.2: create/rename/upload/remote download/extract answer
+// UNSUPPORTED_TYPE). Folders are never subject to it.
+func (s *Server) blockedExtension(name string) (string, bool) {
+	ext := files.Ext(name)
+	if ext == "" || !slices.Contains(s.cfg.BlockedExtensions, ext) {
+		return "", false
+	}
+	return ext, true
+}
+
+func (s *Server) writeBlockedExtension(w http.ResponseWriter, r *http.Request, target fsjail.VPath, ext string) {
+	WriteError(w, r, CodeUnsupportedType, 0, "file extension is not allowed", map[string]any{"path": string(target), "ext": ext, "reason": "blocked_extension"})
+}
+
 func (s *Server) handleFilesStat(w http.ResponseWriter, r *http.Request) {
 	if rejectScope(w, r) {
 		return
@@ -233,7 +274,8 @@ type targetRequest struct {
 
 // resolveTarget accepts either {path:"/dir/new"} (SPEC) or {path:"/dir",
 // name:"new"} (PROMPT) and returns the validated target plus name warnings.
-func resolveTarget(w http.ResponseWriter, r *http.Request, req targetRequest) (fsjail.VPath, []string, bool) {
+// allSegments makes the full-path form validate every segment (parents=true).
+func resolveTarget(w http.ResponseWriter, r *http.Request, req targetRequest, allSegments bool) (fsjail.VPath, []string, bool) {
 	if req.Name != "" {
 		dir, ok := cleanPath(w, r, req.Path)
 		if !ok {
@@ -262,7 +304,12 @@ func resolveTarget(w http.ResponseWriter, r *http.Request, req targetRequest) (f
 		WriteError(w, r, CodeValidationFailed, 0, "path of the new item is required", map[string]any{"fields": map[string]any{"path": "required"}})
 		return "", nil, false
 	}
-	return target, nameWarnings(target), true
+	warnings, err := validateTargetNames(target, allSegments)
+	if err != nil {
+		WriteFSError(w, r, err)
+		return "", nil, false
+	}
+	return target, warnings, true
 }
 
 func (s *Server) writeExists(w http.ResponseWriter, r *http.Request, j *fsjail.Jail, target fsjail.VPath) {
@@ -308,7 +355,7 @@ func (s *Server) handleFilesMkdir(w http.ResponseWriter, r *http.Request) {
 	if !ReadJSON(w, r, &req) {
 		return
 	}
-	target, warnings, ok := resolveTarget(w, r, req.targetRequest)
+	target, warnings, ok := resolveTarget(w, r, req.targetRequest, req.Parents)
 	if !ok {
 		return
 	}
@@ -375,8 +422,12 @@ func (s *Server) handleFilesCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		content = tpl
 	}
-	target, warnings, ok := resolveTarget(w, r, req.targetRequest)
+	target, warnings, ok := resolveTarget(w, r, req.targetRequest, false)
 	if !ok {
+		return
+	}
+	if ext, blocked := s.blockedExtension(target.Base()); blocked {
+		s.writeBlockedExtension(w, r, target, ext)
 		return
 	}
 	j, u, release, ok := s.userJail(w, r)
