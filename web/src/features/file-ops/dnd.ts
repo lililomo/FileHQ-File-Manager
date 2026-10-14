@@ -103,6 +103,44 @@ export function setDropHandlers(h: { items: DropHandler; os: OsDropHandler } | n
   osDropHandler = h?.os ?? null
 }
 
+/** Dropping items on the sidebar "Favorit" entry adds them to the favourites (SPEC §8.7). */
+export type FavoriteDropHandler = (paths: string[]) => void
+let favoriteDropHandler: FavoriteDropHandler | null = null
+export function setFavoriteDropHandler(h: FavoriteDropHandler | null): void {
+  favoriteDropHandler = h
+}
+
+/** Event handlers for the favourites drop target (accepts item drags only). */
+export function favoriteDropTargetProps(onOver?: (over: boolean) => void) {
+  const accepts = (dt: DataTransfer | null) => hasItemDrag(dt) && !!favoriteDropHandler
+  return {
+    onDragEnter: (e: React.DragEvent) => {
+      if (!accepts(e.dataTransfer)) return
+      e.preventDefault()
+      onOver?.(true)
+    },
+    onDragOver: (e: React.DragEvent) => {
+      if (!accepts(e.dataTransfer)) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'link'
+      onOver?.(true)
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      const to = e.relatedTarget
+      if (to instanceof Node && e.currentTarget.contains(to)) return
+      onOver?.(false)
+    },
+    onDrop: (e: React.DragEvent) => {
+      onOver?.(false)
+      const payload = readDragPayload(e.dataTransfer)
+      if (!payload || !favoriteDropHandler) return
+      e.preventDefault()
+      e.stopPropagation()
+      favoriteDropHandler(payload.paths)
+    },
+  }
+}
+
 export interface DropTargetOptions {
   /** virtual path of the folder represented by the element */
   dir: string

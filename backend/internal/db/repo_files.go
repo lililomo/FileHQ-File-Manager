@@ -43,6 +43,10 @@ type TrashRepo interface {
 type ActivityRepo interface {
 	InsertActivity(ctx context.Context, p sqlc.InsertActivityParams) (int64, error)
 	ListActivity(ctx context.Context, userID string, beforeID, limit int64) ([]sqlc.ActivityLog, error)
+	ListActivityFiltered(ctx context.Context, userID string, f ActivityFilter) ([]sqlc.ActivityLog, error)
+	ListRecentActivity(ctx context.Context, userID, since string, limit int64) ([]sqlc.ActivityLog, error)
+	DeleteActivityForUser(ctx context.Context, userID string) (int64, error)
+	CountActivity(ctx context.Context, userID string) (int64, error)
 	DeleteActivityOlderThan(ctx context.Context, before string) (int64, error)
 }
 

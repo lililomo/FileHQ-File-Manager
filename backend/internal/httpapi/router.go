@@ -18,6 +18,7 @@ import (
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/media"
+	"kppbwi.app/filemanager/internal/meta"
 	"kppbwi.app/filemanager/internal/quota"
 	"kppbwi.app/filemanager/internal/thumbs"
 )
@@ -47,6 +48,7 @@ type Options struct {
 	Files       *files.Service      // file operations (Step 9a); nil disables the mutating routes
 	Quota       *quota.Service      // quota accounting (Step 10a); nil = usage reported as zero
 	Audit       *audit.Recorder     // security audit log for delete-permanent / trash empty; built from Store when nil
+	Meta        *meta.Service       // favorites/pins/notes/tags (Step 10b); nil disables /meta
 }
 
 // Server holds dependencies shared by handlers.
@@ -69,6 +71,7 @@ type Server struct {
 	files       *files.Service
 	quota       *quota.Service
 	audit       *audit.Recorder
+	meta        *meta.Service
 }
 
 // New builds the router. The returned handler is safe for http.Server.
@@ -89,6 +92,7 @@ func New(o Options) http.Handler {
 		files:   o.Files,
 		quota:   o.Quota,
 		audit:   o.Audit,
+		meta:    o.Meta,
 	}
 	s.warnings = o.Warnings
 	if s.audit == nil && o.Store != nil {
@@ -144,6 +148,8 @@ func (s *Server) mountAPI(api chi.Router) {
 		s.mountThumbs(api)
 		s.mountTrash(api)
 		s.mountQuota(api)
+		s.mountMeta(api)
+		s.mountMeActivity(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": s.cfg.AppName})

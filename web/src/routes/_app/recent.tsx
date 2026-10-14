@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { PlaceholderPage } from '@/components/PlaceholderPage'
+import { RecentPage } from '@/features/recent/RecentPage'
 
 export const Route = createFileRoute('/_app/recent')({
-  component: () => <PlaceholderPage step="10b" titleKey="recent" />,
+  component: RecentPage,
 })

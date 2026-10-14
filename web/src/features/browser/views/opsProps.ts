@@ -15,4 +15,6 @@ export interface ViewOpsProps {
   dragPaths?: (item: Item) => string[]
   /** Enables drag & drop (default true). */
   dnd?: boolean
+  /** Inline "Catatan" editing in the Details view (Step 10b). */
+  onNoteSave?: ((path: string, note: string) => Promise<boolean>) | undefined
 }

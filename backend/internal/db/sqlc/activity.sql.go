@@ -9,6 +9,29 @@ import (
 	"context"
 )
 
+const countActivity = `-- name: CountActivity :one
+SELECT count(*) FROM activity_logs WHERE user_id = ?
+`
+
+func (q *Queries) CountActivity(ctx context.Context, userID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countActivity, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const deleteActivityForUser = `-- name: DeleteActivityForUser :execrows
+DELETE FROM activity_logs WHERE user_id = ?
+`
+
+func (q *Queries) DeleteActivityForUser(ctx context.Context, userID string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteActivityForUser, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteActivityOlderThan = `-- name: DeleteActivityOlderThan :execrows
 DELETE FROM activity_logs WHERE at < ?
 `
@@ -67,6 +90,114 @@ type ListActivityParams struct {
 
 func (q *Queries) ListActivity(ctx context.Context, arg ListActivityParams) ([]ActivityLog, error) {
 	rows, err := q.db.QueryContext(ctx, listActivity, arg.UserID, arg.ID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActivityLog{}
+	for rows.Next() {
+		var i ActivityLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.At,
+			&i.Action,
+			&i.Path,
+			&i.Path2,
+			&i.DetailsJson,
+			&i.BatchID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActivityFiltered = `-- name: ListActivityFiltered :many
+SELECT id, user_id, at, "action", path, path2, details_json, batch_id FROM activity_logs
+WHERE user_id = ?1
+  AND id < ?2
+  AND (?3 = '' OR action = ?3)
+  AND (?4 = '' OR at >= ?4)
+  AND (?5 = '' OR at < ?5)
+  AND (?6 = '' OR instr(lower(coalesce(path, '')), ?6) > 0 OR instr(lower(coalesce(path2, '')), ?6) > 0)
+ORDER BY id DESC
+LIMIT ?7
+`
+
+type ListActivityFilteredParams struct {
+	UserID   string      `json:"user_id"`
+	BeforeID int64       `json:"before_id"`
+	Action   interface{} `json:"action"`
+	FromAt   interface{} `json:"from_at"`
+	ToAt     interface{} `json:"to_at"`
+	Q        interface{} `json:"q"`
+	Lim      int64       `json:"lim"`
+}
+
+func (q *Queries) ListActivityFiltered(ctx context.Context, arg ListActivityFilteredParams) ([]ActivityLog, error) {
+	rows, err := q.db.QueryContext(ctx, listActivityFiltered,
+		arg.UserID,
+		arg.BeforeID,
+		arg.Action,
+		arg.FromAt,
+		arg.ToAt,
+		arg.Q,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActivityLog{}
+	for rows.Next() {
+		var i ActivityLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.At,
+			&i.Action,
+			&i.Path,
+			&i.Path2,
+			&i.DetailsJson,
+			&i.BatchID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentActivity = `-- name: ListRecentActivity :many
+SELECT id, user_id, at, "action", path, path2, details_json, batch_id FROM activity_logs
+WHERE user_id = ? AND at >= ? AND path IS NOT NULL
+  AND action IN ('open', 'edit', 'upload', 'create', 'restore')
+ORDER BY id DESC
+LIMIT ?
+`
+
+type ListRecentActivityParams struct {
+	UserID string `json:"user_id"`
+	At     string `json:"at"`
+	Limit  int64  `json:"limit"`
+}
+
+func (q *Queries) ListRecentActivity(ctx context.Context, arg ListRecentActivityParams) ([]ActivityLog, error) {
+	rows, err := q.db.QueryContext(ctx, listRecentActivity, arg.UserID, arg.At, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

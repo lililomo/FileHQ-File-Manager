@@ -14,7 +14,7 @@ import {
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { dropTargetProps } from '@/features/file-ops/dnd'
+import { dropTargetProps, favoriteDropTargetProps } from '@/features/file-ops/dnd'
 import type { NavKey } from '@/components/PlaceholderPage'
 import { useSessionStore } from '@/stores/session'
 import { cn } from '@/lib/utils'
@@ -49,6 +49,7 @@ export function SidebarNav({
   const role = useSessionStore((s) => s.user?.role)
   const items = ITEMS.filter((i) => !i.adminOnly || role === 'admin')
   const [dropOver, setDropOver] = useState(false)
+  const [favOver, setFavOver] = useState(false)
   return (
     <nav aria-label={t('common:a11y.mainNavigation')} className="p-2">
       <ul className="space-y-0.5">
@@ -64,16 +65,21 @@ export function SidebarNav({
               className={cn(
                 'flex h-9 items-center gap-2 rounded-md px-2 text-sm text-text-muted hover:bg-surface-2 hover:text-text',
                 collapsed && 'justify-center px-0',
-                item.key === 'files' &&
-                  dropOver &&
+                ((item.key === 'files' && dropOver) || (item.key === 'favorites' && favOver)) &&
                   'bg-accent/15 outline outline-2 -outline-offset-1 outline-accent',
               )}
               aria-label={collapsed ? label : undefined}
               data-testid={`nav-${item.key}`}
-              data-drop-over={(item.key === 'files' && dropOver) || undefined}
+              data-drop-over={
+                (item.key === 'files' && dropOver) ||
+                (item.key === 'favorites' && favOver) ||
+                undefined
+              }
               {...(item.key === 'files'
                 ? dropTargetProps({ dir: '/', onOver: (d) => setDropOver(d !== null) })
-                : {})}
+                : item.key === 'favorites'
+                  ? favoriteDropTargetProps(setFavOver)
+                  : {})}
             >
               <Icon className="size-4 shrink-0" aria-hidden="true" />
               {!collapsed ? <span className="truncate">{label}</span> : null}

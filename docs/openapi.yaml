@@ -21,6 +21,8 @@ tags:
     description: Profil dan preferensi user (SPEC §8.18)
   - name: trash
     description: Recycle Bin per user (SPEC §8.6)
+  - name: meta
+    description: Favorit, pin, catatan, tag warna (SPEC §8.7)
 
 paths:
   /healthz:
@@ -344,6 +346,7 @@ paths:
         - { name: filter, in: query, schema: { type: string, maxLength: 255 }, description: Case-insensitive substring on the whole folder }
         - { name: types, in: query, schema: { type: string }, description: Comma-separated categories (folder,image,video,audio,archive,code,document,spreadsheet,presentation,pdf,text,font,other) }
         - { name: counts, in: query, schema: { type: boolean, default: false }, description: Fill itemCount for folders on the page (max 2000 per request) }
+        - { name: tag, in: query, schema: { type: string, enum: [red, orange, yellow, green, blue, purple, gray] }, description: Only items carrying this colour tag (Step 10b) }
         - { name: media, in: query, schema: { type: boolean, default: false }, description: Probe up to 50 media files of the page synchronously (Dimensi/Durasi columns); the rest is queued }
       responses:
         "200":
@@ -902,6 +905,313 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+  /api/v1/meta/favorites:
+    get:
+      summary: Every favorite of the user (folders first, natural order)
+      description: Items whose path no longer exists are returned with `broken:true` / `brokenReason:"missing"` so the UI can offer "Hapus dari favorit" instead of failing (SPEC §8.7).
+      tags: [meta]
+      operationId: metaFavoritesList
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ItemsResponse" }
+        "401": { $ref: "#/components/responses/Error" }
+    put:
+      summary: Add favorites (files or folders; existing rows kept)
+      tags: [meta]
+      operationId: metaFavoritesAdd
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MetaPathsRequest" }
+      responses:
+        "200":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetaResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Remove favorites (broken references too)
+      tags: [meta]
+      operationId: metaFavoritesRemove
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MetaPathsRequest" }
+      responses:
+        "204": { description: Removed }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/v1/meta/pins:
+    get:
+      summary: Pinned items of one folder
+      tags: [meta]
+      operationId: metaPinsList
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: dir, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, dir, max]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Item" } }
+                  dir: { type: string }
+                  max: { type: integer, description: Pins allowed per folder (50) }
+        "401": { $ref: "#/components/responses/Error" }
+    put:
+      summary: Pin items to the top of their parent folder (max 50 per folder)
+      description: Pinned items sort first in every sort order of the listing (SPEC §8.7). Over the limit → `400 VALIDATION_FAILED` with `details.reason=pin_limit`.
+      tags: [meta]
+      operationId: metaPinsAdd
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MetaPathsRequest" }
+      responses:
+        "200":
+          description: Pinned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetaResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Unpin items
+      tags: [meta]
+      operationId: metaPinsRemove
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MetaPathsRequest" }
+      responses:
+        "204": { description: Removed }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/v1/meta/notes:
+    put:
+      summary: Set the plain-text note of one item (max 500 characters; empty removes it)
+      tags: [meta]
+      operationId: metaNoteSet
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MetaNoteRequest" }
+      responses:
+        "200":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [path, note, max]
+                properties:
+                  path: { type: string }
+                  note: { type: string }
+                  max: { type: integer }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Remove notes
+      tags: [meta]
+      operationId: metaNoteRemove
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MetaPathsRequest" }
+      responses:
+        "204": { description: Removed }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/v1/meta/tags:
+    put:
+      summary: Set the colour tag of items (one colour per item)
+      tags: [meta]
+      operationId: metaTagsSet
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MetaTagsRequest" }
+      responses:
+        "200":
+          description: Tagged
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/MetaResult" }
+                  - type: object
+                    properties:
+                      color: { $ref: "#/components/schemas/TagColor" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Clear the colour tag of items
+      tags: [meta]
+      operationId: metaTagsRemove
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MetaPathsRequest" }
+      responses:
+        "204": { description: Removed }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/v1/meta/tagged:
+    get:
+      summary: Every item carrying a colour (broken references flagged)
+      tags: [meta]
+      operationId: metaTagged
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: color, in: query, required: true, schema: { $ref: "#/components/schemas/TagColor" } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/ItemsResponse" }
+                  - type: object
+                    properties:
+                      color: { $ref: "#/components/schemas/TagColor" }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/v1/me/recent:
+    get:
+      summary: Recently opened / edited / uploaded / created / restored items (30 days, one row per path)
+      description: Derived from `activity_logs`; only paths that still exist are returned, each with `location` (parent folder) for "Buka lokasi file" (SPEC §8.7).
+      tags: [me]
+      operationId: meRecent
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 100 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecentResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+    post:
+      summary: Record that the user opened an item (viewer, Quick Look, editor)
+      description: Writes an `open` activity row so reads show up in Recent; the path must exist.
+      tags: [me]
+      operationId: meRecentRecord
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PathRequest" }
+      responses:
+        "204": { description: Recorded }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/me/activity:
+    get:
+      summary: The user's activity journal (newest first, cursor paging)
+      description: Filters by action, day range (`YYYY-MM-DD`, `to` inclusive) and path substring; `exists` tells whether the item still exists (SPEC §8.16 "Aktivitas user"). Retention `ACTIVITY_RETENTION_DAYS`.
+      tags: [me]
+      operationId: meActivity
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: cursor, in: query, schema: { type: string }, description: nextCursor of the previous page }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 100 } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string }, description: YYYY-MM-DD or RFC 3339, inclusive }
+        - { name: to, in: query, schema: { type: string }, description: YYYY-MM-DD (whole day) or RFC 3339, exclusive }
+        - { name: q, in: query, schema: { type: string, maxLength: 255 }, description: Case-insensitive substring of path / target }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActivityResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Delete the whole journal of the user ("Hapus riwayat saya"; audit rows untouched)
+      tags: [me]
+      operationId: meActivityClear
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: integer, format: int64 }
+  /api/v1/me/storage-analysis:
+    get:
+      summary: Storage analysis of the user root (treemap depth 3, 50 largest files, totals per type)
+      description: One walk with a 60 s budget (`partial:true` when cut, Step 11 turns it into a task), cached 10 minutes per user and dropped by any file mutation. Sizes follow quota accounting (regular files + symlink sizes) so `total` equals `quota.used`.
+      tags: [me]
+      operationId: meStorageAnalysis
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: OK (cached or freshly computed)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StorageAnalysis" }
+        "401": { $ref: "#/components/responses/Error" }
+    post:
+      summary: Recompute the storage analysis now ("Hitung ulang")
+      tags: [me]
+      operationId: meStorageAnalysisRecompute
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Recomputed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StorageAnalysis" }
+        "401": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     cookieAuth:
@@ -1468,6 +1778,129 @@ components:
           type: array
           items:
             type: string
+    TagColor:
+      type: string
+      enum: [red, orange, yellow, green, blue, purple, gray]
+    MetaPathsRequest:
+      type: object
+      description: "`paths` (batch, max 2000) or the single-item alias `path`; the root folder is never accepted."
+      properties:
+        paths: { type: array, items: { type: string }, maxItems: 2000 }
+        path: { type: string }
+    MetaResult:
+      type: object
+      required: [paths, count]
+      properties:
+        paths: { type: array, items: { type: string } }
+        count: { type: integer, description: Rows written (PUT) or removed (DELETE) }
+    MetaNoteRequest:
+      type: object
+      required: [path, note]
+      properties:
+        path: { type: string }
+        note: { type: string, maxLength: 500, description: Plain text (not rendered as Markdown); empty removes the note }
+    MetaTagsRequest:
+      type: object
+      required: [color]
+      properties:
+        paths: { type: array, items: { type: string }, maxItems: 2000 }
+        path: { type: string }
+        color: { $ref: "#/components/schemas/TagColor" }
+    ItemsResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Item" } }
+        total: { type: integer }
+    RecentItem:
+      allOf:
+        - { $ref: "#/components/schemas/Item" }
+        - type: object
+          required: [location, action, at]
+          properties:
+            location: { type: string, description: Parent folder (virtual path) }
+            action: { type: string, enum: [open, edit, upload, create, restore] }
+            at: { type: string, format: date-time }
+    RecentResponse:
+      type: object
+      required: [items, total, windowDays]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/RecentItem" } }
+        total: { type: integer }
+        windowDays: { type: integer }
+    ActivityEntry:
+      type: object
+      required: [id, at, action, exists]
+      properties:
+        id: { type: integer, format: int64 }
+        at: { type: string, format: date-time }
+        action: { type: string, description: rename, move, copy, duplicate, symlink, chmod, delete, batch_rename, undo, restore, purge, purge_auto, trash_empty, delete_permanent, dir_size, checksum, open, create, edit, upload }
+        path: { type: string, nullable: true }
+        path2: { type: string, nullable: true, description: Destination of rename/move/copy }
+        details: { type: object, additionalProperties: true }
+        batchId: { type: string, nullable: true }
+        exists: { type: boolean, description: The item at `path` still exists }
+    ActivityResponse:
+      type: object
+      required: [items, nextCursor, retentionDays]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/ActivityEntry" } }
+        nextCursor: { type: string, nullable: true }
+        retentionDays: { type: integer }
+    AnalysisNode:
+      type: object
+      required: [name, path, kind, size, files, dirs]
+      properties:
+        name: { type: string, description: Folder name ("/" for the root; empty for files/other leaves) }
+        path: { type: string, description: Folder path (the parent folder for files/other leaves) }
+        kind: { type: string, enum: [dir, files, other], description: "dir = folder; files = the parent's direct files; other = merged folders below 0.5 % of the total" }
+        size: { type: integer, format: int64 }
+        files: { type: integer, format: int64 }
+        dirs: { type: integer, format: int64 }
+        children:
+          type: array
+          items: { $ref: "#/components/schemas/AnalysisNode" }
+    AnalysisFile:
+      type: object
+      required: [path, name, size, mtime, category]
+      properties:
+        path: { type: string }
+        name: { type: string }
+        size: { type: integer, format: int64 }
+        mtime: { type: string, format: date-time }
+        category: { type: string }
+    StorageAnalysis:
+      type: object
+      required: [generatedAt, computedAt, partial, total, files, dirs, tree, topFiles, byType, cached, durationMs]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        computedAt: { type: string, format: date-time, description: Alias of generatedAt (SPEC name) }
+        partial: { type: boolean, description: True when the 60 s budget ran out }
+        total: { type: integer, format: int64, description: Bytes below the user root (= quota.used) }
+        files: { type: integer, format: int64 }
+        dirs: { type: integer, format: int64 }
+        tree: { $ref: "#/components/schemas/AnalysisNode" }
+        topFiles: { type: array, items: { $ref: "#/components/schemas/AnalysisFile" }, maxItems: 50 }
+        byType:
+          type: object
+          description: Keys image, video, audio, document, archive, other
+          additionalProperties:
+            type: object
+            properties:
+              bytes: { type: integer, format: int64 }
+              files: { type: integer, format: int64 }
+        trash: { type: integer, format: int64 }
+        versions: { type: integer, format: int64 }
+        quota:
+          type: object
+          properties:
+            limit: { type: integer, format: int64 }
+            used: { type: integer, format: int64 }
+            free: { type: integer, format: int64 }
+            percent: { type: number }
+            dirty: { type: boolean }
+        cached: { type: boolean }
+        durationMs: { type: integer, format: int64 }
   responses:
     Error:
       description: Error envelope

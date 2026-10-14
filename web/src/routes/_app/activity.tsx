@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { PlaceholderPage } from '@/components/PlaceholderPage'
+import { ActivityPage } from '@/features/activity/ActivityPage'
 
 export const Route = createFileRoute('/_app/activity')({
-  component: () => <PlaceholderPage step="10b" titleKey="activity" />,
+  component: ActivityPage,
 })

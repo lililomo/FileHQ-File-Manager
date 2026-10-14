@@ -24,6 +24,7 @@ import (
 	"kppbwi.app/filemanager/internal/files"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/listing"
+	"kppbwi.app/filemanager/internal/meta"
 	"kppbwi.app/filemanager/internal/quota"
 	"kppbwi.app/filemanager/internal/trash"
 )
@@ -66,6 +67,7 @@ type authEnv struct {
 	listing *listing.Service
 	files   *files.Service
 	quota   *quota.Service
+	meta    *meta.Service
 }
 
 func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
@@ -114,10 +116,15 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 	env.trash.Unique = files.UniqueName
 	env.trash.OnPurge = files.PurgeReferences
 	t.Cleanup(env.trash.Close)
-	env.listing = listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize})
+	env.meta = meta.New(meta.Options{Repo: store, Logger: logger, Now: clock.Now, Invalidate: func(userID string, dir fsjail.VPath) {
+		if env.listing != nil {
+			env.listing.Invalidate(userID, "", dir)
+		}
+	}})
+	env.listing = listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize, Meta: env.meta})
 	env.files = files.New(files.Options{Repo: store, Locks: env.locks, Trash: env.trash, Logger: logger, Quota: env.quota, Now: clock.Now,
 		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) }})
-	env.handler = New(Options{Cfg: cfg, Logger: logger, Version: "test", Store: store, Auth: svc, Listing: env.listing, Locks: env.locks, Files: env.files, Quota: env.quota,
+	env.handler = New(Options{Cfg: cfg, Logger: logger, Version: "test", Store: store, Auth: svc, Listing: env.listing, Locks: env.locks, Files: env.files, Quota: env.quota, Meta: env.meta,
 		Assets: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("spa")) })})
 	return env
 }

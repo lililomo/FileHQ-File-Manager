@@ -39,7 +39,7 @@ type ListData = InfiniteData<ListResponse, string | null>
 type LooseT = (key: string, options?: Record<string, unknown>) => string
 
 /** Optimistic patch of every cached listing of `dir` (all sort variants). */
-function patchLists(qc: QueryClient, dir: string, fn: (items: Item[]) => Item[]): void {
+export function patchLists(qc: QueryClient, dir: string, fn: (items: Item[]) => Item[]): void {
   qc.setQueriesData<ListData>({ queryKey: ['list', dir] }, (old) => {
     // the folder picker caches plain ListResponse pages under the same prefix
     if (!old || !Array.isArray(old.pages)) return old

@@ -505,7 +505,11 @@
     "sort": "Sort",
     "restore": "Restore",
     "restoreTo": "Restore to…",
-    "purge": "Delete permanently"
+    "purge": "Delete permanently",
+    "unfavorite": "Remove from favourites",
+    "unpin": "Unpin",
+    "openInNewWindow": "Open in new window",
+    "tagNone": "No tag"
   },
   "view": {
     "label": "View mode",

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { formatBytes, formatRelativeTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { Item } from '../api'
+import { ItemBadges } from '../Badges'
 import { typeLabel } from '../columns'
 import { GridView, type CellState, type GridViewProps } from './GridView'
 import { Thumb } from './Thumb'
@@ -30,6 +31,7 @@ function TileCell({ item, state }: { item: Item; state: CellState }) {
             </span>
           )}
           <Broken item={item} />
+          <ItemBadges item={item} />
         </div>
         <div className="truncate text-xs text-text-muted">{typeLabel(t, item)}</div>
         <div className="truncate text-xs text-text-muted tabular">
@@ -66,6 +68,7 @@ function IconCell({
           </span>
         )}
         <Broken item={item} />
+        <ItemBadges item={item} />
       </div>
     </div>
   )

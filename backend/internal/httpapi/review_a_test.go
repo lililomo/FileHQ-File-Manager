@@ -242,6 +242,24 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		{http.MethodPost, "/api/v1/trash/restore"},
 		{http.MethodPost, "/api/v1/trash/purge"},
 		{http.MethodPost, "/api/v1/trash/empty"},
+		// Step 10b
+		{http.MethodGet, "/api/v1/meta/favorites"},
+		{http.MethodPut, "/api/v1/meta/favorites"},
+		{http.MethodDelete, "/api/v1/meta/favorites"},
+		{http.MethodGet, "/api/v1/meta/pins"},
+		{http.MethodPut, "/api/v1/meta/pins"},
+		{http.MethodDelete, "/api/v1/meta/pins"},
+		{http.MethodPut, "/api/v1/meta/notes"},
+		{http.MethodDelete, "/api/v1/meta/notes"},
+		{http.MethodPut, "/api/v1/meta/tags"},
+		{http.MethodDelete, "/api/v1/meta/tags"},
+		{http.MethodGet, "/api/v1/meta/tagged"},
+		{http.MethodGet, "/api/v1/me/recent"},
+		{http.MethodPost, "/api/v1/me/recent"},
+		{http.MethodGet, "/api/v1/me/activity"},
+		{http.MethodDelete, "/api/v1/me/activity"},
+		{http.MethodGet, "/api/v1/me/storage-analysis"},
+		{http.MethodPost, "/api/v1/me/storage-analysis"},
 	}
 	for _, b := range blocked {
 		var body any
@@ -285,6 +303,13 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		"GET /api/v1/me/quota": true, "POST /api/v1/files/delete-permanent": true, "POST /api/v1/files/dir-size": true,
 		"POST /api/v1/files/checksum": true, "POST /api/v1/files/checksum/verify": true,
 		"GET /api/v1/trash": true, "POST /api/v1/trash/restore": true, "POST /api/v1/trash/purge": true, "POST /api/v1/trash/empty": true,
+		"GET /api/v1/meta/favorites": true, "PUT /api/v1/meta/favorites": true, "DELETE /api/v1/meta/favorites": true,
+		"GET /api/v1/meta/pins": true, "PUT /api/v1/meta/pins": true, "DELETE /api/v1/meta/pins": true,
+		"PUT /api/v1/meta/notes": true, "DELETE /api/v1/meta/notes": true,
+		"PUT /api/v1/meta/tags": true, "DELETE /api/v1/meta/tags": true, "GET /api/v1/meta/tagged": true,
+		"GET /api/v1/me/recent": true, "POST /api/v1/me/recent": true,
+		"GET /api/v1/me/activity": true, "DELETE /api/v1/me/activity": true,
+		"GET /api/v1/me/storage-analysis": true, "POST /api/v1/me/storage-analysis": true,
 		// signed URL only (no cookie): a user who must change the password cannot
 		// obtain one because /files/sign is gated (Step 8).
 		"GET /api/v1/files/thumb": true,

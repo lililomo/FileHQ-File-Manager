@@ -10,6 +10,9 @@ import {
   CopyPlus,
   Download,
   ExternalLink,
+  AppWindow,
+  PinOff,
+  StarOff,
   FilePlus2,
   FileSearch,
   FolderInput,
@@ -118,6 +121,14 @@ export interface ActionContext {
   restore?: () => void
   restoreTo?: () => void
   purge?: () => void
+  /** Step 10b: organisation metadata (SPEC §8.7). */
+  toggleFavorite?: () => void
+  togglePin?: () => void
+  editNote?: () => void
+  setTag?: (color: string | null) => void
+  /** Only provided by Search / Recent lists: navigate to the folder and select the item. */
+  openLocation?: () => void
+  openInNewWindow?: () => void
 }
 
 export interface ActionDef {
@@ -175,6 +186,14 @@ export const ACTIONS: ActionDef[] = [
     run: (c) => c.openInNewTab(),
   },
   {
+    id: 'openInNewWindow',
+    labelKey: 'openInNewWindow',
+    group: 'navigate',
+    icon: AppWindow,
+    isApplicable: (c) => oneFolder(c) && !!c.openInNewWindow,
+    run: (c) => c.openInNewWindow?.(),
+  },
+  {
     id: 'quickLook',
     labelKey: 'quickLook',
     group: 'select',
@@ -226,36 +245,52 @@ export const ACTIONS: ActionDef[] = [
     labelKey: 'favorite',
     group: 'meta',
     icon: Star,
-    available: false,
-    isApplicable: some,
-    run: noop,
+    isApplicable: (c) => some(c) && !!c.toggleFavorite && !c.selection.every((it) => it.favorite),
+    run: (c) => c.toggleFavorite?.(),
+  },
+  {
+    id: 'unfavorite',
+    labelKey: 'unfavorite',
+    group: 'meta',
+    icon: StarOff,
+    isApplicable: (c) =>
+      some(c) &&
+      !!c.toggleFavorite &&
+      c.selection.length > 0 &&
+      c.selection.every((it) => it.favorite),
+    run: (c) => c.toggleFavorite?.(),
   },
   {
     id: 'pin',
     labelKey: 'pin',
     group: 'meta',
     icon: Pin,
-    available: false,
-    isApplicable: one,
-    run: noop,
+    isApplicable: (c) => one(c) && !!c.togglePin && !c.selection[0]!.pinned,
+    run: (c) => c.togglePin?.(),
+  },
+  {
+    id: 'unpin',
+    labelKey: 'unpin',
+    group: 'meta',
+    icon: PinOff,
+    isApplicable: (c) => one(c) && !!c.togglePin && c.selection[0]!.pinned,
+    run: (c) => c.togglePin?.(),
   },
   {
     id: 'note',
     labelKey: 'note',
     group: 'meta',
     icon: StickyNote,
-    available: false,
-    isApplicable: one,
-    run: noop,
+    isApplicable: (c) => one(c) && !!c.editNote,
+    run: (c) => c.editNote?.(),
   },
   {
     id: 'tagColor',
     labelKey: 'tagColor',
     group: 'meta',
     icon: Tag,
-    available: false,
     submenu: true,
-    isApplicable: some,
+    isApplicable: (c) => some(c) && !!c.setTag,
     run: noop,
   },
   // --- file operations (9b) ---
@@ -438,9 +473,8 @@ export const ACTIONS: ActionDef[] = [
     labelKey: 'openLocation',
     group: 'navigate',
     icon: FolderOpen,
-    available: false,
-    isApplicable: one,
-    run: noop,
+    isApplicable: (c) => one(c) && !!c.openLocation,
+    run: (c) => c.openLocation?.(),
   },
   {
     id: 'properties',
@@ -735,7 +769,9 @@ export const MENU_MATRIX: Record<MenuContext, string[]> = {
     'copyShareLink',
     '|',
     'favorite',
+    'unfavorite',
     'pin',
+    'unpin',
     'note',
     'tagColor',
     '|',
@@ -764,11 +800,14 @@ export const MENU_MATRIX: Record<MenuContext, string[]> = {
   folder: [
     'open',
     'openInNewTab',
+    'openInNewWindow',
     'downloadZip',
     '|',
     'share',
     'favorite',
+    'unfavorite',
     'pin',
+    'unpin',
     'note',
     'tagColor',
     '|',
@@ -803,6 +842,7 @@ export const MENU_MATRIX: Record<MenuContext, string[]> = {
     'permissions',
     '|',
     'favorite',
+    'unfavorite',
     'tagColor',
     '|',
     'delete',
@@ -862,6 +902,11 @@ export const TOOLBAR_MORE = [
   'copyTo',
   'duplicate',
   'batchRename',
+  'favorite',
+  'unfavorite',
+  'pin',
+  'unpin',
+  'note',
   'permissions',
   'symlink',
   'copyPath',

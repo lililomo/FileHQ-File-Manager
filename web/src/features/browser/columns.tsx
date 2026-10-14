@@ -12,6 +12,8 @@ import {
   formatRelativeTime,
 } from '@/lib/format'
 import type { Item, SortField } from './api'
+import { ItemBadges } from './Badges'
+import { NoteCell } from './NoteCell'
 
 /** All Details-view columns (SPEC §8.4, brief §5). `location` only appears in
  *  search results / Recent (Step 15, 10b). */
@@ -160,7 +162,16 @@ function dateCell(value: string | null | undefined, lang: string) {
   )
 }
 
-export function buildColumns(t: TFunction<'files'>, lang: string): ColumnDef[] {
+export interface ColumnOptions {
+  /** Inline note editing (Step 10b); undefined = read-only cell. */
+  onNoteSave?: ((path: string, note: string) => Promise<boolean>) | undefined
+}
+
+export function buildColumns(
+  t: TFunction<'files'>,
+  lang: string,
+  opts: ColumnOptions = {},
+): ColumnDef[] {
   return [
     {
       id: 'name',
@@ -184,6 +195,7 @@ export function buildColumns(t: TFunction<'files'>, lang: string): ColumnDef[] {
                 <TooltipContent>{t('grid.broken')}</TooltipContent>
               </Tooltip>
             ) : null}
+            <ItemBadges item={it} />
           </span>
         )
       },
@@ -219,7 +231,7 @@ export function buildColumns(t: TFunction<'files'>, lang: string): ColumnDef[] {
       id: 'note',
       header: () => t('columns.note'),
       meta: COLUMN_META.note,
-      cell: (it) => <span className="truncate text-text-muted">{it.note ?? ''}</span>,
+      cell: (it) => <NoteCell item={it} onSave={opts.onNoteSave} />,
     },
     {
       id: 'btime',

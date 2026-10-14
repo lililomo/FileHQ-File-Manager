@@ -95,6 +95,8 @@ export interface ListOptions {
   counts?: boolean
   /** Probe media metadata for the page (Dimensi/Durasi columns). */
   media?: boolean
+  /** Only items carrying this colour tag (Step 10b). */
+  tag?: string | undefined
 }
 
 export const DEFAULT_LIST: Required<Pick<ListOptions, 'sort' | 'dir' | 'foldersFirst'>> = {
@@ -116,6 +118,7 @@ export function listQueryKey(path: string, opts: ListOptions = {}) {
     o.types ?? '',
     o.filter ?? '',
     o.media ?? false,
+    o.tag ?? '',
   ] as const
 }
 
@@ -139,6 +142,7 @@ export function listDir(
     limit: o.limit,
     counts: o.counts,
     media: o.media ? true : undefined,
+    tag: o.tag || undefined,
     cursor,
   }
   return api<ListResponse>('/files/list', signal ? { query, signal } : { query })

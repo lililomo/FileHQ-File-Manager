@@ -915,9 +915,9 @@ Kolom "Auth" memakai kode §6.1. Request/response ditulis ringkas; skema lengkap
 | `DELETE /me/sessions/{id}` · `POST /me/sessions/revoke-others` | S+P | — | `204` |
 | `GET /me/folder-views?path=` · `PUT /me/folder-views` · `DELETE /me/folder-views?path=` | S+P | `{path, viewMode, sort…, columns}` | `200` |
 | `GET /me/editor-session` · `PUT /me/editor-session` | S+P | `{tabs, activePath}` | `200` |
-| `GET /me/activity?cursor&limit&action&from&to` | S+P | — | `200 {items:[{at, action, path, path2, details}]}` |
-| `GET /me/recent?limit=100` | S+P | — | `200 {items:[Info + location]}` (hanya yang masih ada) |
-| `GET /me/storage-analysis` | S+P | — | `202 {task}` pertama kali / `200 {tree (treemap depth 3), largest:[50], computedAt}` jika cache < 1 jam |
+| `GET /me/activity?cursor&limit&action&from&to&q` · `DELETE /me/activity` | S+P | — | `200 {items:[{id, at, action, path, path2, details, batchId, exists}], nextCursor, retentionDays}` (cursor = id terakhir; `from`/`to` = `YYYY-MM-DD` atau RFC 3339, `to` inklusif harian; `q` substring path) · `200 {deleted}` ("Hapus riwayat saya") |
+| `GET /me/recent?limit=100` · `POST /me/recent` | S+P | `{path}` | `200 {items:[Item + location + action + at], total, windowDays}` (hanya yang masih ada) · `204` (catat `open`) |
+| `GET /me/storage-analysis` · `POST /me/storage-analysis` | S+P | — | `200 {generatedAt, computedAt, partial, total, files, dirs, tree, topFiles:[50], byType, trash, versions, quota, cached, durationMs}` (GET: cache 10 menit atau hitung sinkron ≤ 60 s; POST: hitung ulang). Step 11: walk > 60 s → `202 {task}` |
 | `POST /me/totp/setup` · `POST /me/totp/enable` · `POST /me/totp/disable` | S+P | fase akhir (Step 23) | |
 | `GET /me/quota` | S+P | `200 {quota, limit (alias), used, trash, versions, reserved, free, percent, fileCount, dirCount, dirty, calculatedAt}` — angka inkremental `quota_usage` (+ reservasi operasi yang sedang berjalan); `dirty:true` sebelum rekalkulasi pertama atau setelah operasi sebagian gagal (Step 10a). Objek yang sama ada di `GET /auth/me` `user.quota` | |
 
@@ -980,11 +980,12 @@ Kolom "Auth" memakai kode §6.1. Request/response ditulis ringkas; skema lengkap
 
 | Method & path | Request | Response |
 | --- | --- | --- |
-| `GET /meta/favorites` · `PUT /meta/favorites` · `DELETE /meta/favorites` | `{paths}` | `200 {items:[Item+broken]}` / `204` |
-| `GET /meta/pins?dir` · `PUT /meta/pins` · `DELETE /meta/pins` | `{paths}` | |
-| `PUT /meta/notes` · `DELETE /meta/notes` | `{path, note}` | |
-| `PUT /meta/tags` · `DELETE /meta/tags` | `{paths, color}` | |
-| `GET /meta/tagged?color&cursor` | | `200 {items}` |
+| `GET /meta/favorites` · `PUT /meta/favorites` · `DELETE /meta/favorites` | `{paths}` (atau alias `{path}`; maks 2000; root ditolak) | `200 {items:[Item+broken], total}` (folder dulu, natural) · `200 {paths, count}` · `204` (referensi rusak boleh dihapus tanpa cek jail) |
+| `GET /meta/pins?dir` · `PUT /meta/pins` · `DELETE /meta/pins` | `{paths}` | `200 {items, dir, max:50}` · `200 {paths, count}` (> 50 per folder → `400 VALIDATION_FAILED reason=pin_limit`) · `204` |
+| `PUT /meta/notes` · `DELETE /meta/notes` | `{path, note}` (≤ 500 karakter; kosong = hapus) · `{paths}` | `200 {path, note, max}` (> 500 → `400 VALIDATION_FAILED reason=note_too_long`) · `204` |
+| `PUT /meta/tags` · `DELETE /meta/tags` | `{paths, color}` | `200 {paths, count, color}` · `204` |
+| `GET /meta/tagged?color` | | `200 {items:[Item+broken], total, color}` |
+| `GET /files/list?tag=<color>` | | filter server-side item ber-tag (Step 10b) |
 
 **Tasks & events**
 
@@ -1180,7 +1181,7 @@ stateDiagram-v2
 - Retry: membuat task **baru** dengan payload yang sama (`result.retryOf`), kecuali yang butuh password (compress/extract ber-password) → UI meminta password ulang.
 - Log: `rt.Log` menulis ke `task_logs`; level `warn` untuk item yang dilewati (zip-slip, symlink, ekstensi diblokir).
 - Pembersihan: task final > 30 hari dihapus bersama log; `tmp/<task_id>` dihapus saat task final; saat start, `tmp/*` yang tidak punya task `running` dihapus.
-- Job terjadwal: `internal/scheduler` (Step 10a; tanpa dependensi, poll 30 s, job harian `At:"15:04"` di zona `TZ_DEFAULT` atau `Every` interval, satu job tidak pernah tumpang tindih dengan dirinya, `Timeout` per run, `RunNow(name)` untuk maintenance admin 19b): `purge_trash` 03:00 harian, `recalc_quota` 03:30 harian (semua user, maks 10 menit/user, 1 jam total), `backup_db` 02:30 harian (keep 7, 19b), `clean_uploads` tiap jam (12a), `prune_logs` 04:00 harian (10b/19b), `integrity_check` tiap 6 jam (19b); sesi kedaluwarsa tiap jam (sudah ada di `auth.RunMaintenance`).
+- Job terjadwal: `internal/scheduler` (Step 10a; tanpa dependensi, poll 30 s, job harian `At:"15:04"` di zona `TZ_DEFAULT` atau `Every` interval, satu job tidak pernah tumpang tindih dengan dirinya, `Timeout` per run, `RunNow(name)` untuk maintenance admin 19b): `purge_trash` 03:00 harian, `recalc_quota` 03:30 harian (semua user, maks 10 menit/user, 1 jam total), `backup_db` 02:30 harian (keep 7, 19b), `clean_uploads` tiap jam (12a), `prune_logs` 04:00 harian (10b: `activity_logs` > `ACTIVITY_RETENTION_DAYS`; 19b menambah audit/share_access_logs), `integrity_check` tiap 6 jam (19b); sesi kedaluwarsa tiap jam (sudah ada di `auth.RunMaintenance`).
 
 ### 7.4 Panel task (frontend)
 
@@ -1243,7 +1244,7 @@ Pembuatan terjadi lewat `os.Root` pada `STORAGE_ROOT` (`OpenRoot(STORAGE_ROOT).M
 
 1. `jail.Stat(dir)`; bukan dir → `VALIDATION_FAILED not_a_directory` (UI membuka viewer).
 2. Cache key = `hash(userID|scope|path|sortSpec|foldersFirst|hidden)`; entri `{dirMtime, builtAt, items []Item}`; valid jika `dirMtime` sama dan `builtAt` < 15 detik lalu, dan tidak di-invalidate. Cache LRU global 64 MB (≈ 100 folder besar).
-3. Build: `ReadDir` → `Lstat` tiap entri (10k entri ≈ 50–150 ms di SSD); ambil metadata batch dari DB (`WHERE user_id=? AND path IN (…)` dipecah per 500) untuk pins/favorites/tags/notes/shares/media_metadata; `mime` untuk file ditentukan dari ekstensi (cepat) dan diperbaiki oleh `media_metadata.mime` jika ada; `typeLabel` dari tabel ekstensi→label i18n.
+3. Build: `ReadDir` → `Lstat` tiap entri (10k entri ≈ 50–150 ms di SSD); ambil metadata dari DB — favorites/pins/notes/tags per folder dengan satu query per tabel (`substr(path,1,len(prefix))=prefix AND instr(substr(path,from),'/')=0`, `meta.Service.Annotate`, Step 10b; tidak bergantung jumlah entri), media_metadata batch `path IN (…)` per 500 (`listing.MultiMeta` menjalankan keduanya sebelum sort sehingga `pinned` ikut tersortir dan ter-cache; tulis metadata memanggil `listing.Invalidate` folder induk); `mime` untuk file ditentukan dari ekstensi (cepat) dan diperbaiki oleh `media_metadata.mime` jika ada; `typeLabel` dari tabel ekstensi→label i18n.
 4. Sort stabil (`sort.SliceStable`) dengan komparator berlapis: pinned desc → (foldersFirst: isDir desc) → field utama → field sekunder → nama (collator) → path.
 5. Potong halaman: tanpa cursor → `items[0:limit]`; dengan cursor → cari posisi item pertama yang `> cursor` (binary search pada slice tersortir memakai komparator yang sama; cursor menyimpan `{v:1, f:sortField, d:dir, k:<nilai field item terakhir>, n:<nama>, p:<pinned>, i:<isDir>}`), sehingga cursor stabil walau folder berubah (item yang disisipkan sebelum posisi tidak menyebabkan duplikasi/lompatan item setelahnya).
 
@@ -1336,12 +1337,12 @@ Semua CLI: `exec.CommandContext` dengan timeout 30 s (video 60 s), `nice -n 10`,
 
 - **Favorit**: file/folder; sidebar "Favorit" menampilkan daftar (folder bisa diklik masuk; file membuka viewer); DnD ke sidebar menambah favorit; badge bintang di kolom Nama; referensi rusak → badge + "Hapus dari favorit".
 - **Pin**: per folder induk; item pinned selalu di atas (setelah sort), badge pin; maks 50 pin per folder.
-- **Catatan** (remark/"PS" aaPanel): kolom "Catatan" editable inline (klik dua kali sel), ≤ 1000 karakter, Markdown tidak dirender (plain text, escape).
+- **Catatan** (remark/"PS" aaPanel): kolom "Catatan" editable inline (klik dua kali sel; Enter simpan, Esc batal, counter karakter), **≤ 500 karakter** (PROMPT Step 10b; draf awal 1000), UTF-8 valid, Markdown tidak dirender (plain text, escape). Juga lewat dialog "Catatan…" (menu konteks) dan Properties/Quick Look.
 - **Tag warna**: 7 warna; badge titik warna sebelum nama; filter cepat "Tag: merah" di toolbar; halaman pencarian mendukung `tag=`; batch set/hapus.
-- **Recent**: derivasi `activity_logs` (open/edit/upload/create/restore) 30 hari, dedup per path, maks 100, hanya yang masih ada; kolom Lokasi; aksi "Buka lokasi file" (navigasi ke folder + seleksi item).
+- **Recent**: derivasi `activity_logs` (open/edit/upload/create/restore) 30 hari, dedup per path, default 100 (maks 200 via `?limit`), hanya yang masih ada; kolom Lokasi; aksi "Buka lokasi file" (navigasi ke folder + seleksi item lewat `?select=<nama>` di route `/files/*`). `open` dicatat klien lewat `POST /me/recent {path}` saat viewer/Quick Look/editor membuka berkas; `create` dicatat handler mkdir/create. Favorit/pin/catatan/tag yang path-nya hilang (perubahan via SSH) dikembalikan sebagai `broken:true`/`brokenReason:"missing"`, tidak pernah 500.
 - **Properties** (dialog `features/properties/PropertiesDialog`, Alt+Enter; tab Umum / Checksum (file) / Riwayat versi): Nama, Tipe (label + MIME), Lokasi (path virtual), Ukuran (file: byte & manusiawi; folder: tombol "Hitung" → `POST /files/dir-size` sinkron ≤ 60 s, hasil `files/dirs/bytes` juga mengisi kolom Ukuran; Step 11 mengubah walk panjang menjadi task), Diubah/Dibuat/Diakses/Perubahan status, Permission (rwx + octal, tombol Ubah… membuka dialog Permission), Symlink target, Checksum (MD5/SHA-1/SHA-256 per algoritma atau semua: file ≤ 100 MB sinkron, lebih besar pesan "butuh task engine" (Step 11); tombol salin; "Verifikasi hash" → cocok/tidak + hash sebenarnya), Riwayat versi (placeholder sampai 16b), Share/Catatan/Tag/Favorit/Pin (10b/18b). Multi-seleksi → ringkasan jumlah file/folder & total ukuran file (folder tidak dihitung; "Hitung ukuran" per folder). Aksi menu "Hitung ukuran" (folder) dan "Checksum…" (file) aktif sejak Step 10a.
 - **Copy path**: menyalin path virtual (`/Proyek/a.txt`); menu "Salin link share" hanya jika ada share publik aktif.
-- **Analisis penyimpanan** (`/storage`): task `dir_size` pada `/` dengan agregasi per folder (depth ≤ 3 untuk treemap, node < 0,5 % digabung "Lainnya"), 50 file terbesar (heap), ringkasan per tipe (gambar/video/audio/dokumen/arsip/lainnya), ukuran Recycle Bin dan versi; cache 1 jam; treemap SVG (d3-hierarchy, pakai skill dataviz saat implementasi), klik node → navigasi; tombol "Hitung ulang".
+- **Analisis penyimpanan** (`/storage`): walk sinkron `files.Analyze` pada `/` (budget 60 s, `partial:true` bila terpotong; Step 11 mengubahnya menjadi task `dir_size`) dengan agregasi per folder (depth ≤ 3 untuk treemap; anak < 0,5 % total digabung node `kind:"other"`; berkas langsung tiap folder menjadi leaf `kind:"files"`), 50 file terbesar (min-heap), ringkasan per kelas (image/video/audio/document/archive/other — dokumen mencakup document/spreadsheet/presentation/pdf/text/code), ukuran Recycle Bin dan versi dari `quota_usage`; **akuntansi sama dengan kuota** (berkas reguler + ukuran link symlink) sehingga `total` = `quota.used`; cache 10 menit per user (dihapus oleh mutasi file apa pun), `POST` memaksa hitung ulang ("Hitung ulang"); treemap SVG squarified ditulis sendiri (`features/storage-analysis/squarify.ts`, tanpa d3), dua tingkat tampil sekaligus, hover tooltip, klik folder → drill-down lalu buka folder; tabel 50 terbesar dengan "Buka lokasi file" dan Hapus.
 
 ### 8.8 Upload
 

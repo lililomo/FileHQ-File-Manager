@@ -63,6 +63,7 @@ type Service struct {
 	quota          *quota.Service
 	dirSizes       *dirSizeCache
 	checksums      *checksumCache
+	analyses       *analysisCache
 
 	// TestHook, when set, runs after locks are taken and before the
 	// filesystem is touched (concurrency tests).
@@ -89,7 +90,7 @@ func New(o Options) *Service {
 	return &Service{repo: o.Repo, locks: o.Locks, trash: o.Trash, logger: o.Logger, now: o.Now,
 		syncMaxBytes: o.SyncMaxBytes, syncMaxEntries: o.SyncMaxEntries, onChange: o.OnChange,
 		invalidate: o.Invalidate, undo: NewUndoStore(o.Now), quota: o.Quota,
-		dirSizes: newDirSizeCache(o.Now), checksums: newChecksumCache(o.Now)}
+		dirSizes: newDirSizeCache(o.Now), checksums: newChecksumCache(o.Now), analyses: newAnalysisCache(o.Now)}
 }
 
 // Quota exposes the accounting service (nil when disabled).
@@ -117,6 +118,7 @@ func (s *Service) changed(ctx context.Context, userID string, p fsjail.VPath, is
 	s.invalidateDir(userID, p.Dir())
 	s.dirSizes.invalidate(userID, p)
 	s.checksums.invalidate(userID, p)
+	s.analyses.invalidate(userID)
 }
 
 // PurgeReferences is the trash.PurgeHook: references of a purged item are

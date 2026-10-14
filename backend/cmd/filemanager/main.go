@@ -32,6 +32,7 @@ import (
 	"kppbwi.app/filemanager/internal/httpapi"
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/media"
+	"kppbwi.app/filemanager/internal/meta"
 	"kppbwi.app/filemanager/internal/quota"
 	"kppbwi.app/filemanager/internal/scheduler"
 	"kppbwi.app/filemanager/internal/thumbs"
@@ -292,8 +293,16 @@ func runServe(envFile string, noMigrate bool) int {
 		logger.Warn("optional media tools missing; thumbnails/metadata degrade", slog.Any("missing", missing))
 	}
 
-	// Shared by handlers and (from Step 11) background tasks.
-	listingSvc := listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize, Meta: mediaSvc})
+	// Shared by handlers and (from Step 11) background tasks. Item metadata
+	// (favorites/pins/notes/tags, Step 10b) is annotated before media so pinned
+	// items sort first inside the cached page; metadata writes drop that page.
+	var listingSvc *listing.Service
+	metaSvc := meta.New(meta.Options{Repo: store, Logger: logger, Invalidate: func(userID string, dir fsjail.VPath) {
+		if listingSvc != nil {
+			listingSvc.Invalidate(userID, "", dir)
+		}
+	}})
+	listingSvc = listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize, Meta: listing.MultiMeta(metaSvc, mediaSvc)})
 	locks := fsjail.NewLockManager()
 	signer := download.NewSigner(cfg.AppSecret, nil)
 	quotaSvc := quota.New(store, logger, nil)
@@ -341,6 +350,7 @@ func runServe(envFile string, noMigrate bool) int {
 		Files:       filesSvc,
 		Quota:       quotaSvc,
 		Audit:       auditRec,
+		Meta:        metaSvc,
 		Warnings: func() []string {
 			var out []string
 			for _, tool := range thumbsSvc.MissingTools() {
@@ -361,7 +371,7 @@ func runServe(envFile string, noMigrate bool) int {
 	defer stop()
 	go authSvc.RunMaintenance(ctx)
 	jobs := scheduler.New(cfg.TZDefault, logger, nil)
-	if err := registerJobs(jobs, cfg, trashStore, quotaSvc, auditRec, logger); err != nil {
+	if err := registerJobs(jobs, cfg, trashStore, quotaSvc, filesSvc, auditRec, logger); err != nil {
 		logger.Error("scheduler setup failed", slog.String("error", err.Error()))
 		return exitConfig
 	}
@@ -396,9 +406,10 @@ func runServe(envFile string, noMigrate bool) int {
 }
 
 // registerJobs wires the background jobs of SPEC §7.3 that exist so far:
-// purge_trash 03:00 (expired Recycle Bin items) and recalc_quota 03:30
-// (every account, bounded to one hour). Step 19b exposes RunNow for admins.
-func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *trash.Store, quotaSvc *quota.Service, auditRec *audit.Recorder, logger *slog.Logger) error {
+// purge_trash 03:00 (expired Recycle Bin items), recalc_quota 03:30 (every
+// account, bounded to one hour) and prune_logs 04:00 (activity journal
+// older than ACTIVITY_RETENTION_DAYS). Step 19b exposes RunNow for admins.
+func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *trash.Store, quotaSvc *quota.Service, filesSvc *files.Service, auditRec *audit.Recorder, logger *slog.Logger) error {
 	if err := jobs.Add(scheduler.Job{Name: "purge_trash", At: "03:00", Timeout: time.Hour, Run: func(ctx context.Context) error {
 		if cfg.TrashRetentionDays == 0 {
 			return nil
@@ -411,12 +422,21 @@ func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *tra
 	}}); err != nil {
 		return err
 	}
-	return jobs.Add(scheduler.Job{Name: "recalc_quota", At: "03:30", Timeout: time.Hour, Run: func(ctx context.Context) error {
+	if err := jobs.Add(scheduler.Job{Name: "recalc_quota", At: "03:30", Timeout: time.Hour, Run: func(ctx context.Context) error {
 		done, failed := quotaSvc.RecalculateAll(ctx, cfg.StorageRoot, cfg.DataDir, 10*time.Minute, func(ctx context.Context, userID string, before, after int64) {
 			auditRec.Record(ctx, audit.Entry{Action: audit.ActionQuotaDrift, TargetType: "user", TargetID: userID,
 				Details: map[string]any{"before": before, "after": after}})
 		})
 		logger.Info("quota recalculated", slog.Int("users", done), slog.Int("failed", failed))
 		return nil
+	}}); err != nil {
+		return err
+	}
+	return jobs.Add(scheduler.Job{Name: "prune_logs", At: "04:00", Timeout: 15 * time.Minute, Run: func(ctx context.Context) error {
+		n, err := filesSvc.PruneActivity(ctx, time.Duration(cfg.ActivityRetentionDays)*24*time.Hour)
+		if n > 0 {
+			logger.Info("activity journal pruned", slog.Int64("rows", n), slog.Int("retentionDays", cfg.ActivityRetentionDays))
+		}
+		return err
 	}})
 }

@@ -505,7 +505,11 @@
     "sort": "Urutkan",
     "restore": "Pulihkan",
     "restoreTo": "Pulihkan ke…",
-    "purge": "Hapus permanen"
+    "purge": "Hapus permanen",
+    "unfavorite": "Hapus dari favorit",
+    "unpin": "Lepas pin",
+    "openInNewWindow": "Buka di jendela baru",
+    "tagNone": "Tanpa tag"
   },
   "view": {
     "label": "Mode tampilan",

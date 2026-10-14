@@ -16,6 +16,7 @@ import (
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/media"
+	"kppbwi.app/filemanager/internal/meta"
 )
 
 // scopeOwn is the listing scope of a user's own files; share/as_user scopes
@@ -166,6 +167,10 @@ func (s *Server) handleFilesList(w http.ResponseWriter, r *http.Request) {
 	if len(filter) > 255 {
 		fields["filter"] = "too_long"
 	}
+	tag := q.Get("tag")
+	if tag != "" && !meta.ValidColor(tag) {
+		fields["tag"] = "unknown colour"
+	}
 	if len(fields) > 0 {
 		WriteError(w, r, CodeValidationFailed, 0, "invalid query parameters", map[string]any{"fields": fields})
 		return
@@ -178,7 +183,7 @@ func (s *Server) handleFilesList(w http.ResponseWriter, r *http.Request) {
 	defer release()
 	res, err := s.listing.List(r.Context(), j, listing.ListRequest{
 		UserID: u.ID, Scope: scopeOwn, Dir: dir, Sort: spec, Cursor: q.Get("cursor"), Limit: limit,
-		Hidden: hidden, Filter: filter, Types: types, Counts: counts, Locale: s.userLocale(r, u.ID),
+		Hidden: hidden, Filter: filter, Types: types, Tag: tag, Counts: counts, Locale: s.userLocale(r, u.ID),
 	})
 	if err != nil {
 		s.writeListingError(w, r, err, string(dir))
@@ -190,6 +195,14 @@ func (s *Server) handleFilesList(w http.ResponseWriter, r *http.Request) {
 		s.media.FillPage(r.Context(), j, u.ID, res.Items, media.MaxSyncProbes)
 	}
 	WriteJSON(w, http.StatusOK, res)
+}
+
+// itemView2 turns any JSON struct into a map so handlers can add keys.
+func itemView2(v any) map[string]any {
+	raw, _ := json.Marshal(v)
+	m := map[string]any{}
+	_ = json.Unmarshal(raw, &m)
+	return m
 }
 
 // itemView merges an Item with extra keys for stat/mkdir/create responses.
@@ -270,6 +283,9 @@ func (s *Server) handleFilesStat(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.writeListingError(w, r, err, string(p))
 		return
+	}
+	if !p.IsRoot() {
+		s.annotateItems(r, u.ID, []*listing.Item{it})
 	}
 	extra := map[string]any{
 		"stat":          it.StatView(),
@@ -411,6 +427,9 @@ func (s *Server) handleFilesMkdir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.invalidateUpTo(u.ID, target.Dir(), req.Parents)
+	if s.files != nil {
+		s.files.RecordActivity(r.Context(), u.ID, files.ActCreate, string(target), "", map[string]any{"isDir": true})
+	}
 	it, err := s.listing.Stat(j, u.ID, scopeOwn, target)
 	if err != nil {
 		s.writeListingError(w, r, err, string(target))
@@ -485,6 +504,9 @@ func (s *Server) handleFilesCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.invalidateUpTo(u.ID, target.Dir(), false)
+	if s.files != nil {
+		s.files.RecordActivity(r.Context(), u.ID, files.ActCreate, string(target), "", map[string]any{"isDir": false, "size": len(content), "template": req.Template})
+	}
 	it, err := s.listing.Stat(j, u.ID, scopeOwn, target)
 	if err != nil {
 		s.writeListingError(w, r, err, string(target))

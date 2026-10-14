@@ -108,6 +108,7 @@ export function DetailsView({
   onSlowClick,
   dragPaths,
   dnd = true,
+  onNoteSave,
 }: DetailsViewProps) {
   const { t, i18n } = useTranslation('files')
   const slowClick = useSlowClick(onSlowClick)
@@ -116,7 +117,7 @@ export function DetailsView({
   const lang = i18n.resolvedLanguage ?? 'id'
   const density = useUIStore((s) => s.density)
   const rowHeight = density === 'comfortable' ? 40 : 36
-  const allColumns = useMemo(() => buildColumns(t, lang), [t, lang])
+  const allColumns = useMemo(() => buildColumns(t, lang, { onNoteSave }), [t, lang, onNoteSave])
   const visibleIds = useMemo(
     () => orderedVisible(columns, allowContextColumns),
     [columns, allowContextColumns],

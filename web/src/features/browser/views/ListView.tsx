@@ -3,6 +3,7 @@ import { Link2Off } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FileIcon } from '@/components/file-icon/FileIcon'
+import { ItemBadges } from '../Badges'
 import { toIconCategory } from '@/components/file-icon/categories'
 import {
   autoScrollOnDrag,
@@ -311,6 +312,7 @@ export function ListView({
                           aria-label={t('grid.broken')}
                         />
                       ) : null}
+                      <ItemBadges item={item} />
                     </span>
                   </div>
                 )

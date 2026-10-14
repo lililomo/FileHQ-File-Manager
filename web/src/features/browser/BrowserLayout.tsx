@@ -14,7 +14,15 @@ import {
 } from '@/components/ui/context-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { listTemplates } from '@/features/file-ops/api'
-import { setDropHandlers, type DragPayload, parentOf } from '@/features/file-ops/dnd'
+import {
+  setDropHandlers,
+  setFavoriteDropHandler,
+  type DragPayload,
+  parentOf,
+} from '@/features/file-ops/dnd'
+import { isTagColor, recordOpen, type TagColor } from '@/features/meta/api'
+import { useMeta } from '@/features/meta/useMeta'
+import { NoteDialog } from '@/features/meta/NoteDialog'
 import { FileOpsDialogs } from '@/features/file-ops/FileOpsDialogs'
 import { canUndoNow, focusGrid, useFileOpsDialogs, useUndoStore } from '@/features/file-ops/store'
 import { useFileOps } from '@/features/file-ops/useFileOps'
@@ -69,6 +77,7 @@ import {
 } from './SelectionModel'
 import { SortMenu } from './SortMenu'
 import { StatusBar } from './StatusBar'
+import { TagFilter } from './TagFilter'
 import { TabBar } from './TabBar'
 import { Toolbar } from './Toolbar'
 import { ToolbarActions } from './ToolbarActions'
@@ -102,8 +111,14 @@ function useDialogScope(open: boolean): void {
   }, [open])
 }
 
-export function BrowserLayout({ path }: { path: string }) {
-  const { t, i18n } = useTranslation(['files', 'fileops', 'errors', 'common'])
+export function BrowserLayout({
+  path,
+  selectName,
+}: {
+  path: string
+  selectName?: string | undefined
+}) {
+  const { t, i18n } = useTranslation(['files', 'fileops', 'errors', 'common', 'meta'])
   const navigate = useNavigate()
   const qc = useQueryClient()
   const isMobile = useIsMobile()
@@ -117,6 +132,9 @@ export function BrowserLayout({ path }: { path: string }) {
   const [renaming, setRenaming] = useState<string | null>(null)
   const [menuContext, setMenuContext] = useState<MenuContext>('background')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [tagFilter, setTagFilter] = useState<TagColor | null>(null)
+  const [noteTarget, setNoteTarget] = useState<Item | null>(null)
+  const meta = useMeta()
   const filterRef = useRef<HTMLInputElement>(null)
   const openHelp = useOverlaysStore((s) => s.setHelp)
   const ops = useFileOps()
@@ -264,6 +282,7 @@ export function BrowserLayout({ path }: { path: string }) {
     dir2: sort.dir2,
     foldersFirst,
     media: wantMedia,
+    tag: tagFilter ?? undefined,
   })
   const { items, total, isPending, isError, error, refetch, isFetching } = listing
   const filtered = useMemo(() => {
@@ -284,11 +303,37 @@ export function BrowserLayout({ path }: { path: string }) {
     setSeenPath(path)
     setActiveIndex(0)
     setFilter('')
+    setTagFilter(null)
     setRenaming(null)
   }
   useEffect(() => {
     useSelectionStore.getState().clear(tabId)
   }, [path, tabId])
+  // "Buka lokasi file": select + reveal the item named by ?select= once the
+  // folder is loaded (render-time state adjustment, then one effect for the
+  // store write and the URL clean-up).
+  const [revealKey, setRevealKey] = useState<string | null>(null)
+  const revealIdx = selectName && !isPending ? items.findIndex((it) => it.name === selectName) : -1
+  const revealReady = !!selectName && !isPending && (revealIdx >= 0 || !listing.hasNextPage)
+  const nextRevealKey = revealReady ? `${path}/${selectName}` : null
+  if (nextRevealKey && revealKey !== nextRevealKey) {
+    setRevealKey(nextRevealKey)
+    if (revealIdx >= 0) setActiveIndex(revealIdx)
+  }
+  useEffect(() => {
+    if (!revealKey || !selectName || revealKey !== `${path}/${selectName}`) return
+    const target = items.find((it) => it.name === selectName)
+    if (target) {
+      useSelectionStore.getState().set(tabId, selectOnly(target.path))
+      announce(t('files:announce.selected', { count: 1, n: '1' }))
+    }
+    void navigate({
+      to: '/files/$',
+      params: { _splat: pathToSplat(path) },
+      search: {},
+      replace: true,
+    })
+  }, [revealKey, selectName, items, path, tabId, navigate, t])
   const selCount = selectedCount(selection, items.length, total)
   const selItems = useMemo(() => selectedItems(selection, items), [selection, items])
   const selPaths = useMemo(() => selItems.map((it) => it.path), [selItems])
@@ -366,6 +411,8 @@ export function BrowserLayout({ path }: { path: string }) {
         return
       }
       toast(t('files:viewer.notYet', { name: item.name }))
+      // Recent reflects opens (SPEC §8.7); the viewers of Step 17 keep calling this.
+      recordOpen(item.path).catch(() => {})
     },
     [go, t],
   )
@@ -570,6 +617,26 @@ export function BrowserLayout({ path }: { path: string }) {
         const ui = useUIStore.getState()
         ui.setTheme(ui.resolvedTheme === 'dark' ? 'light' : 'dark')
       },
+      toggleFavorite: () =>
+        void meta.toggleFavorite(selItems.length ? selItems : focusItem ? [focusItem] : []),
+      togglePin: () => {
+        if (focusItem) void meta.togglePin([focusItem])
+      },
+      editNote: () => {
+        if (focusItem) setNoteTarget(focusItem)
+      },
+      setTag: (color) => {
+        const paths = selPaths.length ? selPaths : focusItem ? [focusItem.path] : []
+        void meta.setTag(paths, color && isTagColor(color) ? color : null)
+      },
+      openInNewWindow: () => {
+        if (focusItem?.isDir)
+          window.open(
+            `/files${pathToSplat(focusItem.path) ? `/${pathToSplat(focusItem.path)}` : ''}`,
+            '_blank',
+            'noopener',
+          )
+      },
       selectAll: () => setSelection(selectAll()),
       invertSelection: () => setSelection(invertSelection(selection, items)),
       clearSelection: () => setSelection(clearSelection()),
@@ -612,12 +679,20 @@ export function BrowserLayout({ path }: { path: string }) {
       focusItem,
       onOpen,
       fileOps,
+      meta,
+      selPaths,
     ],
   )
   useEffect(() => {
     setActionContext(actionCtx)
     return () => setActionContext(null)
   }, [actionCtx])
+  // sidebar "Favorit" is a drop target for items
+  useEffect(() => {
+    setFavoriteDropHandler((paths) => void meta.addFavorites(paths))
+    return () => setFavoriteDropHandler(null)
+  }, [meta])
+  const saveNote = useCallback((p: string, note: string) => meta.setNote(p, note), [meta])
 
   // Decide the context-menu variant before Radix opens it: right-clicking an
   // unselected item selects it; otherwise the current selection is used.
@@ -725,7 +800,7 @@ export function BrowserLayout({ path }: { path: string }) {
         }
       />
     )
-  } else if (items.length === 0) {
+  } else if (items.length === 0 && !tagFilter) {
     body = (
       <EmptyState
         icon={FolderOpen}
@@ -746,15 +821,23 @@ export function BrowserLayout({ path }: { path: string }) {
         }
       />
     )
-  } else if (filtered.length === 0) {
+  } else if (filtered.length === 0 && (filter || tagFilter)) {
     body = (
       <EmptyState
         icon={FolderOpen}
-        title={t('files:filter.noMatch', { q: filter })}
+        title={t('files:filter.noMatch', {
+          q: filter || t(`meta:tag.colors.${tagFilter ?? 'red'}`),
+        })}
         description={listing.hasNextPage ? t('files:filter.incomplete') : ''}
         className="h-full"
         action={
-          <Button variant="outline" onClick={() => setFilter('')}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setFilter('')
+              setTagFilter(null)
+            }}
+          >
             {t('files:filter.clear')}
           </Button>
         }
@@ -782,6 +865,7 @@ export function BrowserLayout({ path }: { path: string }) {
       onSlowClick: (item: Item) => setRenaming(item.path),
       dragPaths,
       dnd: !isMobile,
+      onNoteSave: saveNote,
     }
     switch (view) {
       case 'list':
@@ -872,13 +956,16 @@ export function BrowserLayout({ path }: { path: string }) {
         refreshing={isFetching && !isPending}
       >
         {!isMobile ? (
-          <QuickFilter
-            ref={filterRef}
-            value={filter}
-            onChange={setFilter}
-            incomplete={listing.hasNextPage}
-            onServerSearch={() => toast(t('files:filter.serverSearchSoon'))}
-          />
+          <>
+            <QuickFilter
+              ref={filterRef}
+              value={filter}
+              onChange={setFilter}
+              incomplete={listing.hasNextPage}
+              onServerSearch={() => toast(t('files:filter.serverSearchSoon'))}
+            />
+            <TagFilter value={tagFilter} onChange={setTagFilter} />
+          </>
         ) : null}
       </AddressBar>
       <TabBar
@@ -956,10 +1043,19 @@ export function BrowserLayout({ path }: { path: string }) {
         selectedBytes={selBytes}
       />
       <FileOpsDialogs ops={ops} />
-      <QuickLookDialog item={quickLook} onClose={() => setQuickLook(null)} />
+      <NoteDialog item={noteTarget} onClose={() => setNoteTarget(null)} onSave={saveNote} />
+      <QuickLookDialog
+        item={quickLook}
+        onClose={() => setQuickLook(null)}
+        onNoteSave={saveNote}
+        onToggleFavorite={(it) => void meta.toggleFavorite([it])}
+        onTogglePin={(it) => void meta.togglePin([it])}
+        onSetTag={(it, c) => void meta.setTag([it.path], c)}
+      />
       <PropertiesDialog
         target={properties}
         onClose={() => setProperties(null)}
+        meta={meta}
         onDirSize={(p, res) => {
           qc.setQueriesData<InfiniteData<ListResponse, string | null>>(
             { queryKey: ['list', parentOf(p)] },

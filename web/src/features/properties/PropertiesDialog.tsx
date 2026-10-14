@@ -36,6 +36,10 @@ import {
 } from '@/features/file-ops/api'
 import { useFileOpsDialogs } from '@/features/file-ops/store'
 import { errorMessage } from '@/features/file-ops/useFileOps'
+import { useOpenLocation } from '@/features/browser/openLocation'
+import { MetaControls } from '@/features/meta/MetaControls'
+import type { MetaOps } from '@/features/meta/useMeta'
+import { NoteCell } from '@/features/browser/NoteCell'
 import { formatBytes, formatNumber } from '@/lib/format'
 
 export type PropertiesTab = 'general' | 'checksum' | 'versions'
@@ -73,11 +77,14 @@ export function PropertiesDialog({
   target,
   onClose,
   onDirSize,
+  meta,
 }: {
   target: PropertiesTarget | null
   onClose: () => void
   /** Called with a computed folder size so the browser can patch its list. */
   onDirSize?: (path: string, res: DirSizeResult) => void
+  /** Favourite / pin / tag / note editing (Step 10b); omitted = read-only. */
+  meta?: MetaOps | undefined
 }) {
   const { t } = useTranslation('files')
   const items = target?.items ?? []
@@ -98,6 +105,7 @@ export function PropertiesDialog({
             initialTab={target?.tab ?? 'general'}
             onClose={onClose}
             onDirSize={onDirSize}
+            meta={meta}
           />
         ) : items.length > 1 ? (
           <MultiProperties items={items} />
@@ -113,19 +121,33 @@ export function PropertiesDialog({
 }
 
 function SingleProperties({
-  item,
+  item: initial,
   initialTab,
   onClose,
   onDirSize,
+  meta,
 }: {
   item: Item
   initialTab: PropertiesTab
   onClose: () => void
   onDirSize?: ((path: string, res: DirSizeResult) => void) | undefined
+  meta?: MetaOps | undefined
 }) {
-  const { t, i18n } = useTranslation(['files', 'fileops', 'errors'])
+  const { t, i18n } = useTranslation(['files', 'fileops', 'errors', 'meta'])
   const lang = i18n.resolvedLanguage ?? 'id'
-  const stat = useItemStat(item.path)
+  const stat = useItemStat(initial.path)
+  const openLocation = useOpenLocation()
+  // the stat query carries the live favourite/pin/tag/note flags after edits
+  const item: Item = stat.data
+    ? {
+        ...initial,
+        favorite: stat.data.favorite,
+        pinned: stat.data.pinned,
+        tag: stat.data.tag,
+        note: stat.data.note,
+        shared: stat.data.shared,
+      }
+    : initial
   const warnings = stat.data?.warnings ?? []
   const [tab, setTab] = useState<PropertiesTab>(initialTab)
   const [size, setSize] = useState<DirSizeResult | null>(null)
@@ -164,7 +186,35 @@ function SingleProperties({
       </TabsList>
       <TabsContent value="general" className="space-y-4 pt-3">
         <ItemHeader item={item} size={48} />
+        {meta ? (
+          <MetaControls
+            item={item}
+            onToggleFavorite={(it) => void meta.toggleFavorite([it])}
+            onTogglePin={(it) => void meta.togglePin([it])}
+            onSetTag={(it, c) => void meta.setTag([it.path], c)}
+          />
+        ) : null}
         <ItemFacts item={item} stat={stat.data?.stat} versionsCount={stat.data?.versionsCount} />
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-text-muted">{t('files:props.location')}</span>
+          <button
+            type="button"
+            className="truncate font-mono hover:underline"
+            onClick={() => {
+              onClose()
+              openLocation(item)
+            }}
+            data-testid="props-location"
+          >
+            {item.path.split('/').slice(0, -1).join('/') || '/'}
+          </button>
+        </div>
+        {meta ? (
+          <div className="flex items-center gap-2 text-xs" data-testid="props-note">
+            <span className="text-text-muted">{t('meta:note.title')}</span>
+            <NoteCell item={item} onSave={meta.setNote} />
+          </div>
+        ) : null}
         {item.isDir ? (
           <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="props-dir-size">
             <span className="text-text-muted">{t('files:props.size')}</span>

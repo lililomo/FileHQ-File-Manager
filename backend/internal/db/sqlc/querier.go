@@ -12,35 +12,47 @@ type Querier interface {
 	ApplyQuotaDelta(ctx context.Context, arg ApplyQuotaDeltaParams) error
 	CountActiveAdmins(ctx context.Context) (int64, error)
 	CountActiveSessions(ctx context.Context, now string) (int64, error)
+	CountActivity(ctx context.Context, userID string) (int64, error)
 	CountAllUsers(ctx context.Context) (int64, error)
 	CountAuditSince(ctx context.Context, arg CountAuditSinceParams) (int64, error)
 	CountFailedLoginsByUsernameSince(ctx context.Context, arg CountFailedLoginsByUsernameSinceParams) (int64, error)
 	CountFailedLoginsSince(ctx context.Context, at string) (int64, error)
+	CountFavorites(ctx context.Context, userID string) (int64, error)
 	CountFolderViewPrefs(ctx context.Context, userID string) (int64, error)
 	CountLoginAttemptsByIPSince(ctx context.Context, arg CountLoginAttemptsByIPSinceParams) (int64, error)
 	CountMediaMetadata(ctx context.Context, userID string) (int64, error)
+	CountPinsInDir(ctx context.Context, arg CountPinsInDirParams) (int64, error)
 	CountTrashActive(ctx context.Context, userID string) (int64, error)
 	CountUsers(ctx context.Context, arg CountUsersParams) (int64, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	DeleteActivityForUser(ctx context.Context, userID string) (int64, error)
 	DeleteActivityOlderThan(ctx context.Context, at string) (int64, error)
 	DeleteAuditOlderThan(ctx context.Context, at string) (int64, error)
 	DeleteExpiredSessions(ctx context.Context, before string) (int64, error)
+	DeleteFavorite(ctx context.Context, arg DeleteFavoriteParams) (int64, error)
 	DeleteFavoritesPrefix(ctx context.Context, arg DeleteFavoritesPrefixParams) (int64, error)
+	DeleteFileNote(ctx context.Context, arg DeleteFileNoteParams) (int64, error)
 	DeleteFileNotesPrefix(ctx context.Context, arg DeleteFileNotesPrefixParams) (int64, error)
+	DeleteFileTag(ctx context.Context, arg DeleteFileTagParams) (int64, error)
 	DeleteFileTagsPrefix(ctx context.Context, arg DeleteFileTagsPrefixParams) (int64, error)
 	DeleteFileVersionsPrefix(ctx context.Context, arg DeleteFileVersionsPrefixParams) (int64, error)
 	DeleteFolderViewPref(ctx context.Context, arg DeleteFolderViewPrefParams) error
 	DeleteLoginAttemptsOlderThan(ctx context.Context, at string) (int64, error)
 	DeleteMediaMetadata(ctx context.Context, arg DeleteMediaMetadataParams) error
 	DeleteMediaMetadataPrefix(ctx context.Context, arg DeleteMediaMetadataPrefixParams) (int64, error)
+	DeletePin(ctx context.Context, arg DeletePinParams) (int64, error)
 	DeletePinsPrefix(ctx context.Context, arg DeletePinsPrefixParams) (int64, error)
 	DeletePreferences(ctx context.Context, userID string) error
 	DeletePurgedTrashRowsBefore(ctx context.Context, purgedAt *string) (int64, error)
 	DeleteSetting(ctx context.Context, key string) error
 	DeleteTrashItemRow(ctx context.Context, arg DeleteTrashItemRowParams) error
+	GetFavorite(ctx context.Context, arg GetFavoriteParams) (Favorite, error)
+	GetFileNote(ctx context.Context, arg GetFileNoteParams) (FileNote, error)
+	GetFileTag(ctx context.Context, arg GetFileTagParams) (FileTag, error)
 	GetFolderViewPref(ctx context.Context, arg GetFolderViewPrefParams) (FolderViewPref, error)
 	GetMediaMetadata(ctx context.Context, arg GetMediaMetadataParams) (MediaMetadatum, error)
+	GetPin(ctx context.Context, arg GetPinParams) (Pin, error)
 	GetPreferences(ctx context.Context, userID string) (UserPreference, error)
 	// Quota accounting (SPEC 4.2 quota_usage, 8.2, ADR-23). Deltas are applied
 	// in the same transaction as the metadata change; counters never go below 0.
@@ -57,12 +69,21 @@ type Querier interface {
 	InsertLoginAttempt(ctx context.Context, arg InsertLoginAttemptParams) error
 	InsertTrashItem(ctx context.Context, arg InsertTrashItemParams) error
 	ListActivity(ctx context.Context, arg ListActivityParams) ([]ActivityLog, error)
+	ListActivityFiltered(ctx context.Context, arg ListActivityFilteredParams) ([]ActivityLog, error)
 	ListAudit(ctx context.Context, arg ListAuditParams) ([]AuditLog, error)
 	ListDirtyQuotaUsers(ctx context.Context) ([]string, error)
 	ListExpiredTrash(ctx context.Context, arg ListExpiredTrashParams) ([]TrashItem, error)
 	ListFavorites(ctx context.Context, userID string) ([]Favorite, error)
+	// Step 10b: favorites, pins, notes and tags read per folder (listing
+	// enrichment) and per item. Folder scans use the same substr prefix trick as
+	// refs.sql: prefix = dir || '/' ('/' for the root), prefix_len = len(prefix),
+	// from_pos = prefix_len + 1; a direct child has no '/' after the prefix.
+	ListFavoritesInDir(ctx context.Context, arg ListFavoritesInDirParams) ([]Favorite, error)
 	ListFileNotes(ctx context.Context, userID string) ([]FileNote, error)
+	ListFileNotesInDir(ctx context.Context, arg ListFileNotesInDirParams) ([]FileNote, error)
 	ListFileTags(ctx context.Context, userID string) ([]FileTag, error)
+	ListFileTagsByColor(ctx context.Context, arg ListFileTagsByColorParams) ([]FileTag, error)
+	ListFileTagsInDir(ctx context.Context, arg ListFileTagsInDirParams) ([]FileTag, error)
 	ListFileVersions(ctx context.Context, userID string) ([]FileVersion, error)
 	ListMediaMetadataByPaths(ctx context.Context, arg ListMediaMetadataByPathsParams) ([]MediaMetadatum, error)
 	// prefix = "<dir>/" and prefix_len = len(prefix): sqlc's SQLite parser has no
@@ -70,6 +91,8 @@ type Querier interface {
 	ListMediaMetadataPrefix(ctx context.Context, arg ListMediaMetadataPrefixParams) ([]MediaMetadatum, error)
 	ListOldestFolderViewPrefPaths(ctx context.Context, arg ListOldestFolderViewPrefPathsParams) ([]string, error)
 	ListPins(ctx context.Context, userID string) ([]Pin, error)
+	ListPinsInDir(ctx context.Context, arg ListPinsInDirParams) ([]Pin, error)
+	ListRecentActivity(ctx context.Context, arg ListRecentActivityParams) ([]ActivityLog, error)
 	ListSettings(ctx context.Context) ([]Setting, error)
 	ListTrashByBatch(ctx context.Context, arg ListTrashByBatchParams) ([]TrashItem, error)
 	ListTrashItems(ctx context.Context, userID string) ([]TrashItem, error)

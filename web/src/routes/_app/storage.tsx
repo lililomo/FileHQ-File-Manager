@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { PlaceholderPage } from '@/components/PlaceholderPage'
+import { StoragePage } from '@/features/storage-analysis/StoragePage'
 
 export const Route = createFileRoute('/_app/storage')({
-  component: () => <PlaceholderPage step="10b" titleKey="storage" />,
+  component: StoragePage,
 })

@@ -227,6 +227,8 @@ export interface paths {
                     types?: string;
                     /** @description Fill itemCount for folders on the page (max 2000 per request) */
                     counts?: boolean;
+                    /** @description Only items carrying this colour tag (Step 10b) */
+                    tag?: "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "gray";
                     /** @description Probe up to 50 media files of the page synchronously (Dimensi/Durasi columns); the rest is queued */
                     media?: boolean;
                 };
@@ -1305,6 +1307,169 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meta/favorites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every favorite of the user (folders first, natural order)
+         * @description Items whose path no longer exists are returned with `broken:true` / `brokenReason:"missing"` so the UI can offer "Hapus dari favorit" instead of failing (SPEC §8.7).
+         */
+        get: operations["metaFavoritesList"];
+        /** Add favorites (files or folders; existing rows kept) */
+        put: operations["metaFavoritesAdd"];
+        post?: never;
+        /** Remove favorites (broken references too) */
+        delete: operations["metaFavoritesRemove"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta/pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pinned items of one folder */
+        get: operations["metaPinsList"];
+        /**
+         * Pin items to the top of their parent folder (max 50 per folder)
+         * @description Pinned items sort first in every sort order of the listing (SPEC §8.7). Over the limit → `400 VALIDATION_FAILED` with `details.reason=pin_limit`.
+         */
+        put: operations["metaPinsAdd"];
+        post?: never;
+        /** Unpin items */
+        delete: operations["metaPinsRemove"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set the plain-text note of one item (max 500 characters; empty removes it) */
+        put: operations["metaNoteSet"];
+        post?: never;
+        /** Remove notes */
+        delete: operations["metaNoteRemove"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set the colour tag of items (one colour per item) */
+        put: operations["metaTagsSet"];
+        post?: never;
+        /** Clear the colour tag of items */
+        delete: operations["metaTagsRemove"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta/tagged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every item carrying a colour (broken references flagged) */
+        get: operations["metaTagged"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recently opened / edited / uploaded / created / restored items (30 days, one row per path)
+         * @description Derived from `activity_logs`; only paths that still exist are returned, each with `location` (parent folder) for "Buka lokasi file" (SPEC §8.7).
+         */
+        get: operations["meRecent"];
+        put?: never;
+        /**
+         * Record that the user opened an item (viewer, Quick Look, editor)
+         * @description Writes an `open` activity row so reads show up in Recent; the path must exist.
+         */
+        post: operations["meRecentRecord"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The user's activity journal (newest first, cursor paging)
+         * @description Filters by action, day range (`YYYY-MM-DD`, `to` inclusive) and path substring; `exists` tells whether the item still exists (SPEC §8.16 "Aktivitas user"). Retention `ACTIVITY_RETENTION_DAYS`.
+         */
+        get: operations["meActivity"];
+        put?: never;
+        post?: never;
+        /** Delete the whole journal of the user ("Hapus riwayat saya"; audit rows untouched) */
+        delete: operations["meActivityClear"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/storage-analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Storage analysis of the user root (treemap depth 3, 50 largest files, totals per type)
+         * @description One walk with a 60 s budget (`partial:true` when cut, Step 11 turns it into a task), cached 10 minutes per user and dropped by any file mutation. Sizes follow quota accounting (regular files + symlink sizes) so `total` equals `quota.used`.
+         */
+        get: operations["meStorageAnalysis"];
+        put?: never;
+        /** Recompute the storage analysis now ("Hitung ulang") */
+        post: operations["meStorageAnalysisRecompute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1860,6 +2025,142 @@ export interface components {
                 };
             };
             failed?: string[];
+        };
+        /** @enum {string} */
+        TagColor: "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "gray";
+        /** @description `paths` (batch, max 2000) or the single-item alias `path`; the root folder is never accepted. */
+        MetaPathsRequest: {
+            paths?: string[];
+            path?: string;
+        };
+        MetaResult: {
+            paths: string[];
+            /** @description Rows written (PUT) or removed (DELETE) */
+            count: number;
+        };
+        MetaNoteRequest: {
+            path: string;
+            /** @description Plain text (not rendered as Markdown); empty removes the note */
+            note: string;
+        };
+        MetaTagsRequest: {
+            paths?: string[];
+            path?: string;
+            color: components["schemas"]["TagColor"];
+        };
+        ItemsResponse: {
+            items: components["schemas"]["Item"][];
+            total: number;
+        };
+        RecentItem: components["schemas"]["Item"] & {
+            /** @description Parent folder (virtual path) */
+            location: string;
+            /** @enum {string} */
+            action: "open" | "edit" | "upload" | "create" | "restore";
+            /** Format: date-time */
+            at: string;
+        };
+        RecentResponse: {
+            items: components["schemas"]["RecentItem"][];
+            total: number;
+            windowDays: number;
+        };
+        ActivityEntry: {
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            at: string;
+            /** @description rename */
+            action: string;
+            path?: string | null;
+            /** @description Destination of rename/move/copy */
+            path2?: string | null;
+            details?: {
+                [key: string]: unknown;
+            };
+            batchId?: string | null;
+            /** @description The item at `path` still exists */
+            exists: boolean;
+        };
+        ActivityResponse: {
+            items: components["schemas"]["ActivityEntry"][];
+            nextCursor: string | null;
+            retentionDays: number;
+        };
+        AnalysisNode: {
+            /** @description Folder name ("/" for the root; empty for files/other leaves) */
+            name: string;
+            /** @description Folder path (the parent folder for files/other leaves) */
+            path: string;
+            /**
+             * @description dir = folder; files = the parent's direct files; other = merged folders below 0.5 % of the total
+             * @enum {string}
+             */
+            kind: "dir" | "files" | "other";
+            /** Format: int64 */
+            size: number;
+            /** Format: int64 */
+            files: number;
+            /** Format: int64 */
+            dirs: number;
+            children?: components["schemas"]["AnalysisNode"][];
+        };
+        AnalysisFile: {
+            path: string;
+            name: string;
+            /** Format: int64 */
+            size: number;
+            /** Format: date-time */
+            mtime: string;
+            category: string;
+        };
+        StorageAnalysis: {
+            /** Format: date-time */
+            generatedAt: string;
+            /**
+             * Format: date-time
+             * @description Alias of generatedAt (SPEC name)
+             */
+            computedAt: string;
+            /** @description True when the 60 s budget ran out */
+            partial: boolean;
+            /**
+             * Format: int64
+             * @description Bytes below the user root (= quota.used)
+             */
+            total: number;
+            /** Format: int64 */
+            files: number;
+            /** Format: int64 */
+            dirs: number;
+            tree: components["schemas"]["AnalysisNode"];
+            topFiles: components["schemas"]["AnalysisFile"][];
+            /** @description Keys image, video, audio, document, archive, other */
+            byType: {
+                [key: string]: {
+                    /** Format: int64 */
+                    bytes?: number;
+                    /** Format: int64 */
+                    files?: number;
+                };
+            };
+            /** Format: int64 */
+            trash?: number;
+            /** Format: int64 */
+            versions?: number;
+            quota?: {
+                /** Format: int64 */
+                limit?: number;
+                /** Format: int64 */
+                used?: number;
+                /** Format: int64 */
+                free?: number;
+                percent?: number;
+                dirty?: boolean;
+            };
+            cached: boolean;
+            /** Format: int64 */
+            durationMs: number;
         };
     };
     responses: {
@@ -2514,6 +2815,448 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+        };
+    };
+    metaFavoritesList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemsResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    metaFavoritesAdd: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaPathsRequest"];
+            };
+        };
+        responses: {
+            /** @description Added */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaResult"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    metaFavoritesRemove: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaPathsRequest"];
+            };
+        };
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    metaPinsList: {
+        parameters: {
+            query: {
+                dir: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Item"][];
+                        dir: string;
+                        /** @description Pins allowed per folder (50) */
+                        max: number;
+                    };
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    metaPinsAdd: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaPathsRequest"];
+            };
+        };
+        responses: {
+            /** @description Pinned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaResult"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    metaPinsRemove: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaPathsRequest"];
+            };
+        };
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    metaNoteSet: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        path: string;
+                        note: string;
+                        max: number;
+                    };
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    metaNoteRemove: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaPathsRequest"];
+            };
+        };
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    metaTagsSet: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaTagsRequest"];
+            };
+        };
+        responses: {
+            /** @description Tagged */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaResult"] & {
+                        color?: components["schemas"]["TagColor"];
+                    };
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    metaTagsRemove: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaPathsRequest"];
+            };
+        };
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    metaTagged: {
+        parameters: {
+            query: {
+                color: components["schemas"]["TagColor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemsResponse"] & {
+                        color?: components["schemas"]["TagColor"];
+                    };
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    meRecent: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    meRecentRecord: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PathRequest"];
+            };
+        };
+        responses: {
+            /** @description Recorded */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    meActivity: {
+        parameters: {
+            query?: {
+                /** @description nextCursor of the previous page */
+                cursor?: string;
+                limit?: number;
+                action?: string;
+                /** @description YYYY-MM-DD or RFC 3339 */
+                from?: string;
+                /** @description YYYY-MM-DD (whole day) or RFC 3339 */
+                to?: string;
+                /** @description Case-insensitive substring of path / target */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    meActivityClear: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: int64 */
+                        deleted?: number;
+                    };
+                };
+            };
+        };
+    };
+    meStorageAnalysis: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK (cached or freshly computed) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageAnalysis"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    meStorageAnalysisRecompute: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recomputed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageAnalysis"];
+                };
+            };
+            401: components["responses"]["Error"];
         };
     };
 }

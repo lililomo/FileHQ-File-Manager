@@ -1,4 +1,4 @@
-import { Folder } from 'lucide-react'
+import { Check, Folder } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -12,8 +12,10 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import { TAG_COLORS } from '@/features/meta/api'
 import { menuItems, type ActionContext, type ActionDef, type MenuContext } from '@/lib/actions'
 import { actionLabel, actionShortcut, type LooseT } from './actionLabel'
+import { TagDot } from './Badges'
 
 export interface BrowserContextMenuProps {
   ctx: ActionContext | null
@@ -41,7 +43,7 @@ export function BrowserContextMenu({
   onOpenChange,
   children,
 }: BrowserContextMenuProps) {
-  const { t } = useTranslation(['files', 'fileops'])
+  const { t } = useTranslation(['files', 'fileops', 'meta'])
   const lt = t as unknown as LooseT
   const groups = ctx ? menuItems(context, ctx) : []
 
@@ -95,6 +97,43 @@ export function BrowserContextMenu({
       case 'columns':
         body = columnsMenu
         break
+      case 'tagColor': {
+        const current =
+          ctx &&
+          ctx.selection.length > 0 &&
+          ctx.selection.every((it) => it.tag === ctx.selection[0]!.tag)
+            ? (ctx.selection[0]!.tag ?? null)
+            : undefined
+        body = (
+          <>
+            <ContextMenuItem
+              onSelect={() => ctx?.setTag?.(null)}
+              data-testid="cm-tag-none"
+              data-current={current === null || undefined}
+            >
+              <span className="size-2.5" aria-hidden="true" />
+              {t('meta:tag.none')}
+            </ContextMenuItem>
+            {TAG_COLORS.map((c) => (
+              <ContextMenuItem
+                key={c}
+                onSelect={() => ctx?.setTag?.(c)}
+                data-testid={`cm-tag-${c}`}
+                data-current={current === c || undefined}
+              >
+                <TagDot color={c} />
+                {t(`meta:tag.colors.${c}`)}
+                {current === c ? (
+                  <ContextMenuShortcut>
+                    <Check className="size-3.5" aria-hidden="true" />
+                  </ContextMenuShortcut>
+                ) : null}
+              </ContextMenuItem>
+            ))}
+          </>
+        )
+        break
+      }
       default:
         return null
     }

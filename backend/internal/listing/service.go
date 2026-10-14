@@ -34,6 +34,33 @@ type MetaProvider interface {
 	Annotate(ctx context.Context, userID string, dir fsjail.VPath, items []*Item) error
 }
 
+// MultiMeta runs several providers in order (Step 10b: item metadata, then
+// media). A nil provider is skipped.
+func MultiMeta(providers ...MetaProvider) MetaProvider {
+	out := make(multiMeta, 0, len(providers))
+	for _, p := range providers {
+		if p != nil {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+type multiMeta []MetaProvider
+
+func (m multiMeta) Annotate(ctx context.Context, userID string, dir fsjail.VPath, items []*Item) error {
+	for _, p := range m {
+		if err := p.Annotate(ctx, userID, dir, items); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Meta exposes the configured provider (handlers annotate single stat
+// results with it).
+func (s *Service) Meta() MetaProvider { return s.meta }
+
 // Options configures a Service.
 type Options struct {
 	Secret     []byte // APP_SECRET (cursor HMAC)
@@ -93,6 +120,7 @@ type ListRequest struct {
 	Hidden bool // include dotfiles
 	Filter string
 	Types  []files.Category
+	Tag    string // colour tag filter (SPEC §8.7), "" = any
 	Counts bool
 	Locale string
 }
@@ -205,7 +233,7 @@ func (s *Service) List(ctx context.Context, j *fsjail.Jail, req ListRequest) (*L
 // filterItems applies hidden/filter/types without copying when nothing
 // filters.
 func filterItems(items []*Item, req ListRequest) []*Item {
-	if req.Hidden && req.Filter == "" && len(req.Types) == 0 {
+	if req.Hidden && req.Filter == "" && len(req.Types) == 0 && req.Tag == "" {
 		return items
 	}
 	var needle string
@@ -221,6 +249,9 @@ func filterItems(items []*Item, req ListRequest) []*Item {
 			continue
 		}
 		if len(req.Types) > 0 && !matchesType(it, req.Types) {
+			continue
+		}
+		if req.Tag != "" && (it.Tag == nil || *it.Tag != req.Tag) {
 			continue
 		}
 		out = append(out, it)
