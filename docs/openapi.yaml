@@ -27,6 +27,8 @@ tags:
     description: Task engine, SSE, notifikasi in-app (SPEC §7, §6.4, §8.16)
   - name: upload
     description: Upload resumable tus + precheck (SPEC §6.5, §8.8, ADR-03)
+  - name: remote
+    description: Remote download dari URL http/https dengan SSRF guard (SPEC §8.10, §10.1)
 
 paths:
   /healthz:
@@ -1593,6 +1595,72 @@ paths:
       responses:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/Error" }
+  /api/v1/remote-downloads:
+    post:
+      tags: [remote]
+      summary: Queue one remote_download task per URL (SPEC §8.10)
+      operationId: remoteDownloadsCreate
+      description: |
+        Each URL becomes a `remote_download` task (progress in bytes, cancel/retry like any task; a retry resumes with `Range`
+        from the kept part file when the server supports it). Validation before anything is queued: scheme `http`/`https` only,
+        no userinfo, host not `localhost`, port 80/443 or ≥ 1024, literal private/special IPs refused, admin denylist (wins) and
+        allowlist (suffix match) → `422 SSRF_BLOCKED` (`details.reason`: scheme, userinfo, host, port, private_ip) or
+        `403 FORBIDDEN` (`reason`: denylist, allowlist, disabled). DNS is resolved inside the task: any private/special address
+        among the answers fails the task with `SSRF_BLOCKED`; redirects (max 5) are re-validated per hop. 1..10 URLs per request;
+        10 tasks per hour per user → `429 RATE_LIMITED` + `Retry-After`. `filename` applies to a single URL (`filenames` maps
+        url → name for several); otherwise the name comes from `Content-Disposition`, then the last URL segment, then
+        `download-<unix>`. Size limit = min(`REMOTE_DOWNLOAD_MAX_SIZE`, `MAX_UPLOAD_SIZE`) → `FILE_TOO_LARGE`; quota/disk →
+        `QUOTA_EXCEEDED`. Audit `remote_download.created` records hosts only; logs never contain query strings.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RemoteDownloadRequest" }
+      responses:
+        "202":
+          description: Tasks queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RemoteDownloadResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/remote-downloads/probe:
+    post:
+      tags: [remote]
+      summary: Inspect a URL before downloading (HEAD, then GET Range 0-0)
+      operationId: remoteDownloadsProbe
+      description: Same URL/SSRF rules as the create call; answers the final URL (no query string), size when known, suggested file name, Range support and content type.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri }
+      responses:
+        "200":
+          description: Probe result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RemoteProbeResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
   /api/v1/upload/precheck:
     post:
       tags: [upload]
@@ -2523,7 +2591,7 @@ components:
       required: [id, type, state, title, payload, progress, cancelRequested, cancelable, retryable, createdAt]
       properties:
         id: { type: string }
-        type: { type: string, description: "copy, move, dir_size, checksum, … (SPEC §7.1)" }
+        type: { type: string, description: "copy, move, dir_size, checksum, remote_download, … (SPEC §7.1)" }
         state: { $ref: "#/components/schemas/TaskState" }
         title: { type: string }
         payload: { type: object, additionalProperties: true }
@@ -2544,6 +2612,31 @@ components:
       required: [task]
       properties:
         task: { $ref: "#/components/schemas/Task" }
+    RemoteDownloadRequest:
+      type: object
+      required: [urls, path]
+      properties:
+        urls: { type: array, minItems: 1, maxItems: 10, items: { type: string, format: uri } }
+        path: { type: string, description: "Destination folder (virtual path); alias `dest`" }
+        filename: { type: string, description: "Single URL only; no path separators" }
+        filenames: { type: object, additionalProperties: { type: string }, description: "url → file name for several URLs" }
+        onConflict: { type: string, enum: [fail, overwrite, skip, rename], default: fail, description: "aliases `policy`, `on_conflict`" }
+    RemoteDownloadResponse:
+      type: object
+      required: [tasks]
+      properties:
+        tasks:
+          type: array
+          items: { $ref: "#/components/schemas/Task" }
+    RemoteProbeResult:
+      type: object
+      required: [finalUrl, acceptsRanges, size]
+      properties:
+        finalUrl: { type: string }
+        size: { type: integer, nullable: true }
+        filename: { type: string }
+        acceptsRanges: { type: boolean }
+        contentType: { type: string }
     TaskAccepted:
       type: object
       description: "`202` answer of an operation converted into a task"

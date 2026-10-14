@@ -85,6 +85,20 @@ func (s *SysDir) Create(name string) (*os.File, error) {
 	return f, nil
 }
 
+// OpenAppend opens an existing file for appending (resumed remote
+// download part, O_NOFOLLOW; never creates).
+func (s *SysDir) OpenAppend(name string) (*os.File, error) {
+	rel, err := s.rel(name)
+	if err != nil {
+		return nil, err
+	}
+	f, err := s.root.OpenFile(rel, os.O_WRONLY|os.O_APPEND|syscall.O_NOFOLLOW, FileMode)
+	if err != nil {
+		return nil, wrap("sys_append", VPath("/"+rel), err)
+	}
+	return f, nil
+}
+
 // Open opens name read-only.
 func (s *SysDir) Open(name string) (*os.File, error) {
 	rel, err := s.rel(name)

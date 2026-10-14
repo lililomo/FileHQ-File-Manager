@@ -137,6 +137,9 @@ export interface ActionContext {
   uploadFile?: () => void
   uploadFolder?: () => void
   uploadHere?: () => void
+  /** Step 13: remote download dialog; hidden when the admin turned the feature off. */
+  remoteDownload?: () => void
+  remoteDownloadEnabled?: boolean
 }
 
 export interface ActionDef {
@@ -610,9 +613,8 @@ export const ACTIONS: ActionDef[] = [
     labelKey: 'remoteDownload',
     group: 'transfer',
     icon: Globe,
-    available: false,
-    isApplicable: always,
-    run: noop,
+    isApplicable: (c) => c.remoteDownloadEnabled !== false,
+    run: (c) => c.remoteDownload?.(),
   },
   {
     id: 'refresh',

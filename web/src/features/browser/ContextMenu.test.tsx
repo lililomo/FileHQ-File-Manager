@@ -150,15 +150,17 @@ describe('context-menu matrix (SPEC §9.5)', () => {
 
   it('background: Baru submenu, paste only with a clipboard, view/sort/columns, folder properties', () => {
     const empty = ids(menuItems('background', ctxWith([])))
-    // Step 12a: upload actions are live; remote download (Step 13) stays hidden
+    // Step 12a: upload actions are live; remote download (Step 13) follows the config flag
     expect(empty).toEqual([
-      ['new', 'uploadFile', 'uploadFolder'],
+      ['new', 'uploadFile', 'uploadFolder', 'remoteDownload'],
       ['refresh', 'selectAll'],
       ['view', 'sort', 'columns'],
       ['folderProperties'],
     ])
     const withClip = ids(menuItems('background', ctxWith([], { clipboardCount: 2 })))
     expect(withClip[1]).toEqual(['paste', 'refresh', 'selectAll'])
+    const noRemote = ids(menuItems('background', ctxWith([], { remoteDownloadEnabled: false })))
+    expect(noRemote[0]).toEqual(['new', 'uploadFile', 'uploadFolder'])
   })
 
   it('menuContextFor picks the context from the selection', () => {

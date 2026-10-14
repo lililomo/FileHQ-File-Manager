@@ -21,6 +21,7 @@ import (
 	"kppbwi.app/filemanager/internal/meta"
 	"kppbwi.app/filemanager/internal/notify"
 	"kppbwi.app/filemanager/internal/quota"
+	"kppbwi.app/filemanager/internal/remotedl"
 	"kppbwi.app/filemanager/internal/sse"
 	"kppbwi.app/filemanager/internal/tasks"
 	"kppbwi.app/filemanager/internal/thumbs"
@@ -59,6 +60,7 @@ type Options struct {
 	Upload      *upload.Service     // tus uploads + precheck (Step 12a); nil disables /upload
 	ZipStore    *download.ZipStore  // zip payloads (Step 12b); opened on Cfg.DataDir/tmp when nil
 	Downloads   *download.Limiter   // concurrent download/zip slots per user; default 3
+	Remote      *remotedl.Service   // remote downloads (Step 13); nil disables /remote-downloads
 }
 
 // Server holds dependencies shared by handlers.
@@ -88,6 +90,7 @@ type Server struct {
 	upload      *upload.Service
 	zips        *download.ZipStore
 	dlLimit     *download.Limiter
+	remote      *remotedl.Service
 }
 
 // New builds the router. The returned handler is safe for http.Server.
@@ -115,6 +118,7 @@ func New(o Options) http.Handler {
 		upload:  o.Upload,
 		zips:    o.ZipStore,
 		dlLimit: o.Downloads,
+		remote:  o.Remote,
 	}
 	s.warnings = o.Warnings
 	if s.dlLimit == nil {
@@ -187,6 +191,7 @@ func (s *Server) mountAPI(api chi.Router) {
 		s.mountEvents(api)
 		s.mountUpload(api)
 		s.mountDownload(api)
+		s.mountRemoteDL(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": s.cfg.AppName})

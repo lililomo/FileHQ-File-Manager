@@ -44,6 +44,9 @@ const env = {
   DEV_TASK_ITEM_DELAY_MS: '2',
   // Step 12a upload.spec: 1 MB chunks so pause/resume/abort can happen mid-file
   UPLOAD_CHUNK_SIZE: '1MB',
+  // Step 13 remote-download.spec: the local test server lives on loopback, which
+  // production always blocks (development-only exemption)
+  DEV_REMOTE_DOWNLOAD_ALLOW_LOOPBACK: 'true',
 }
 
 const child = spawn(bin, ['serve'], { env, stdio: 'inherit' })

@@ -19,6 +19,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -34,8 +35,10 @@ import (
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/media"
 	"kppbwi.app/filemanager/internal/meta"
+	"kppbwi.app/filemanager/internal/netguard"
 	"kppbwi.app/filemanager/internal/notify"
 	"kppbwi.app/filemanager/internal/quota"
+	"kppbwi.app/filemanager/internal/remotedl"
 	"kppbwi.app/filemanager/internal/scheduler"
 	"kppbwi.app/filemanager/internal/sse"
 	"kppbwi.app/filemanager/internal/tasks"
@@ -369,6 +372,24 @@ func runServe(envFile string, noMigrate bool) int {
 		return exitConfig
 	}
 
+	// Remote downloads (Step 13, SPEC §8.10): SSRF guard + task runner. The
+	// loopback exemption exists for development/E2E only.
+	remoteSvc := remotedl.New(remotedl.Options{
+		DataDir: cfg.DataDir, Enabled: cfg.RemoteDownloadEnabled, MaxSize: cfg.RemoteDownloadMaxSize, MaxUploadSize: cfg.MaxUploadSize,
+		Version: version, BaseURL: cfg.AppBaseURL, Repo: store, Quota: quotaSvc, Files: filesSvc, Locks: locks, Tasks: engine,
+		Guard:      netguard.New(netguard.Policy{AllowLoopback: devAllowLoopback(cfg)}),
+		Invalidate: func(userID string, dir fsjail.VPath) { listingSvc.Invalidate(userID, "", dir) },
+		OnChange: func(ctx context.Context, userID string, p fsjail.VPath, isDir bool) {
+			if err := thumbsSvc.Invalidate(ctx, userID, p, isDir); err != nil {
+				logger.Warn("thumbnail invalidation failed", slog.String("path", string(p)), slog.String("error", err.Error()))
+			}
+		},
+		Logger: logger,
+	})
+	if devAllowLoopback(cfg) {
+		logger.Warn("DEV_REMOTE_DOWNLOAD_ALLOW_LOOPBACK is set: remote downloads may target loopback addresses (development only)")
+	}
+
 	handler := httpapi.New(httpapi.Options{
 		Cfg:         cfg,
 		Logger:      logger,
@@ -390,6 +411,7 @@ func runServe(envFile string, noMigrate bool) int {
 		Events:      broker,
 		Notify:      notifySvc,
 		Upload:      uploadSvc,
+		Remote:      remoteSvc,
 		Warnings: func() []string {
 			var out []string
 			for _, tool := range thumbsSvc.MissingTools() {
@@ -410,7 +432,7 @@ func runServe(envFile string, noMigrate bool) int {
 	defer stop()
 	go authSvc.RunMaintenance(ctx)
 	jobs := scheduler.New(cfg.TZDefault, logger, nil)
-	if err := registerJobs(jobs, cfg, trashStore, quotaSvc, filesSvc, auditRec, engine, uploadSvc, logger); err != nil {
+	if err := registerJobs(jobs, cfg, trashStore, quotaSvc, filesSvc, auditRec, engine, uploadSvc, remoteSvc, logger); err != nil {
 		logger.Error("scheduler setup failed", slog.String("error", err.Error()))
 		return exitConfig
 	}
@@ -458,11 +480,17 @@ func runServe(envFile string, noMigrate bool) int {
 // clean_uploads hourly (abandoned tus uploads, Step 12a), purge_trash 03:00 (expired Recycle Bin items), recalc_quota 03:30 (every
 // account, bounded to one hour) and prune_logs 04:00 (activity journal
 // older than ACTIVITY_RETENTION_DAYS). Step 19b exposes RunNow for admins.
-func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *trash.Store, quotaSvc *quota.Service, filesSvc *files.Service, auditRec *audit.Recorder, engine *tasks.Engine, uploadSvc *upload.Service, logger *slog.Logger) error {
+func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *trash.Store, quotaSvc *quota.Service, filesSvc *files.Service, auditRec *audit.Recorder, engine *tasks.Engine, uploadSvc *upload.Service, remoteSvc *remotedl.Service, logger *slog.Logger) error {
 	if err := jobs.Add(scheduler.Job{Name: "clean_uploads", Every: time.Hour, Timeout: 15 * time.Minute, Run: func(ctx context.Context) error {
 		res, err := uploadSvc.CleanExpired(ctx)
 		if res.Expired > 0 || res.Orphans > 0 {
 			logger.Info("abandoned uploads cleaned", slog.Int("expired", res.Expired), slog.Int("orphans", res.Orphans), slog.Int64("prunedRows", res.Pruned))
+		}
+		// abandoned remote download parts (Step 13) share the hourly slot
+		if n, rerr := remoteSvc.CleanOrphans(ctx); rerr != nil {
+			logger.Warn("remote download cleanup failed", slog.String("error", rerr.Error()))
+		} else if n > 0 {
+			logger.Info("abandoned remote downloads cleaned", slog.Int("folders", n))
 		}
 		return err
 	}}); err != nil {
@@ -514,6 +542,17 @@ type notifyAdapter struct{ s *notify.Service }
 func (a notifyAdapter) Create(ctx context.Context, userID, typ, title, body, link string) error {
 	_, err := a.s.Create(ctx, userID, typ, title, body, link)
 	return err
+}
+
+// devAllowLoopback reads DEV_REMOTE_DOWNLOAD_ALLOW_LOOPBACK, honoured only in
+// development (E2E downloads from a local test server); production always
+// blocks loopback (SPEC §8.10 step 3).
+func devAllowLoopback(cfg *config.Config) bool {
+	if cfg.AppEnv != config.EnvDevelopment {
+		return false
+	}
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("DEV_REMOTE_DOWNLOAD_ALLOW_LOOPBACK")))
+	return v == "true" || v == "1" || v == "yes"
 }
 
 // devItemDelay reads DEV_TASK_ITEM_DELAY_MS, honoured only in development

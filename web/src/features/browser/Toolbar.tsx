@@ -1,6 +1,5 @@
 import {
   ChevronDown,
-  Copy,
   FilePlus2,
   FolderPlus,
   FolderUp,
@@ -24,7 +23,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { IconButton } from '@/components/ui/icon-button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
 export type ToolbarNewKind = 'folder' | 'file' | 'template' | 'symlink'
@@ -33,6 +31,8 @@ export interface ToolbarProps {
   onNew: (kind: ToolbarNewKind, opts?: { template?: string }) => void
   /** "Upload ▾" (SPEC §8.8): files or a folder into the open directory. */
   onUpload?: (kind: 'file' | 'folder') => void
+  /** "Remote" (SPEC §8.10): remote download dialog; undefined hides the button (feature off). */
+  onRemote?: (() => void) | undefined
   /** Template names for "Baru → Dari template" (GET /files/templates). */
   templates?: string[]
   /** Contextual file-operation buttons (`ToolbarActions`). */
@@ -45,11 +45,12 @@ export interface ToolbarProps {
   viewSwitcher?: ReactNode
 }
 
-/** Toolbar (SPEC §9.3): "Baru", file operations (9b), upload (12a), preview,
- *  sort and columns work; remote download (13) is a placeholder. */
+/** Toolbar (SPEC §9.3): "Baru", file operations (9b), upload (12a), remote
+ *  download (13), preview, sort and columns. */
 export function Toolbar({
   onNew,
   onUpload,
+  onRemote,
   templates = [],
   actions,
   compact = false,
@@ -60,27 +61,6 @@ export function Toolbar({
   viewSwitcher,
 }: ToolbarProps) {
   const { t } = useTranslation('files')
-  const soon = t('toolbar.comingSoon')
-  const disabledIcon = (label: string, Icon: typeof Copy) => (
-    <Tooltip key={label}>
-      <TooltipTrigger asChild>
-        <span tabIndex={-1} className="inline-flex">
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled
-            aria-label={label}
-            className="text-text-muted"
-          >
-            <Icon aria-hidden="true" />
-          </Button>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>
-        {label} · {soon}
-      </TooltipContent>
-    </Tooltip>
-  )
   return (
     <div
       className="flex h-10 shrink-0 items-center gap-1 border-b border-border bg-surface px-2"
@@ -165,7 +145,11 @@ export function Toolbar({
       </DropdownMenu>
       {!compact ? (
         <>
-          {disabledIcon(t('toolbar.remote'), Globe)}
+          {onRemote ? (
+            <IconButton label={t('toolbar.remote')} onClick={onRemote} data-testid="toolbar-remote">
+              <Globe aria-hidden="true" />
+            </IconButton>
+          ) : null}
           <div className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
           {actions}
           <div className="ml-auto flex items-center gap-1">

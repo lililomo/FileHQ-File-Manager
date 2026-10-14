@@ -27,6 +27,7 @@ const (
 	ActionDeletePermanent = "file.delete_permanent"
 	ActionTrashEmpty      = "trash.empty"
 	ActionQuotaDrift      = "quota.drift"
+	ActionRemoteDownload  = "remote_download.created"
 )
 
 // Entry is one audit event. Details must never contain secrets; keys that

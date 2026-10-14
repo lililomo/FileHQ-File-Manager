@@ -48,6 +48,7 @@ import { useOverlaysStore } from '@/stores/overlays'
 import { getPref, usePref, usePrefsStore } from '@/stores/prefs'
 import { useSelectionStore } from '@/stores/selection'
 import { MAX_TABS, useTabsStore } from '@/stores/tabs'
+import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { AddressBar } from './AddressBar'
 import {
@@ -150,6 +151,9 @@ export function BrowserLayout({
   const uploadDest = useRef<string>(path)
   const contentRef = useRef<HTMLDivElement>(null)
   const openDialog = useFileOpsDialogs((s) => s.open)
+  // SPEC §8.10: the menu entry and toolbar button disappear when the admin
+  // turned remote downloads off (the API answers 403 anyway)
+  const remoteDownloadEnabled = useSessionStore((s) => s.config?.remoteDownloadEnabled ?? true)
   const dialogOpen = useFileOpsDialogs((s) => s.dialog !== null)
   const clipboard = useClipboardStore((s) => s.data)
   const cut = useMemo(() => cutPaths(clipboard), [clipboard])
@@ -511,13 +515,27 @@ export function BrowserLayout({
         uploadDest.current = focusItem.path
         uploadInputs.current?.pickFiles()
       },
+      remoteDownload: () => openDialog({ kind: 'remoteDownload', dir: path }),
+      remoteDownloadEnabled,
       openFolderProperties: () => {
         statItem(path)
           .then((stat) => setProperties({ items: [stat] }))
           .catch((e: unknown) => toast.error(e instanceof ApiError ? e.message : String(e)))
       },
     }),
-    [ops, dl, selPaths, selItems, path, tabId, focusItem, pasteTarget, openDialog, t],
+    [
+      ops,
+      dl,
+      selPaths,
+      selItems,
+      path,
+      tabId,
+      focusItem,
+      pasteTarget,
+      openDialog,
+      t,
+      remoteDownloadEnabled,
+    ],
   )
   const commitRename = useCallback(
     (item: Item, newName: string) => {
@@ -1027,6 +1045,7 @@ export function BrowserLayout({
       <Toolbar
         onNew={openNew}
         onUpload={(kind) => (kind === 'folder' ? fileOps.uploadFolder() : fileOps.uploadFile())}
+        onRemote={remoteDownloadEnabled ? fileOps.remoteDownload : undefined}
         templates={templates.data ?? []}
         actions={<ToolbarActions ctx={actionCtx} compact={isMobile} />}
         compact={isMobile}

@@ -36,7 +36,8 @@
     "moveOne": "Pindahkan {{name}} ke {{to}}",
     "dirSize": "Hitung ukuran {{name}}",
     "analysis": "Analisis penyimpanan",
-    "checksum": "Checksum {{name}}"
+    "checksum": "Checksum {{name}}",
+    "remoteDownload": "Unduh {{name}} ke {{to}}"
   },
   "meta": {
     "items": "{{done}} / {{total}} item",

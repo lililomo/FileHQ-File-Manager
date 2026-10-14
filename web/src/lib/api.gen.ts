@@ -2002,6 +2002,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/remote-downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue one remote_download task per URL (SPEC §8.10)
+         * @description Each URL becomes a `remote_download` task (progress in bytes, cancel/retry like any task; a retry resumes with `Range`
+         *     from the kept part file when the server supports it). Validation before anything is queued: scheme `http`/`https` only,
+         *     no userinfo, host not `localhost`, port 80/443 or ≥ 1024, literal private/special IPs refused, admin denylist (wins) and
+         *     allowlist (suffix match) → `400 SSRF_BLOCKED` (`details.reason`: scheme, userinfo, host, port, private_ip) or
+         *     `403 FORBIDDEN` (`reason`: denylist, allowlist, disabled). DNS is resolved inside the task: any private/special address
+         *     among the answers fails the task with `SSRF_BLOCKED`; redirects (max 5) are re-validated per hop. 1..10 URLs per request;
+         *     10 tasks per hour per user → `429 RATE_LIMITED` + `Retry-After`. `filename` applies to a single URL (`filenames` maps
+         *     url → name for several); otherwise the name comes from `Content-Disposition`, then the last URL segment, then
+         *     `download-<unix>`. Size limit = min(`REMOTE_DOWNLOAD_MAX_SIZE`, `MAX_UPLOAD_SIZE`) → `FILE_TOO_LARGE`; quota/disk →
+         *     `QUOTA_EXCEEDED`. Audit `remote_download.created` records hosts only; logs never contain query strings.
+         */
+        post: operations["remoteDownloadsCreate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote-downloads/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspect a URL before downloading (HEAD, then GET Range 0-0)
+         * @description Same URL/SSRF rules as the create call; answers the final URL (no query string), size when known, suggested file name, Range support and content type.
+         */
+        post: operations["remoteDownloadsProbe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/upload/precheck": {
         parameters: {
             query?: never;
@@ -2880,7 +2929,7 @@ export interface components {
         /** @description Task view (SPEC §6.3 "Tasks & events"). `payload` never contains secrets; `result` depends on `type` (SPEC §7.1). */
         Task: {
             id: string;
-            /** @description copy, move, dir_size, checksum, … (SPEC §7.1) */
+            /** @description copy, move, dir_size, checksum, remote_download, … (SPEC §7.1) */
             type: string;
             state: components["schemas"]["TaskState"];
             title: string;
@@ -2910,6 +2959,33 @@ export interface components {
         };
         TaskResponse: {
             task: components["schemas"]["Task"];
+        };
+        RemoteDownloadRequest: {
+            urls: string[];
+            /** @description Destination folder (virtual path); alias `dest` */
+            path: string;
+            /** @description Single URL only; no path separators */
+            filename?: string;
+            /** @description url → file name for several URLs */
+            filenames?: {
+                [key: string]: string;
+            };
+            /**
+             * @description aliases `policy`, `on_conflict`
+             * @default fail
+             * @enum {string}
+             */
+            onConflict: "fail" | "overwrite" | "skip" | "rename";
+        };
+        RemoteDownloadResponse: {
+            tasks: components["schemas"]["Task"][];
+        };
+        RemoteProbeResult: {
+            finalUrl: string;
+            size: number | null;
+            filename?: string;
+            acceptsRanges: boolean;
+            contentType?: string;
         };
         /** @description `202` answer of an operation converted into a task */
         TaskAccepted: {
@@ -4311,6 +4387,71 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["Error"];
+        };
+    };
+    remoteDownloadsCreate: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoteDownloadRequest"];
+            };
+        };
+        responses: {
+            /** @description Tasks queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoteDownloadResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            415: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    remoteDownloadsProbe: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uri */
+                    url: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Probe result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoteProbeResult"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            502: components["responses"]["Error"];
         };
     };
     uploadPrecheck: {

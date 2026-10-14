@@ -48,7 +48,21 @@
     "dot": "must not be . or ..",
     "empty": "must not be empty",
     "reserved": "this name is reserved by the system",
-    "windows_incompatible": "this name is problematic on Windows (created anyway)"
+    "windows_incompatible": "this name is problematic on Windows (created anyway)",
+    "private_ip": "private/internal network address",
+    "denylist": "host is on the block list",
+    "allowlist": "host is not on the allow list",
+    "scheme": "unsupported URL scheme",
+    "userinfo": "URL contains credentials",
+    "port": "port not allowed",
+    "host": "invalid host",
+    "disabled": "feature disabled",
+    "resolve": "host name could not be resolved",
+    "too_many_redirects": "too many redirects",
+    "network": "network error",
+    "blocked_extension": "file extension is blocked"
   },
-  "withRequestId": "{{message}} (request ID: {{requestId}})"
+  "withRequestId": "{{message}} (request ID: {{requestId}})",
+  "REMOTE_UPSTREAM": "The remote server refused the request.",
+  "REMOTE_NETWORK": "The connection to the remote server failed."
 }

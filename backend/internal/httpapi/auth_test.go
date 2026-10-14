@@ -27,8 +27,10 @@ import (
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/meta"
+	"kppbwi.app/filemanager/internal/netguard"
 	"kppbwi.app/filemanager/internal/notify"
 	"kppbwi.app/filemanager/internal/quota"
+	"kppbwi.app/filemanager/internal/remotedl"
 	"kppbwi.app/filemanager/internal/sse"
 	"kppbwi.app/filemanager/internal/tasks"
 	"kppbwi.app/filemanager/internal/trash"
@@ -79,6 +81,7 @@ type authEnv struct {
 	notify  *notify.Service
 	upload  *upload.Service
 	dl      *download.Limiter
+	remote  *remotedl.Service
 }
 
 type notifyFunc func(ctx context.Context, userID, typ, title, body, link string) error
@@ -104,9 +107,11 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 		"ADMIN_INITIAL_PASSWORD=" + initialAdminPassword,
 	}
 	// TEST_* entries tune the services instead of the configuration.
-	syncMaxEntries, itemDelay := 0, time.Duration(0)
+	syncMaxEntries, itemDelay, remoteLoopback := 0, time.Duration(0), false
 	for _, kv := range extraEnv {
 		switch {
+		case kv == "TEST_REMOTE_ALLOW_LOOPBACK=1":
+			remoteLoopback = true
 		case strings.HasPrefix(kv, "TEST_SYNC_MAX_ENTRIES="):
 			syncMaxEntries, _ = strconv.Atoi(strings.TrimPrefix(kv, "TEST_SYNC_MAX_ENTRIES="))
 		case strings.HasPrefix(kv, "TEST_TASK_ITEM_DELAY_MS="):
@@ -176,6 +181,14 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 			return err
 		}), Quota: env.quota, OpenJail: env.trash.OpenJail, ErrorCode: files.TaskErrorCode, NotifyMinDuration: &zero, ItemDelay: itemDelay})
 	files.RegisterTasks(env.tasks, env.files)
+	// Remote downloads (Step 13): loopback only when a test asks for it
+	// (httptest servers); in-task retries without backoff.
+	remoteGuard := netguard.New(netguard.Policy{AllowLoopback: remoteLoopback})
+	remoteGuard.ConnectTimeout = 2 * time.Second
+	env.remote = remotedl.New(remotedl.Options{DataDir: cfg.DataDir, Enabled: cfg.RemoteDownloadEnabled, MaxSize: cfg.RemoteDownloadMaxSize, MaxUploadSize: cfg.MaxUploadSize,
+		Version: "test", BaseURL: cfg.AppBaseURL, Repo: store, Quota: env.quota, Files: env.files, Locks: env.locks, Tasks: env.tasks, Guard: remoteGuard,
+		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) },
+		Logger:     logger, RetryBackoff: []time.Duration{}, ProgressStep: 64 << 10})
 	engineCtx, stopEngine := context.WithCancel(context.Background())
 	if err := env.tasks.Start(engineCtx); err != nil {
 		t.Fatal(err)
@@ -190,7 +203,7 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 	}
 	env.dl = download.NewLimiter(0)
 	env.handler = New(Options{Cfg: cfg, Logger: logger, Version: "test", Store: store, Auth: svc, Listing: env.listing, Locks: env.locks, Files: env.files, Quota: env.quota, Meta: env.meta,
-		Tasks: env.tasks, Events: env.events, Notify: env.notify, Upload: env.upload, Downloads: env.dl,
+		Tasks: env.tasks, Events: env.events, Notify: env.notify, Upload: env.upload, Downloads: env.dl, Remote: env.remote,
 		Assets: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("spa")) })})
 	return env
 }

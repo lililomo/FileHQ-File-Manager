@@ -1,0 +1,28 @@
+{
+  "title": "Remote download",
+  "description": "Download files from http/https URLs into your folder. Up to {{max}} URLs per request, one per line.",
+  "urls": "URLs (one per line)",
+  "count_zero": "No URLs yet",
+  "count_one": "{{n}} URL",
+  "count_other": "{{n}} URLs",
+  "problem": {
+    "invalid": "One of the lines is not a valid URL.",
+    "scheme": "Only http:// or https:// URLs are supported.",
+    "userinfo": "URLs must not contain a user name or password.",
+    "tooMany": "At most {{max}} URLs per request."
+  },
+  "destination": "Destination folder",
+  "filename": "File name",
+  "filenameAuto": "Automatic from the server / URL",
+  "filenameSingle": "Single URL only",
+  "probe": "Check",
+  "probeSize": "Size {{size}}",
+  "probeUnknownSize": "Unknown size",
+  "probeResumable": "resumable",
+  "policy": "If the name exists",
+  "policyFail": "Fail",
+  "submit_one": "Download",
+  "submit_other": "Download {{count}} URLs",
+  "queuedMany": "{{n}} remote downloads queued as background tasks",
+  "disabled": "Remote download is disabled by the administrator."
+}

@@ -48,7 +48,21 @@
     "dot": "tidak boleh berupa . atau ..",
     "empty": "tidak boleh kosong",
     "reserved": "nama ini dicadangkan sistem",
-    "windows_incompatible": "nama ini bermasalah di Windows (tetap dibuat)"
+    "windows_incompatible": "nama ini bermasalah di Windows (tetap dibuat)",
+    "private_ip": "alamat jaringan privat/internal",
+    "denylist": "host masuk daftar blokir",
+    "allowlist": "host tidak ada di daftar izin",
+    "scheme": "skema URL tidak didukung",
+    "userinfo": "URL berisi kredensial",
+    "port": "port tidak diizinkan",
+    "host": "host tidak valid",
+    "disabled": "fitur dinonaktifkan",
+    "resolve": "nama host tidak bisa ditemukan",
+    "too_many_redirects": "terlalu banyak pengalihan",
+    "network": "kesalahan jaringan",
+    "blocked_extension": "ekstensi file diblokir"
   },
-  "withRequestId": "{{message}} (ID permintaan: {{requestId}})"
+  "withRequestId": "{{message}} (ID permintaan: {{requestId}})",
+  "REMOTE_UPSTREAM": "Server sumber menolak permintaan.",
+  "REMOTE_NETWORK": "Koneksi ke server sumber gagal."
 }

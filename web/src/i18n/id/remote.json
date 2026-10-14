@@ -1,0 +1,28 @@
+{
+  "title": "Remote download",
+  "description": "Unduh file dari URL http/https ke folder Anda. Maksimal {{max}} URL per permintaan, satu per baris.",
+  "urls": "URL (satu per baris)",
+  "count_zero": "Belum ada URL",
+  "count_one": "{{n}} URL",
+  "count_other": "{{n}} URL",
+  "problem": {
+    "invalid": "Ada baris yang bukan URL yang valid.",
+    "scheme": "Hanya URL http:// atau https:// yang didukung.",
+    "userinfo": "URL tidak boleh berisi nama pengguna atau password.",
+    "tooMany": "Maksimal {{max}} URL per permintaan."
+  },
+  "destination": "Folder tujuan",
+  "filename": "Nama file",
+  "filenameAuto": "Otomatis dari server / URL",
+  "filenameSingle": "Hanya untuk satu URL",
+  "probe": "Periksa",
+  "probeSize": "Ukuran {{size}}",
+  "probeUnknownSize": "Ukuran tidak diketahui",
+  "probeResumable": "bisa dilanjutkan",
+  "policy": "Jika nama sudah ada",
+  "policyFail": "Gagalkan",
+  "submit_one": "Unduh",
+  "submit_other": "Unduh {{count}} URL",
+  "queuedMany": "{{n}} remote download dijalankan sebagai task di latar belakang",
+  "disabled": "Remote download dinonaktifkan oleh admin."
+}

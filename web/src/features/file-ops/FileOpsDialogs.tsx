@@ -7,6 +7,7 @@ import { MoveCopyDialog } from './MoveCopyDialog'
 import { NewItemDialog } from './NewItemDialog'
 import { PermissionDialog } from './PermissionDialog'
 import { PrecheckDialog } from '@/features/upload/PrecheckDialog'
+import { RemoteDownloadDialog } from '@/features/remote-download/RemoteDownloadDialog'
 import { focusGrid, useFileOpsDialogs } from './store'
 import type { FileOps } from './useFileOps'
 
@@ -101,6 +102,10 @@ export function FileOpsDialogs({ ops }: { ops: FileOps }) {
           onResolve={dialog.resolve}
           onCloseAutoFocus={returnFocus}
         />
+      )
+    case 'remoteDownload':
+      return (
+        <RemoteDownloadDialog dir={dialog.dir} onClose={close} onCloseAutoFocus={returnFocus} />
       )
     default:
       return null

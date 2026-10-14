@@ -36,7 +36,8 @@
     "moveOne": "Move {{name}} to {{to}}",
     "dirSize": "Calculate size of {{name}}",
     "analysis": "Storage analysis",
-    "checksum": "Checksum {{name}}"
+    "checksum": "Checksum {{name}}",
+    "remoteDownload": "Download {{name}} to {{to}}"
   },
   "meta": {
     "items": "{{done}} / {{total}} items",

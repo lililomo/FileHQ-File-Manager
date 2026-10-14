@@ -11,6 +11,7 @@ import idTrash from './id/trash.json'
 import idMeta from './id/meta.json'
 import idTasks from './id/tasks.json'
 import idUpload from './id/upload.json'
+import idRemote from './id/remote.json'
 import enCommon from './en/common.json'
 import enNav from './en/nav.json'
 import enAuth from './en/auth.json'
@@ -21,6 +22,7 @@ import enTrash from './en/trash.json'
 import enMeta from './en/meta.json'
 import enTasks from './en/tasks.json'
 import enUpload from './en/upload.json'
+import enRemote from './en/remote.json'
 
 export const LANGUAGES = ['id', 'en'] as const
 export type Language = (typeof LANGUAGES)[number]
@@ -38,6 +40,7 @@ export const resources = {
     meta: idMeta,
     tasks: idTasks,
     upload: idUpload,
+    remote: idRemote,
   },
   en: {
     common: enCommon,
@@ -50,6 +53,7 @@ export const resources = {
     meta: enMeta,
     tasks: enTasks,
     upload: enUpload,
+    remote: enRemote,
   },
 } as const
 

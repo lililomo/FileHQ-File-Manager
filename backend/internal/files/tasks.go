@@ -230,6 +230,12 @@ func TaskErrorCode(err error) (string, string) {
 		qe *quota.ExceededError
 		tc *trash.ConflictError
 	)
+	// Runners of other packages (remote download, archives) map their own
+	// errors without this package importing them.
+	var coder interface{ TaskCode() (string, string) }
+	if errors.As(err, &coder) {
+		return coder.TaskCode()
+	}
 	switch {
 	case errors.As(err, &qe):
 		return "QUOTA_EXCEEDED", "storage quota exceeded"
