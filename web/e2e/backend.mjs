@@ -2,7 +2,7 @@
 // Credentials here must match e2e/fixtures.ts.
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -11,6 +11,13 @@ const bin = resolve(process.cwd(), '..', 'bin', 'filemanager')
 if (!existsSync(bin)) {
   console.error(`e2e: ${bin} not found — run \`make build\` first`)
   process.exit(2)
+}
+// Only one E2E backend runs at a time (fixed port, reuseExistingServer: false), so any
+// leftover fm-e2e-* directory belongs to a run that was killed before its cleanup ran
+// (SIGKILL from Playwright's webServer timeout). Sweep them so /tmp does not fill up.
+for (const name of readdirSync(tmpdir())) {
+  if (name.startsWith('fm-e2e-') && name !== 'fm-e2e-storage.txt')
+    rmSync(join(tmpdir(), name), { recursive: true, force: true })
 }
 const dir = mkdtempSync(join(tmpdir(), 'fm-e2e-'))
 const storage = join(dir, 'storage')
