@@ -249,7 +249,8 @@ func TestThumbSignatureChecks(t *testing.T) {
 	if r := env.call(http.MethodPost, "/api/v1/files/sign", "203.0.113.5:1", map[string]any{"path": "/b.png", "purpose": "thumb"}, nil, ck); r.rec.Code != 403 {
 		t.Fatalf("sign without csrf: %d", r.rec.Code)
 	}
-	if r := env.call(http.MethodPost, "/api/v1/files/sign", "203.0.113.5:1", map[string]any{"path": "/b.png", "purpose": "download"}, hdr, ck); r.rec.Code != 400 || !strings.Contains(r.rec.Body.String(), "not_implemented") {
+	// Step 12b: other purposes are signed too, each on its own route
+	if r := env.call(http.MethodPost, "/api/v1/files/sign", "203.0.113.5:1", map[string]any{"path": "/b.png", "purpose": "download"}, hdr, ck); r.rec.Code != 200 || !strings.Contains(r.rec.Body.String(), "/api/v1/files/download?") {
 		t.Fatalf("sign download: %d %s", r.rec.Code, r.rec.Body.String())
 	}
 	if r := env.call(http.MethodPost, "/api/v1/files/sign", "203.0.113.5:1", map[string]any{"path": "/b.png", "purpose": "thumb", "size": 999}, hdr, ck); r.rec.Code != 400 {

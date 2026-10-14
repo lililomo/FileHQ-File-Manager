@@ -24,6 +24,11 @@ const (
 // Sizes lists every supported size (a job renders all of them at once).
 var Sizes = []Size{Size128, Size256, Size512}
 
+// SizePreview is the large inline variant of GET /files/raw?variant=preview
+// (Step 12b). It is rendered on demand for raster images only, never by the
+// grid pipeline, so ParseSize does not accept it.
+const SizePreview Size = 2048
+
 // ParseSize validates the size= query parameter.
 func ParseSize(s string) (Size, bool) {
 	n, err := strconv.Atoi(s)

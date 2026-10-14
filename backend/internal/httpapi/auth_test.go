@@ -22,6 +22,7 @@ import (
 	"kppbwi.app/filemanager/internal/config"
 	"kppbwi.app/filemanager/internal/db"
 	"kppbwi.app/filemanager/internal/db/sqlc"
+	"kppbwi.app/filemanager/internal/download"
 	"kppbwi.app/filemanager/internal/files"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/listing"
@@ -77,6 +78,7 @@ type authEnv struct {
 	events  *sse.Broker
 	notify  *notify.Service
 	upload  *upload.Service
+	dl      *download.Limiter
 }
 
 type notifyFunc func(ctx context.Context, userID, typ, title, body, link string) error
@@ -186,8 +188,9 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
+	env.dl = download.NewLimiter(0)
 	env.handler = New(Options{Cfg: cfg, Logger: logger, Version: "test", Store: store, Auth: svc, Listing: env.listing, Locks: env.locks, Files: env.files, Quota: env.quota, Meta: env.meta,
-		Tasks: env.tasks, Events: env.events, Notify: env.notify, Upload: env.upload,
+		Tasks: env.tasks, Events: env.events, Notify: env.notify, Upload: env.upload, Downloads: env.dl,
 		Assets: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("spa")) })})
 	return env
 }

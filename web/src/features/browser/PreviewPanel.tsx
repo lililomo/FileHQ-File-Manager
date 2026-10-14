@@ -16,31 +16,56 @@ export interface PreviewPanelProps {
   onClose: () => void
   /** Overlay (< 1280 px) instead of a docked column. */
   overlay?: boolean
+  /** Step 12b: download the selection (single file → signed URL, else zip). */
+  onDownload?: (() => void) | undefined
 }
 
 /** Right-hand Preview/Details panel (SPEC §9.3, PROMPT 7b task 8). */
-export function PreviewPanel({ items, count, onClose, overlay = false }: PreviewPanelProps) {
+export function PreviewPanel({
+  items,
+  count,
+  onClose,
+  overlay = false,
+  onDownload,
+}: PreviewPanelProps) {
   const { t, i18n } = useTranslation('files')
   const lang = i18n.resolvedLanguage ?? 'id'
   const single = items.length === 1 && count === 1 ? items[0]! : null
   const stat = useItemStat(single?.path ?? null)
   const bytes = items.reduce((n, it) => n + (it.isDir ? 0 : it.size), 0)
   const soon = t('toolbar.comingSoon')
-  const quick = (label: string, Icon: typeof Download) => (
-    <Tooltip key={label}>
-      <TooltipTrigger asChild>
-        <span tabIndex={-1} className="inline-flex">
-          <Button variant="outline" size="sm" disabled className="gap-1">
-            <Icon aria-hidden="true" />
-            {label}
-          </Button>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>
-        {label} · {soon}
-      </TooltipContent>
-    </Tooltip>
+  const downloadButton = onDownload ? (
+    <Button
+      key="download"
+      variant="outline"
+      size="sm"
+      className="gap-1"
+      onClick={onDownload}
+      data-testid="preview-download"
+    >
+      <Download aria-hidden="true" />
+      {t('preview.download')}
+    </Button>
+  ) : (
+    quick(t('preview.download'), Download)
   )
+  function quick(label: string, Icon: typeof Download) {
+    return (
+      <Tooltip key={label}>
+        <TooltipTrigger asChild>
+          <span tabIndex={-1} className="inline-flex">
+            <Button variant="outline" size="sm" disabled className="gap-1">
+              <Icon aria-hidden="true" />
+              {label}
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {label} · {soon}
+        </TooltipContent>
+      </Tooltip>
+    )
+  }
   return (
     <aside
       className={cn(
@@ -61,7 +86,7 @@ export function PreviewPanel({ items, count, onClose, overlay = false }: Preview
           <div className="space-y-4">
             <ItemHeader item={single} />
             <div className="flex flex-wrap gap-1">
-              {quick(t('preview.download'), Download)}
+              {downloadButton}
               {quick(t('preview.edit'), Pencil)}
               {quick(t('preview.share'), Share2)}
             </div>
@@ -80,7 +105,7 @@ export function PreviewPanel({ items, count, onClose, overlay = false }: Preview
               {t('preview.multiSize', { size: formatBytes(bytes, lang) })}
               {items.length < count ? ` ${t('preview.loadedOnly')}` : ''}
             </div>
-            <div className="flex flex-wrap gap-1">{quick(t('preview.download'), Download)}</div>
+            <div className="flex flex-wrap gap-1">{downloadButton}</div>
           </div>
         ) : (
           <p className="text-xs text-text-muted">{t('preview.empty')}</p>

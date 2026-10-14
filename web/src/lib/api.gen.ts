@@ -1236,8 +1236,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Sign URLs for thumbnails (download/media/inline/zip from Step 12b)
-         * @description Returns short-lived signed URLs (SPEC §8.9, ADR-15). One `path` or a batch `paths` (≤ 500). TTL for `thumb` is MEDIA_URL_TTL.
+         * Sign content URLs (thumb, download, media, inline)
+         * @description Returns short-lived signed URLs (SPEC §8.9, ADR-15): one `path`, a batch `paths` sharing a `purpose`, or
+         *     `items` with a purpose each (≤ 500). TTL: `download|inline` → SIGNED_URL_TTL (5 m), `media|thumb` →
+         *     MEDIA_URL_TTL (2 h). Zip URLs come from `POST /files/zip`. Signed endpoints need no cookie but the account
+         *     must stay active.
          */
         post: {
             parameters: {
@@ -1343,6 +1346,324 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download one file (signed URL, no cookie, Range)
+         * @description Authenticated by the signature only (`purpose=download`, SPEC §8.9, ADR-15) so download managers, new tabs and
+         *     `<a download>` work without cookies; the account must still be active (`403` otherwise). Served with
+         *     `http.ServeContent`: `Accept-Ranges: bytes`, strong `ETag` (inode, size, mtime), `Last-Modified`, `If-Range`,
+         *     `206` for `Range`, `304` for `If-None-Match`, `HEAD`. Always `Content-Disposition: attachment` with
+         *     `filename*=UTF-8''`; MIME from magic bytes, but HTML/SVG/XML/JS/CSS are always `application/octet-stream`.
+         *     Headers: `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox; default-src 'none'`,
+         *     `Cache-Control: private, max-age=0, must-revalidate`, `Referrer-Policy: no-referrer`, `X-Accel-Buffering: no`.
+         *     At most 3 concurrent downloads/zips per user (`429 RATE_LIMITED`, `Retry-After: 5`, `details.reason=concurrent_downloads`).
+         */
+        get: {
+            parameters: {
+                query: {
+                    path: string;
+                    purpose: "download";
+                    /** @description u:<user_id> */
+                    scope: string;
+                    exp: number;
+                    sig: string;
+                };
+                header?: {
+                    Range?: string;
+                    "If-None-Match"?: string;
+                    "If-Range"?: string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Whole file */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/octet-stream": string;
+                    };
+                };
+                /** @description Partial content */
+                206: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not modified */
+                304: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["Error"];
+                403: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                429: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /** Headers of a download (same parameters as GET) */
+        head: {
+            parameters: {
+                query: {
+                    path: string;
+                    purpose: "download";
+                    scope: string;
+                    exp: number;
+                    sig: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Headers only (ETag */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+            };
+        };
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/raw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream a file for a viewer (signed URL, inline policy)
+         * @description Like `/files/download` but for `purpose=media|inline` (TTL `MEDIA_URL_TTL` for media). Inline policy (ADR-06):
+         *     only raster images, audio and video are `Content-Disposition: inline`; PDF, text and everything else are
+         *     attachments (viewers fetch them); HTML/SVG/XML/JS/CSS are always `application/octet-stream` attachments.
+         *     `variant=thumb` serves the 512 px thumbnail (`202` + `Retry-After` while rendering), `variant=preview`
+         *     the 2048 px WebP of a raster/SVG image rendered on demand (falls back to the 512 px thumbnail for
+         *     video/PDF/audio). Inline media is not counted against the download concurrency limit.
+         */
+        get: {
+            parameters: {
+                query: {
+                    path: string;
+                    purpose: "media" | "inline";
+                    scope: string;
+                    exp: number;
+                    sig: string;
+                    variant?: "preview" | "thumb";
+                };
+                header?: {
+                    Range?: string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description File bytes (inline or attachment per policy) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "*/*": string;
+                    };
+                };
+                /** @description Thumbnail variant still rendering */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Partial content */
+                206: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not modified */
+                304: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["Error"];
+                403: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /** Headers of a raw stream (same parameters as GET) */
+        head: {
+            parameters: {
+                query: {
+                    path: string;
+                    purpose: "media" | "inline";
+                    scope: string;
+                    exp: number;
+                    sig: string;
+                    variant?: "preview" | "thumb";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Headers only */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+            };
+        };
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream the zip (signed URL, no cookie)
+         * @description `application/zip` written straight to the response (`archive/zip`, Store by default, Deflate level 1 on
+         *     request, zip64 automatic, UTF-8 names, folders recursed, symlinks skipped and listed in `_ERRORS.txt`,
+         *     items missing mid-walk skipped). No `Content-Length`, `Accept-Ranges: none`, no temp file. Read lock on the
+         *     sources (`409 OPERATION_IN_PROGRESS` while a mutation holds them). Counts against the 3 concurrent
+         *     downloads per user. `404` when the payload expired or belongs to another user.
+         */
+        get: {
+            parameters: {
+                query: {
+                    /** @description Payload id */
+                    token: string;
+                    purpose: "zip";
+                    scope: string;
+                    exp: number;
+                    sig: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Zip stream */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/zip": string;
+                    };
+                };
+                403: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+                429: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        /**
+         * Prepare a streamed zip of several items
+         * @description Stores the path list in `DATA_DIR/tmp/zip-<id>.json` (10 minutes) and returns a signed URL
+         *     (`purpose=zip`, TTL `SIGNED_URL_TTL`). Up to 2000 paths; the root can not be an entry.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ZipRequest"];
+                };
+            };
+            responses: {
+                /** @description Signed zip URL */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ZipResponse"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                401: components["responses"]["Error"];
+                403: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        /** Headers of the zip stream (same parameters as GET) */
+        head: {
+            parameters: {
+                query: {
+                    token: string;
+                    purpose: "zip";
+                    scope: string;
+                    exp: number;
+                    sig: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Headers only (no Content-Length) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+            };
+        };
         patch?: never;
         trace?: never;
     };
@@ -2307,15 +2628,18 @@ export interface components {
             undo: null;
         };
         SignRequest: {
-            /** @description One path (mutually exclusive with paths) */
+            /** @description One path (exactly one of path */
             path?: string;
+            /** @description Batch sharing `purpose` */
             paths?: string[];
+            items?: components["schemas"]["SignItem"][];
             /**
-             * @description Only thumb in Step 8
+             * @description Required unless every item carries its own
              * @enum {string}
              */
-            purpose: "thumb" | "download" | "media" | "inline" | "zip";
+            purpose?: "thumb" | "download" | "media" | "inline";
             /**
+             * @description Thumbnails only
              * @default 256
              * @enum {integer}
              */
@@ -2323,21 +2647,54 @@ export interface components {
             /** @description Share scope (Step 18a) */
             share?: string;
         };
+        SignItem: {
+            path: string;
+            /** @enum {string} */
+            purpose?: "thumb" | "download" | "media" | "inline";
+        };
         SignResponse: {
-            /** @description Relative URL (/api/v1/files/thumb?...) */
+            /** @description Relative URL (/api/v1/files/{thumb|download|raw}?...) */
             url: string;
             /** Format: date-time */
             expiresAt: string;
+            /** @enum {string} */
+            purpose: "thumb" | "download" | "media" | "inline";
         };
         SignBatchResponse: {
             urls: {
                 path: string;
                 url: string;
+                /** @enum {string} */
+                purpose: "thumb" | "download" | "media" | "inline";
+                /** Format: date-time */
+                expiresAt: string;
             }[];
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description Earliest expiry in the batch
+             */
             expiresAt: string;
             /** @description Paths that failed validation (omitted from urls) */
             invalid: string[];
+        };
+        ZipRequest: {
+            paths: string[];
+            /** @description Archive name without .zip (validated like a file name) */
+            name?: string;
+            /**
+             * @default store
+             * @enum {string}
+             */
+            method: "store" | "deflate";
+        };
+        ZipResponse: {
+            /** @description Relative signed URL (/api/v1/files/zip?token=…) */
+            url: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @description <folder>.zip, <name>.zip or <app>-<yyyyMMdd-HHmm>.zip */
+            name: string;
+            count: number;
         };
         Error: {
             error: {

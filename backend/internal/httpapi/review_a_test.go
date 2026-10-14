@@ -280,6 +280,8 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		{http.MethodPatch, "/api/v1/upload/tus/x"},
 		{http.MethodDelete, "/api/v1/upload/tus/x"},
 		{http.MethodOptions, "/api/v1/upload/tus/x"},
+		// Step 12b: zip preparation is gated; the signed GET routes are exempt (see known)
+		{http.MethodPost, "/api/v1/files/zip"},
 	}
 	for _, b := range blocked {
 		var body any
@@ -340,12 +342,18 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		"HEAD /api/v1/upload/tus/{id}": true, "PATCH /api/v1/upload/tus/{id}": true,
 		"DELETE /api/v1/upload/tus/{id}": true, "OPTIONS /api/v1/upload/tus/{id}": true,
 		// signed URL only (no cookie): a user who must change the password cannot
-		// obtain one because /files/sign is gated (Step 8).
-		"GET /api/v1/files/thumb": true,
+		// obtain one because /files/sign and POST /files/zip are gated (Steps 8, 12b).
+		"GET /api/v1/files/thumb":    true,
+		"GET /api/v1/files/download": true, "HEAD /api/v1/files/download": true,
+		"GET /api/v1/files/raw": true, "HEAD /api/v1/files/raw": true,
+		"GET /api/v1/files/zip": true, "HEAD /api/v1/files/zip": true,
+		"POST /api/v1/files/zip": true,
 	}
-	// the signed endpoint rejects cookie-only access: no signature → 403
-	if r := env.call(http.MethodGet, "/api/v1/files/thumb?path=/x&size=128", ip, nil, nil, ck); r.rec.Code != 403 || r.code(t) != "SIGNATURE_INVALID" {
-		t.Fatalf("thumb without signature: %d %s", r.rec.Code, r.rec.Body.String())
+	// the signed endpoints reject cookie-only access: no signature → 403
+	for _, p := range []string{"/api/v1/files/thumb?path=/x&size=128", "/api/v1/files/download?path=/x", "/api/v1/files/raw?path=/x&purpose=media", "/api/v1/files/zip?token=x"} {
+		if r := env.call(http.MethodGet, p, ip, nil, nil, ck); r.rec.Code != 403 || r.code(t) != "SIGNATURE_INVALID" {
+			t.Fatalf("%s without signature: %d %s", p, r.rec.Code, r.rec.Body.String())
+		}
 	}
 	for _, rt := range chiRoutes(t, env.handler) {
 		if !known[rt] {

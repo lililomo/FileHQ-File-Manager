@@ -880,8 +880,12 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
   /api/v1/files/sign:
     post:
-      summary: Sign URLs for thumbnails (download/media/inline/zip from Step 12b)
-      description: Returns short-lived signed URLs (SPEC §8.9, ADR-15). One `path` or a batch `paths` (≤ 500). TTL for `thumb` is MEDIA_URL_TTL.
+      summary: Sign content URLs (thumb, download, media, inline)
+      description: |
+        Returns short-lived signed URLs (SPEC §8.9, ADR-15): one `path`, a batch `paths` sharing a `purpose`, or
+        `items` with a purpose each (≤ 500). TTL: `download|inline` → SIGNED_URL_TTL (5 m), `media|thumb` →
+        MEDIA_URL_TTL (2 h). Zip URLs come from `POST /files/zip`. Signed endpoints need no cookie but the account
+        must stay active.
       tags: [files]
       security: [{ cookieAuth: [] }]
       parameters:
@@ -932,6 +936,166 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/files/download:
+    head:
+      summary: Headers of a download (same parameters as GET)
+      tags: [files]
+      security: []
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+        - { name: purpose, in: query, required: true, schema: { type: string, enum: [download] } }
+        - { name: scope, in: query, required: true, schema: { type: string } }
+        - { name: exp, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: sig, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Headers only (ETag, Accept-Ranges, Content-Disposition, Content-Length) }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    get:
+      summary: Download one file (signed URL, no cookie, Range)
+      description: |
+        Authenticated by the signature only (`purpose=download`, SPEC §8.9, ADR-15) so download managers, new tabs and
+        `<a download>` work without cookies; the account must still be active (`403` otherwise). Served with
+        `http.ServeContent`: `Accept-Ranges: bytes`, strong `ETag` (inode, size, mtime), `Last-Modified`, `If-Range`,
+        `206` for `Range`, `304` for `If-None-Match`, `HEAD`. Always `Content-Disposition: attachment` with
+        `filename*=UTF-8''`; MIME from magic bytes, but HTML/SVG/XML/JS/CSS are always `application/octet-stream`.
+        Headers: `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox; default-src 'none'`,
+        `Cache-Control: private, max-age=0, must-revalidate`, `Referrer-Policy: no-referrer`, `X-Accel-Buffering: no`.
+        At most 3 concurrent downloads/zips per user (`429 RATE_LIMITED`, `Retry-After: 5`, `details.reason=concurrent_downloads`).
+      tags: [files]
+      security: []
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+        - { name: purpose, in: query, required: true, schema: { type: string, enum: [download] } }
+        - { name: scope, in: query, required: true, schema: { type: string }, description: "u:<user_id>" }
+        - { name: exp, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: sig, in: query, required: true, schema: { type: string } }
+        - { name: Range, in: header, schema: { type: string } }
+        - { name: If-None-Match, in: header, schema: { type: string } }
+        - { name: If-Range, in: header, schema: { type: string } }
+      responses:
+        "200":
+          description: Whole file
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "206": { description: Partial content }
+        "304": { description: Not modified }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/files/raw:
+    head:
+      summary: Headers of a raw stream (same parameters as GET)
+      tags: [files]
+      security: []
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+        - { name: purpose, in: query, required: true, schema: { type: string, enum: [media, inline] } }
+        - { name: scope, in: query, required: true, schema: { type: string } }
+        - { name: exp, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: sig, in: query, required: true, schema: { type: string } }
+        - { name: variant, in: query, schema: { type: string, enum: [preview, thumb] } }
+      responses:
+        "200": { description: Headers only }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    get:
+      summary: Stream a file for a viewer (signed URL, inline policy)
+      description: |
+        Like `/files/download` but for `purpose=media|inline` (TTL `MEDIA_URL_TTL` for media). Inline policy (ADR-06):
+        only raster images, audio and video are `Content-Disposition: inline`; PDF, text and everything else are
+        attachments (viewers fetch them); HTML/SVG/XML/JS/CSS are always `application/octet-stream` attachments.
+        `variant=thumb` serves the 512 px thumbnail (`202` + `Retry-After` while rendering), `variant=preview`
+        the 2048 px WebP of a raster/SVG image rendered on demand (falls back to the 512 px thumbnail for
+        video/PDF/audio). Inline media is not counted against the download concurrency limit.
+      tags: [files]
+      security: []
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+        - { name: purpose, in: query, required: true, schema: { type: string, enum: [media, inline] } }
+        - { name: scope, in: query, required: true, schema: { type: string } }
+        - { name: exp, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: sig, in: query, required: true, schema: { type: string } }
+        - { name: variant, in: query, schema: { type: string, enum: [preview, thumb] } }
+        - { name: Range, in: header, schema: { type: string } }
+      responses:
+        "200":
+          description: File bytes (inline or attachment per policy)
+          content:
+            "*/*":
+              schema: { type: string, format: binary }
+        "202": { description: Thumbnail variant still rendering }
+        "206": { description: Partial content }
+        "304": { description: Not modified }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/files/zip:
+    post:
+      summary: Prepare a streamed zip of several items
+      description: |
+        Stores the path list in `DATA_DIR/tmp/zip-<id>.json` (10 minutes) and returns a signed URL
+        (`purpose=zip`, TTL `SIGNED_URL_TTL`). Up to 2000 paths; the root can not be an entry.
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ZipRequest" }
+      responses:
+        "200":
+          description: Signed zip URL
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ZipResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+    head:
+      summary: Headers of the zip stream (same parameters as GET)
+      tags: [files]
+      security: []
+      parameters:
+        - { name: token, in: query, required: true, schema: { type: string } }
+        - { name: purpose, in: query, required: true, schema: { type: string, enum: [zip] } }
+        - { name: scope, in: query, required: true, schema: { type: string } }
+        - { name: exp, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: sig, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Headers only (no Content-Length) }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    get:
+      summary: Stream the zip (signed URL, no cookie)
+      description: |
+        `application/zip` written straight to the response (`archive/zip`, Store by default, Deflate level 1 on
+        request, zip64 automatic, UTF-8 names, folders recursed, symlinks skipped and listed in `_ERRORS.txt`,
+        items missing mid-walk skipped). No `Content-Length`, `Accept-Ranges: none`, no temp file. Read lock on the
+        sources (`409 OPERATION_IN_PROGRESS` while a mutation holds them). Counts against the 3 concurrent
+        downloads per user. `404` when the payload expired or belongs to another user.
+      tags: [files]
+      security: []
+      parameters:
+        - { name: token, in: query, required: true, schema: { type: string }, description: Payload id }
+        - { name: purpose, in: query, required: true, schema: { type: string, enum: [zip] } }
+        - { name: scope, in: query, required: true, schema: { type: string } }
+        - { name: exp, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: sig, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Zip stream
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
   /api/v1/meta/favorites:
     get:
@@ -2082,19 +2246,29 @@ components:
         undo: { type: "null" }
     SignRequest:
       type: object
-      required: [purpose]
       properties:
-        path: { type: string, description: One path (mutually exclusive with paths) }
-        paths: { type: array, items: { type: string }, maxItems: 500 }
-        purpose: { type: string, enum: [thumb, download, media, inline, zip], description: Only thumb in Step 8 }
-        size: { type: integer, enum: [128, 256, 512], default: 256 }
+        path: { type: string, description: One path (exactly one of path, paths, items) }
+        paths: { type: array, items: { type: string }, maxItems: 500, description: Batch sharing `purpose` }
+        items:
+          type: array
+          maxItems: 500
+          items: { $ref: "#/components/schemas/SignItem" }
+        purpose: { type: string, enum: [thumb, download, media, inline], description: Required unless every item carries its own }
+        size: { type: integer, enum: [128, 256, 512], default: 256, description: Thumbnails only }
         share: { type: string, description: Share scope (Step 18a) }
+    SignItem:
+      type: object
+      required: [path]
+      properties:
+        path: { type: string }
+        purpose: { type: string, enum: [thumb, download, media, inline] }
     SignResponse:
       type: object
-      required: [url, expiresAt]
+      required: [url, expiresAt, purpose]
       properties:
-        url: { type: string, description: "Relative URL (/api/v1/files/thumb?...)" }
+        url: { type: string, description: "Relative URL (/api/v1/files/{thumb|download|raw}?...)" }
         expiresAt: { type: string, format: date-time }
+        purpose: { type: string, enum: [thumb, download, media, inline] }
     SignBatchResponse:
       type: object
       required: [urls, expiresAt, invalid]
@@ -2103,12 +2277,29 @@ components:
           type: array
           items:
             type: object
-            required: [path, url]
+            required: [path, url, purpose, expiresAt]
             properties:
               path: { type: string }
               url: { type: string }
-        expiresAt: { type: string, format: date-time }
+              purpose: { type: string, enum: [thumb, download, media, inline] }
+              expiresAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, description: Earliest expiry in the batch }
         invalid: { type: array, items: { type: string }, description: Paths that failed validation (omitted from urls) }
+    ZipRequest:
+      type: object
+      required: [paths]
+      properties:
+        paths: { type: array, items: { type: string }, minItems: 1, maxItems: 2000 }
+        name: { type: string, description: Archive name without .zip (validated like a file name) }
+        method: { type: string, enum: [store, deflate], default: store }
+    ZipResponse:
+      type: object
+      required: [url, expiresAt, name, count]
+      properties:
+        url: { type: string, description: "Relative signed URL (/api/v1/files/zip?token=…)" }
+        expiresAt: { type: string, format: date-time }
+        name: { type: string, description: "<folder>.zip, <name>.zip or <app>-<yyyyMMdd-HHmm>.zip" }
+        count: { type: integer }
     Error:
       type: object
       required: [error]

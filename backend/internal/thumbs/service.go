@@ -428,3 +428,55 @@ func randHex(n int) string {
 	}
 	return hex.EncodeToString(b)
 }
+
+// Preview renders (or serves from cache) the 2048 px variant of a raster or
+// SVG image synchronously for GET /files/raw?variant=preview (Step 12b).
+// Other kinds answer StatusUnsupported so the caller falls back to the 512
+// thumbnail; a render failure answers StatusFailed without persisting.
+func (s *Service) Preview(ctx context.Context, j *fsjail.Jail, job Job, info fsjail.Info) Status {
+	key := Key(string(info.Path), info.Size, info.ModTime.UnixNano())
+	if _, ok := s.Lookup(job.UserID, key, SizePreview); ok {
+		return StatusReady
+	}
+	row, _, err := s.media.Ensure(ctx, j, job.UserID, info)
+	if err != nil {
+		return StatusFailed
+	}
+	kind := media.KindOfRow(row)
+	if kind != media.KindImage && kind != media.KindSVG {
+		return StatusUnsupported
+	}
+	if s.cfg.Vips == "" || !exec.Executable(s.cfg.Vips) {
+		return StatusFailed
+	}
+	src, err := j.AbsForCLI(job.Path)
+	if err != nil {
+		return StatusFailed
+	}
+	dir := CacheDir(job.UserID, key)
+	if err := s.sys.MkdirAll(dir); err != nil {
+		return StatusFailed
+	}
+	hostDir, err := s.sys.HostPath(dir)
+	if err != nil {
+		return StatusFailed
+	}
+	tmpRel := dir + "/." + key[:16] + "-" + randHex(6) + "-preview.webp"
+	tmpHost := filepath.Join(hostDir, filepath.Base(tmpRel))
+	if _, err := s.runner.Run(ctx, exec.Spec{
+		Bin:     s.cfg.Vips,
+		Args:    []string{"-s", fmt.Sprintf("%dx%d", SizePreview, SizePreview), "-o", tmpHost + "[Q=85,strip]", src},
+		Timeout: 60 * time.Second,
+	}); err != nil {
+		_ = s.sys.Remove(tmpRel)
+		s.logger.Info("preview failed", slog.String("path", string(job.Path)), slog.String("error", j.Redact(err.Error())))
+		return StatusFailed
+	}
+	final := CacheRel(job.UserID, key, SizePreview)
+	_ = s.sys.Remove(final)
+	if err := s.sys.Rename(tmpRel, final); err != nil {
+		_ = s.sys.Remove(tmpRel)
+		return StatusFailed
+	}
+	return StatusReady
+}

@@ -130,6 +130,9 @@ export interface ActionContext {
   /** Only provided by Search / Recent lists: navigate to the folder and select the item. */
   openLocation?: () => void
   openInNewWindow?: () => void
+  /** Step 12b: single file via signed URL; folders / selections as a streamed zip. */
+  download?: () => void
+  downloadZip?: () => void
   /** Step 12a: upload into the open folder / the focused folder. */
   uploadFile?: () => void
   uploadFolder?: () => void
@@ -213,18 +216,16 @@ export const ACTIONS: ActionDef[] = [
     labelKey: 'download',
     group: 'transfer',
     icon: Download,
-    available: false,
     isApplicable: oneFile,
-    run: noop,
+    run: (c) => c.download?.(),
   },
   {
     id: 'downloadZip',
     labelKey: 'downloadZip',
     group: 'transfer',
     icon: Archive,
-    available: false,
     isApplicable: (c) => oneFolder(c) || many(c),
-    run: noop,
+    run: (c) => c.downloadZip?.(),
   },
   {
     id: 'share',

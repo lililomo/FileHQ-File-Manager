@@ -27,6 +27,7 @@ import { NoteDialog } from '@/features/meta/NoteDialog'
 import { FileOpsDialogs } from '@/features/file-ops/FileOpsDialogs'
 import { canUndoNow, focusGrid, useFileOpsDialogs, useUndoStore } from '@/features/file-ops/store'
 import { useFileOps } from '@/features/file-ops/useFileOps'
+import { useDownload } from '@/features/download/useDownload'
 import { DropZone } from '@/features/upload/DropZone'
 import { installPasteUpload } from '@/features/upload/paste'
 import { UploadInputs, type UploadInputsHandle } from '@/features/upload/UploadInputs'
@@ -143,6 +144,7 @@ export function BrowserLayout({
   const filterRef = useRef<HTMLInputElement>(null)
   const openHelp = useOverlaysStore((s) => s.setHelp)
   const ops = useFileOps()
+  const dl = useDownload()
   // uploads (Step 12a): hidden inputs + the folder the next pick targets
   const uploadInputs = useRef<UploadInputsHandle>(null)
   const uploadDest = useRef<string>(path)
@@ -488,6 +490,14 @@ export function BrowserLayout({
         )
       },
       undo: () => void ops.undo(),
+      download: () => {
+        const target = selItems.length ? selItems : focusItem ? [focusItem] : []
+        if (target.length) void dl.download(target)
+      },
+      downloadZip: () => {
+        const target = selItems.length ? selItems : focusItem ? [focusItem] : []
+        if (target.length) void dl.downloadZip(target)
+      },
       uploadFile: () => {
         uploadDest.current = path
         uploadInputs.current?.pickFiles()
@@ -507,7 +517,7 @@ export function BrowserLayout({
           .catch((e: unknown) => toast.error(e instanceof ApiError ? e.message : String(e)))
       },
     }),
-    [ops, selPaths, selItems, path, tabId, focusItem, pasteTarget, openDialog, t],
+    [ops, dl, selPaths, selItems, path, tabId, focusItem, pasteTarget, openDialog, t],
   )
   const commitRename = useCallback(
     (item: Item, newName: string) => {
@@ -1074,6 +1084,7 @@ export function BrowserLayout({
             count={selCount}
             onClose={togglePreview}
             overlay={previewOverlay}
+            onDownload={selItems.length ? () => void dl.download(selItems) : undefined}
           />
         ) : null}
       </div>
@@ -1100,6 +1111,7 @@ export function BrowserLayout({
         target={properties}
         onClose={() => setProperties(null)}
         meta={meta}
+        onDownload={(its) => void dl.download(its)}
         onDirSize={(p, res) => {
           qc.setQueriesData<InfiniteData<ListResponse, string | null>>(
             { queryKey: ['list', parentOf(p)] },

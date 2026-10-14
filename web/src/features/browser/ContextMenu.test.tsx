@@ -103,13 +103,15 @@ describe('context-menu matrix (SPEC §9.5)', () => {
     const groups = ids(menuItems('file', ctxWith([item('/a.txt')])))
     expect(groups).toEqual([
       ['open', 'quickLook'],
+      ['download'],
       ['copy', 'cut', 'duplicate', 'rename', 'moveTo', 'copyTo'],
       ['permissions', 'symlink', 'checksum'],
       ['copyPath', 'properties'],
       ['delete'],
     ])
     const flat = groups.flat()
-    for (const hidden of ['download', 'share', 'favorite', 'compress', 'versions'])
+    // Step 12b: download is live; share/compress/versions still wait for their steps
+    for (const hidden of ['share', 'favorite', 'compress', 'versions'])
       expect(flat).not.toContain(hidden)
     expect(flat[flat.length - 1]).toBe('delete')
     expect(actionById('delete')!.destructive).toBe(true)
@@ -117,7 +119,7 @@ describe('context-menu matrix (SPEC §9.5)', () => {
 
   it('1 folder: open in new tab instead of Quick Look, folder size available (10a)', () => {
     const groups = ids(menuItems('folder', ctxWith([item('/dir', true)])))
-    expect(groups[0]).toEqual(['open', 'openInNewTab'])
+    expect(groups[0]).toEqual(['open', 'openInNewTab', 'downloadZip'])
     expect(groups.flat()).not.toContain('quickLook')
     expect(groups.flat()).toContain('rename')
     expect(groups.flat()).toContain('folderSize')
@@ -139,6 +141,7 @@ describe('context-menu matrix (SPEC §9.5)', () => {
   it('many items: batch rename, no rename/duplicate/properties', () => {
     const groups = ids(menuItems('multi', ctxWith([item('/a.txt'), item('/b.txt')])))
     expect(groups).toEqual([
+      ['downloadZip'],
       ['copy', 'cut', 'moveTo', 'copyTo'],
       ['batchRename', 'permissions'],
       ['delete'],

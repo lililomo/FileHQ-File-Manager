@@ -105,11 +105,11 @@ test('context menu shows exactly the SPEC §9.5 actions per context', async ({ p
     'copyPath',
     'properties',
     'delete',
+    'download', // Step 12b
   ])
     await expect(page.getByTestId(`cm-${id}`), id).toBeVisible()
   for (const id of [
     'share',
-    'download',
     'compress',
     'versions',
     'batchRename',

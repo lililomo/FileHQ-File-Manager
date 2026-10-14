@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/hkdf"
@@ -146,3 +147,43 @@ func FromQuery(q url.Values) (Params, string, error) {
 // UserScope / ShareScope build scope strings.
 func UserScope(userID string) string   { return "u:" + userID }
 func ShareScope(shareID string) string { return "s:" + shareID }
+
+// TTLFor maps a purpose to its configured lifetime (SPEC §8.9, ADR-15):
+// download/inline/zip use the short TTL, media/thumb the long one.
+func TTLFor(p Purpose, signedTTL, mediaTTL time.Duration) time.Duration {
+	switch p {
+	case PurposeMedia, PurposeThumb:
+		return mediaTTL
+	default:
+		return signedTTL
+	}
+}
+
+// UserFromScope extracts the user id of a "u:<id>" scope.
+func UserFromScope(scope string) (string, bool) {
+	id, ok := strings.CutPrefix(scope, "u:")
+	return id, ok && id != ""
+}
+
+// ShareFromScope extracts the share id of an "s:<id>" scope (Step 18a).
+func ShareFromScope(scope string) (string, bool) {
+	id, ok := strings.CutPrefix(scope, "s:")
+	return id, ok && id != ""
+}
+
+// Route is the endpoint a purpose is served from.
+func Route(p Purpose) string {
+	switch p {
+	case PurposeThumb:
+		return "/api/v1/files/thumb"
+	case PurposeDownload:
+		return "/api/v1/files/download"
+	case PurposeZip:
+		return "/api/v1/files/zip"
+	default:
+		return "/api/v1/files/raw"
+	}
+}
+
+// URL builds the relative signed URL of p.
+func (s *Signer) URL(p Params) string { return Route(p.Purpose) + "?" + s.Query(p).Encode() }

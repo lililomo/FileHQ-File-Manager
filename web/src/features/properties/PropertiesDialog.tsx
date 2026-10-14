@@ -1,4 +1,4 @@
-import { Check, Copy, X } from 'lucide-react'
+import { Check, Copy, Download as DownloadIcon, X } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -81,6 +81,7 @@ export function PropertiesDialog({
   onClose,
   onDirSize,
   meta,
+  onDownload,
 }: {
   target: PropertiesTarget | null
   onClose: () => void
@@ -88,6 +89,8 @@ export function PropertiesDialog({
   onDirSize?: (path: string, res: DirSizeResult) => void
   /** Favourite / pin / tag / note editing (Step 10b); omitted = read-only. */
   meta?: MetaOps | undefined
+  /** Step 12b: download the item(s) (file → signed URL, folder/multi → zip). */
+  onDownload?: ((items: Item[]) => void) | undefined
 }) {
   const { t } = useTranslation('files')
   const items = target?.items ?? []
@@ -114,6 +117,19 @@ export function PropertiesDialog({
           <MultiProperties items={items} />
         ) : null}
         <DialogFooter>
+          {onDownload && items.length > 0 ? (
+            <Button
+              variant="outline"
+              onClick={() => {
+                onClose()
+                onDownload(items)
+              }}
+              data-testid="props-download"
+            >
+              <DownloadIcon aria-hidden="true" />
+              {t(single && !single.isDir ? 'preview.download' : 'actions.downloadZip')}
+            </Button>
+          ) : null}
           <Button variant="outline" onClick={onClose}>
             {t('quickLook.close')}
           </Button>

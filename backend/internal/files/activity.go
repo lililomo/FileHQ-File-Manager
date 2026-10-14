@@ -34,6 +34,7 @@ const (
 	ActEdit        = "edit"
 	ActUpload      = "upload"
 	ActMkdir       = "mkdir"
+	ActDownload    = "download"
 )
 
 // RecentActions feed the Recent page (SPEC §8.7): opened, edited, uploaded,

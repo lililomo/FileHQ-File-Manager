@@ -3,37 +3,57 @@ package httpapi
 import (
 	"net/http"
 	"strconv"
-	"time"
 
 	"kppbwi.app/filemanager/internal/download"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/thumbs"
 )
 
-// maxSignBatch bounds POST /files/sign {paths:[…]} (one grid page).
+// maxSignBatch bounds POST /files/sign batches (one grid page).
 const maxSignBatch = 500
 
-// signRequest is POST /files/sign (SPEC §6.3): one path or a batch.
+// signItem is one entry of a mixed-purpose batch.
+type signItem struct {
+	Path    string `json:"path"`
+	Purpose string `json:"purpose,omitempty"`
+}
+
+// signRequest is POST /files/sign (SPEC §6.3): one path, a batch of paths
+// sharing a purpose, or items with a purpose each.
 type signRequest struct {
-	Path    string   `json:"path,omitempty"`
-	Paths   []string `json:"paths,omitempty"`
-	Purpose string   `json:"purpose"`
-	Size    int      `json:"size,omitempty"`
-	Share   string   `json:"share,omitempty"`
+	Path    string     `json:"path,omitempty"`
+	Paths   []string   `json:"paths,omitempty"`
+	Items   []signItem `json:"items,omitempty"`
+	Purpose string     `json:"purpose,omitempty"`
+	Size    int        `json:"size,omitempty"`
+	Share   string     `json:"share,omitempty"`
 }
 
 type signedURL struct {
-	Path string `json:"path"`
-	URL  string `json:"url"`
+	Path      string `json:"path"`
+	URL       string `json:"url"`
+	Purpose   string `json:"purpose"`
+	ExpiresAt string `json:"expiresAt"`
 }
 
 // thumbURL builds the signed thumbnail URL of path for a user.
 func (s *Server) thumbURL(userID string, path fsjail.VPath, size thumbs.Size, exp int64) string {
-	q := s.signer.Query(download.Params{
+	return s.signer.URL(download.Params{
 		Scope: download.UserScope(userID), Path: string(path), Purpose: download.PurposeThumb,
 		Extra: strconv.Itoa(int(size)), Exp: exp,
 	})
-	return "/api/v1/files/thumb?" + q.Encode()
+}
+
+// signOne signs path for purpose; thumbs carry the size in Extra.
+func (s *Server) signOne(userID string, path fsjail.VPath, purpose download.Purpose, size thumbs.Size) signedURL {
+	exp := s.signer.Expiry(download.TTLFor(purpose, s.cfg.SignedURLTTL, s.cfg.MediaURLTTL))
+	out := signedURL{Path: string(path), Purpose: string(purpose), ExpiresAt: isoTime(exp)}
+	if purpose == download.PurposeThumb {
+		out.URL = s.thumbURL(userID, path, size, exp)
+		return out
+	}
+	out.URL = s.signer.URL(download.Params{Scope: download.UserScope(userID), Path: string(path), Purpose: purpose, Exp: exp})
+	return out
 }
 
 func (s *Server) handleFilesSign(w http.ResponseWriter, r *http.Request) {
@@ -46,14 +66,20 @@ func (s *Server) handleFilesSign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fields := map[string]any{}
-	purpose, ok := download.ParsePurpose(req.Purpose)
-	if !ok {
-		fields["purpose"] = "invalid"
-	} else if purpose != download.PurposeThumb {
-		fields["purpose"] = "not_implemented" // download/media/inline/zip arrive in Step 12b
+	var purpose download.Purpose
+	if req.Purpose != "" || req.Items == nil {
+		p, ok := download.ParsePurpose(req.Purpose)
+		switch {
+		case !ok:
+			fields["purpose"] = "invalid"
+		case p == download.PurposeZip:
+			fields["purpose"] = "use POST /files/zip"
+		default:
+			purpose = p
+		}
 	}
 	if req.Share != "" {
-		fields["share"] = "not_implemented"
+		fields["share"] = "not_implemented" // Step 18a
 	}
 	size := thumbs.Size256
 	if req.Size != 0 {
@@ -63,15 +89,30 @@ func (s *Server) handleFilesSign(w http.ResponseWriter, r *http.Request) {
 		}
 		size = sz
 	}
-	batch := req.Paths != nil
-	if batch && req.Path != "" {
-		fields["path"] = "use either path or paths"
+	modes := 0
+	if req.Path != "" {
+		modes++
 	}
-	if !batch && req.Path == "" {
-		fields["path"] = "required"
+	if req.Paths != nil {
+		modes++
 	}
-	if len(req.Paths) > maxSignBatch {
+	if req.Items != nil {
+		modes++
+	}
+	if modes != 1 {
+		fields["path"] = "use exactly one of path, paths or items"
+	}
+	if len(req.Paths) > maxSignBatch || len(req.Items) > maxSignBatch {
 		fields["paths"] = "at most " + strconv.Itoa(maxSignBatch)
+	}
+	for i, it := range req.Items {
+		p, ok := download.ParsePurpose(it.Purpose)
+		if it.Purpose == "" {
+			p, ok = purpose, purpose != ""
+		}
+		if !ok || p == download.PurposeZip {
+			fields["items."+strconv.Itoa(i)+".purpose"] = "invalid"
+		}
 	}
 	if len(fields) > 0 {
 		WriteError(w, r, CodeValidationFailed, 0, "invalid sign request", map[string]any{"fields": fields})
@@ -82,25 +123,47 @@ func (s *Server) handleFilesSign(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, CodeUnauthenticated, 0, "authentication required", nil)
 		return
 	}
-	exp := s.signer.Expiry(s.cfg.MediaURLTTL)
-	expiresAt := time.Unix(exp, 0).UTC().Format("2006-01-02T15:04:05.000Z")
-	if !batch {
+	if req.Path != "" {
 		vp, ok := cleanPath(w, r, req.Path)
 		if !ok {
 			return
 		}
-		WriteJSON(w, http.StatusOK, map[string]any{"url": s.thumbURL(u.ID, vp, size, exp), "expiresAt": expiresAt})
+		if vp.IsRoot() {
+			WriteError(w, r, CodeValidationFailed, 0, "cannot sign the root folder", map[string]any{"fields": map[string]any{"path": "root"}})
+			return
+		}
+		one := s.signOne(u.ID, vp, purpose, size)
+		WriteJSON(w, http.StatusOK, map[string]any{"url": one.URL, "expiresAt": one.ExpiresAt, "purpose": one.Purpose})
 		return
 	}
-	urls := make([]signedURL, 0, len(req.Paths))
+	items := req.Items
+	if req.Paths != nil {
+		items = make([]signItem, len(req.Paths))
+		for i, p := range req.Paths {
+			items[i] = signItem{Path: p, Purpose: string(purpose)}
+		}
+	}
+	urls := make([]signedURL, 0, len(items))
 	invalid := []string{}
-	for _, raw := range req.Paths {
-		vp, err := fsjail.Clean(raw)
+	var minExp string
+	for _, it := range items {
+		vp, err := fsjail.Clean(it.Path)
 		if err != nil || vp.IsRoot() {
-			invalid = append(invalid, raw)
+			invalid = append(invalid, it.Path)
 			continue
 		}
-		urls = append(urls, signedURL{Path: string(vp), URL: s.thumbURL(u.ID, vp, size, exp)})
+		p := purpose
+		if it.Purpose != "" {
+			p, _ = download.ParsePurpose(it.Purpose)
+		}
+		one := s.signOne(u.ID, vp, p, size)
+		if minExp == "" || one.ExpiresAt < minExp {
+			minExp = one.ExpiresAt
+		}
+		urls = append(urls, one)
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"urls": urls, "expiresAt": expiresAt, "invalid": invalid})
+	if minExp == "" {
+		minExp = isoTime(s.signer.Expiry(download.TTLFor(purpose, s.cfg.SignedURLTTL, s.cfg.MediaURLTTL)))
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"urls": urls, "expiresAt": minExp, "invalid": invalid})
 }

@@ -521,5 +521,10 @@
     "large": "Ikon besar",
     "xlarge": "Ikon ekstra besar",
     "rememberPerFolder": "Ingat view per folder"
+  },
+  "download": {
+    "started": "Mengunduh {{name}}",
+    "preparingZip": "Menyiapkan zip ({{count}} item)…",
+    "zipStarted": "Download {{name}} dimulai"
   }
 }

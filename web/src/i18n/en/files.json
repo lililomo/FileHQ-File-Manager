@@ -521,5 +521,10 @@
     "large": "Large icons",
     "xlarge": "Extra large icons",
     "rememberPerFolder": "Remember view per folder"
+  },
+  "download": {
+    "started": "Downloading {{name}}",
+    "preparingZip": "Preparing zip ({{count}} items)…",
+    "zipStarted": "Download of {{name}} started"
   }
 }

@@ -57,6 +57,8 @@ type Options struct {
 	Events      *sse.Broker         // SSE broker (Step 11); nil disables GET /events
 	Notify      *notify.Service     // in-app notifications (Step 11); nil disables /notifications
 	Upload      *upload.Service     // tus uploads + precheck (Step 12a); nil disables /upload
+	ZipStore    *download.ZipStore  // zip payloads (Step 12b); opened on Cfg.DataDir/tmp when nil
+	Downloads   *download.Limiter   // concurrent download/zip slots per user; default 3
 }
 
 // Server holds dependencies shared by handlers.
@@ -84,6 +86,8 @@ type Server struct {
 	events      *sse.Broker
 	notify      *notify.Service
 	upload      *upload.Service
+	zips        *download.ZipStore
+	dlLimit     *download.Limiter
 }
 
 // New builds the router. The returned handler is safe for http.Server.
@@ -109,8 +113,21 @@ func New(o Options) http.Handler {
 		events:  o.Events,
 		notify:  o.Notify,
 		upload:  o.Upload,
+		zips:    o.ZipStore,
+		dlLimit: o.Downloads,
 	}
 	s.warnings = o.Warnings
+	if s.dlLimit == nil {
+		s.dlLimit = download.NewLimiter(0)
+	}
+	if s.zips == nil && o.Cfg.DataDir != "" {
+		zs, err := download.NewZipStore(o.Cfg.DataDir, nil)
+		if err != nil {
+			o.Logger.Warn("zip download disabled: cannot open DATA_DIR/tmp", "error", err.Error())
+		} else {
+			s.zips = zs
+		}
+	}
 	if s.audit == nil && o.Store != nil {
 		s.audit = audit.New(o.Store, o.Logger, nil)
 	}
@@ -138,7 +155,7 @@ func New(o Options) http.Handler {
 	r.Get("/readyz", s.handleReadyz)
 
 	r.Route("/api/v1", func(api chi.Router) {
-		api.Use(TimeoutExcept(APITimeout, EventsPath, TusPrefix))
+		api.Use(TimeoutExcept(APITimeout, EventsPath, TusPrefix, DownloadPath, RawPath, ZipPath))
 		api.Use(MaxBytes(JSONBodyLimit, TusPrefix))
 		api.NotFound(func(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, r, CodeNotFound, 0, "endpoint not found", nil)
@@ -169,6 +186,7 @@ func (s *Server) mountAPI(api chi.Router) {
 		s.mountTasks(api)
 		s.mountEvents(api)
 		s.mountUpload(api)
+		s.mountDownload(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": s.cfg.AppName})
