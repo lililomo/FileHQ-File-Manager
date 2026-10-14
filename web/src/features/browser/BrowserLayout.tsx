@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import { ArchiveBrowser } from '@/features/archive/ArchiveBrowser'
 import { FolderOpen, FolderPlus, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -121,9 +122,12 @@ function useDialogScope(open: boolean): void {
 export function BrowserLayout({
   path,
   selectName,
+  archivePath,
 }: {
   path: string
   selectName?: string | undefined
+  /** `?archive=<path>`: the archive browser overlay (Step 14b) is open on this archive. */
+  archivePath?: string | undefined
 }) {
   const { t, i18n } = useTranslation(['files', 'fileops', 'errors', 'common', 'meta'])
   const navigate = useNavigate()
@@ -419,17 +423,36 @@ export function BrowserLayout({
     [setPref],
   )
 
+  const openArchive = useCallback(
+    (archive: string) =>
+      void navigate({
+        to: '/files/$',
+        params: { _splat: pathToSplat(path) },
+        search: { archive },
+      }),
+    [navigate, path],
+  )
+  const closeArchive = useCallback(
+    () => void navigate({ to: '/files/$', params: { _splat: pathToSplat(path) }, search: {} }),
+    [navigate, path],
+  )
   const onOpen = useCallback(
     (item: Item) => {
       if (item.isDir || (item.isSymlink && !item.broken && item.type === 'dir')) {
         go(item.path)
         return
       }
+      if (item.category === 'archive') {
+        // SPEC §8.11: "Buka" on an archive opens the archive browser
+        openArchive(item.path)
+        recordOpen(item.path).catch(() => {})
+        return
+      }
       toast(t('files:viewer.notYet', { name: item.name }))
       // Recent reflects opens (SPEC §8.7); the viewers of Step 17 keep calling this.
       recordOpen(item.path).catch(() => {})
     },
-    [go, t],
+    [go, t, openArchive],
   )
 
   // --- file operations (Step 9b) ---
@@ -526,6 +549,10 @@ export function BrowserLayout({
         if (item && !item.isDir && item.category === 'archive')
           openDialog({ kind: 'extract', archive: item, dir: path })
       },
+      browseArchive: () => {
+        const item = selItems.length === 1 ? selItems[0] : focusItem
+        if (item && !item.isDir && item.category === 'archive') openArchive(item.path)
+      },
       openFolderProperties: () => {
         statItem(path)
           .then((stat) => setProperties({ items: [stat] }))
@@ -544,6 +571,7 @@ export function BrowserLayout({
       openDialog,
       t,
       remoteDownloadEnabled,
+      openArchive,
     ],
   )
   const commitRename = useCallback(
@@ -665,7 +693,7 @@ export function BrowserLayout({
     fileOps,
     selItems,
   ])
-  useDialogScope(!!quickLook || !!properties)
+  useDialogScope(!!quickLook || !!properties || !!archivePath)
 
   // --- action registry context (palette, toolbar, context menu) ---
   const actionCtx = useMemo<ActionContext>(
@@ -1127,6 +1155,7 @@ export function BrowserLayout({
         onFiles={(files) => void uploadFromFileList(files, uploadDest.current)}
       />
       <NoteDialog item={noteTarget} onClose={() => setNoteTarget(null)} onSave={saveNote} />
+      {archivePath ? <ArchiveBrowser archivePath={archivePath} onClose={closeArchive} /> : null}
       <QuickLookDialog
         item={quickLook}
         onClose={() => setQuickLook(null)}

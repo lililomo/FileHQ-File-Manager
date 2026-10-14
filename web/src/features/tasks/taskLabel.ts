@@ -32,6 +32,24 @@ export function taskLabel(task: Task, t: LooseT, lang: string): string {
       if (a) return t('tasks:label.extract', { name: a })
       break
     }
+    case 'zip_edit': {
+      const a = typeof p.archive === 'string' ? name(p.archive) : ''
+      const sources = Array.isArray(p.sources) ? p.sources.length : 0
+      const entries = Array.isArray(p.entries) ? p.entries.length : 0
+      if (a && p.mode === 'add')
+        return t('tasks:label.zipEditAdd', {
+          name: a,
+          n: formatNumber(sources, lang),
+          count: sources,
+        })
+      if (a && p.mode === 'remove')
+        return t('tasks:label.zipEditRemove', {
+          name: a,
+          n: formatNumber(entries, lang),
+          count: entries,
+        })
+      break
+    }
     case 'remote_download': {
       const dest = typeof p.dest === 'string' ? p.dest : ''
       let label = typeof p.filename === 'string' ? p.filename : ''

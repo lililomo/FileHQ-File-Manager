@@ -74,6 +74,8 @@ func (s *Server) handleFilesSign(w http.ResponseWriter, r *http.Request) {
 			fields["purpose"] = "invalid"
 		case p == download.PurposeZip:
 			fields["purpose"] = "use POST /files/zip"
+		case p == download.PurposeEntry:
+			fields["purpose"] = "use POST /archives/sign"
 		default:
 			purpose = p
 		}
@@ -110,7 +112,7 @@ func (s *Server) handleFilesSign(w http.ResponseWriter, r *http.Request) {
 		if it.Purpose == "" {
 			p, ok = purpose, purpose != ""
 		}
-		if !ok || p == download.PurposeZip {
+		if !ok || p == download.PurposeZip || p == download.PurposeEntry {
 			fields["items."+strconv.Itoa(i)+".purpose"] = "invalid"
 		}
 	}

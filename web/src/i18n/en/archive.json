@@ -48,5 +48,88 @@
     "shift_jis": "Shift_JIS (Japanese)",
     "big5": "Big5 (Traditional Chinese)",
     "windows-1252": "Windows-1252 (Western European)"
+  },
+  "browser": {
+    "grid": "Archive contents",
+    "breadcrumb": "Location inside the archive",
+    "loading": "Reading the archive listing…",
+    "error": "The archive could not be opened",
+    "empty": "This folder is empty",
+    "loadMore": "Load more",
+    "retry": "Retry",
+    "selectAll": "Select all entries",
+    "selectRow": "Select {{name}}",
+    "encrypted": "Encrypted",
+    "items_one": "{{count}} item",
+    "items_other": "{{count}} items",
+    "summary_one": "{{format}} · {{size}} · {{n}} entry",
+    "summary_other": "{{format}} · {{size}} · {{n}} entries",
+    "columns": {
+      "name": "Name",
+      "size": "Size",
+      "compressed": "Compressed",
+      "ratio": "Ratio",
+      "mtime": "Modified"
+    },
+    "actions": {
+      "up": "Up one level",
+      "extractAll": "Extract all",
+      "extractSelected_one": "Extract selected to…",
+      "extractSelected_other": "Extract {{count}} selected to…",
+      "downloadEntry": "Download entry",
+      "add": "Add files…",
+      "remove_one": "Remove entry",
+      "remove_other": "Remove {{count}} entries"
+    },
+    "modify": {
+      "format": "Only zip archives can be modified.",
+      "encrypted": "Password-protected zips cannot be modified.",
+      "too_large_to_modify": "Archives larger than 2 GB cannot be modified."
+    },
+    "status": {
+      "items_one": "{{n}} item",
+      "items_other": "{{n}} items",
+      "selected_one": "{{n}} selected",
+      "selected_other": "{{n}} selected",
+      "locked": "Locked — enter the password to read the contents",
+      "unlocked": "Unlocked (password kept while this window is open)",
+      "encoding": "Detected name encoding: {{encoding}}"
+    },
+    "preview": {
+      "label": "Entry preview",
+      "loading": "Loading preview…",
+      "unavailable": "No preview for this type or size.",
+      "method": "Method"
+    },
+    "password": {
+      "title": "Archive password",
+      "description": "{{name}} is locked. Enter the password to read its contents.",
+      "submit": "Unlock",
+      "wrong": "Wrong password.",
+      "needed": "This archive needs a password.",
+      "enter": "Enter password"
+    },
+    "extractAll": {
+      "title": "Extract all"
+    },
+    "extractSelected": {
+      "title_one": "Extract {{count}} entry",
+      "title_other": "Extract {{count}} entries"
+    },
+    "add": {
+      "title": "Add files to the archive",
+      "description": "Into {{name}} at folder {{dir}}. The archive is rewritten; existing entries are copied as they are.",
+      "pick": "Add to list",
+      "count_one": "{{count}} item chosen",
+      "count_other": "{{count}} items chosen",
+      "remove": "Remove {{path}} from the list",
+      "submit": "Add"
+    },
+    "remove": {
+      "title_one": "Remove {{count}} entry from the archive?",
+      "title_other": "Remove {{count}} entries from the archive?",
+      "description": "{{name}} will be rewritten without these entries. This cannot be undone.",
+      "confirm": "Remove entries"
+    }
   }
 }

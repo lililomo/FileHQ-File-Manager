@@ -173,12 +173,30 @@ describe('context-menu matrix (SPEC §9.5)', () => {
   it('unavailable actions never reach the flat surfaces either', () => {
     const unavailable = ACTIONS.filter((a) => a.available === false).map((a) => a.id)
     expect(unavailable).toContain('share')
-    for (const context of ['file', 'folder', 'multi', 'background', 'trash'] as const) {
+    for (const context of ['file', 'folder', 'multi', 'background', 'trash', 'archive'] as const) {
       const flat = ids(
         menuItems(context, ctxWith([item('/a.txt'), item('/b', true)], { selectionCount: 2 })),
       ).flat()
       for (const id of unavailable) expect(flat).not.toContain(id)
     }
+  })
+
+  it('archive browser context (Step 14b): extract, download one, remove only for a modifiable zip', () => {
+    const fn = vi.fn()
+    const base = { extractEntries: fn, downloadEntry: fn, removeEntries: fn }
+    expect(
+      ids(
+        menuItems('archive', ctxWith([], { ...base, selectionCount: 1, archiveCanModify: true })),
+      ),
+    ).toEqual([['extractEntries', 'downloadEntry'], ['removeEntries']])
+    // several members: no single-entry download; read-only container: no remove
+    expect(
+      ids(
+        menuItems('archive', ctxWith([], { ...base, selectionCount: 2, archiveCanModify: false })),
+      ),
+    ).toEqual([['extractEntries']])
+    // nothing selected → nothing (the overlay shows no background menu)
+    expect(ids(menuItems('archive', ctxWith([], { ...base, selectionCount: 0 })))).toEqual([])
   })
 })
 

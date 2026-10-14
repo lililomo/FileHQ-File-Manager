@@ -1687,6 +1687,250 @@ paths:
         "415": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
         "501": { $ref: "#/components/responses/Error" }
+  /api/v1/archives/entries:
+    get:
+      tags: [archives]
+      summary: List one folder of an archive without extracting it (SPEC §8.11 archive browser)
+      operationId: archivesEntries
+      description: |
+        The member list is read once (zip/7z/rar headers, a single pass for tar.* streams, `7z l -slt` for iso) and
+        cached in memory per (user, archive, size, mtime, encoding) for 10 minutes, so navigating inside the archive
+        never re-reads the file. Folders first in natural order; parents that have no member of their own are
+        synthesised (`implicit: true`). Pages of ≤ 1000 with an opaque `cursor`. The password of an encrypted archive
+        travels in the `X-Archive-Password` header — a `password` query parameter is refused with `400` — is verified
+        against the first encrypted member and remembered server-side for 10 minutes under a random `session` id that
+        `POST /archives/sign` attaches to entry URLs. An encrypted archive still lists without a password (members
+        flagged `encrypted`); only their content needs it. Wrong password → `422 ARCHIVE_PASSWORD_WRONG`.
+        `supportsModify` is true only for an unencrypted zip ≤ 2 GiB (`modifyReason` otherwise: format | encrypted |
+        too_large_to_modify). Names that cannot be mapped to a path (absolute, `..`, NUL) are left out and counted in
+        `unsafe`.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string }, description: Archive file (virtual path) }
+        - { name: inner, in: query, schema: { type: string }, description: "Folder inside the archive ('' = root)" }
+        - { name: encoding, in: query, schema: { type: string, enum: [auto, utf-8, gbk, cp437, shift_jis, big5, windows-1252], default: auto }, description: "Legacy name encoding of zip entries without the UTF-8 flag (alias name_encoding)" }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 1000 } }
+        - { name: X-Archive-Password, in: header, schema: { type: string, maxLength: 256 }, description: Password of an encrypted archive (never a query parameter, never logged) }
+      responses:
+        "200":
+          description: One page of one archive folder
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArchiveEntriesResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+  /api/v1/archives/sign:
+    post:
+      tags: [archives]
+      summary: Sign an entry-content URL for one member (purpose entry)
+      operationId: archivesSign
+      description: |
+        The in-archive counterpart of `POST /files/sign`: a signed URL of `GET /archives/entry-content` for one member
+        (`purpose=entry`, TTL `MEDIA_URL_TTL`). For an encrypted archive the client passes the `session` id it received
+        from `GET /archives/entries`; it is appended unsigned (`&sess=`) and resolved server-side to the password, so the
+        password itself never appears in a URL. Unknown, expired or another user's session → `404`
+        (`reason: session_expired`).
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ArchiveSignRequest" }
+      responses:
+        "200":
+          description: Signed entry URL
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArchiveSignResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/archives/entry-content:
+    head:
+      tags: [archives]
+      summary: Headers of one streamed member (same parameters as GET)
+      operationId: archivesEntryContentHead
+      security: []
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+        - { name: inner, in: query, required: true, schema: { type: string } }
+        - { name: purpose, in: query, required: true, schema: { type: string, enum: [entry] } }
+        - { name: scope, in: query, required: true, schema: { type: string } }
+        - { name: exp, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: sig, in: query, required: true, schema: { type: string } }
+        - { name: sess, in: query, schema: { type: string } }
+      responses:
+        "200": { description: Headers only }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+    get:
+      tags: [archives]
+      summary: Stream one member straight out of its archive (signed URL, no cookie)
+      operationId: archivesEntryContent
+      description: |
+        Authenticated by the signature only (`<img>`, `fetch`, `<a download>`). The member is decoded on the fly
+        (random access for zip/7z/rar, a forward walk for tar.* streams) and written to the response: nothing is
+        extracted to `DATA_DIR/tmp`. Limit 50 MB per member (`413 FILE_TOO_LARGE`); iso members cannot be previewed
+        (`415`, reason cli_only). The inline policy of `/files/raw` applies (ADR-06: raster images, audio and video
+        inline; text, PDF and the rest attachments; HTML/SVG/XML/JS/CSS always `application/octet-stream`), the MIME
+        type is sniffed from the first bytes, `Cache-Control: private, max-age=300`, no Range support. Encrypted member
+        without a session → `401 ARCHIVE_PASSWORD_REQUIRED`; `sess` unknown, expired or of another user → `404`.
+        Counts against the per-user download concurrency limit (`429`).
+      security: []
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string }, description: Archive file }
+        - { name: inner, in: query, required: true, schema: { type: string }, description: Member path inside the archive (signed) }
+        - { name: purpose, in: query, required: true, schema: { type: string, enum: [entry] } }
+        - { name: scope, in: query, required: true, schema: { type: string } }
+        - { name: exp, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: sig, in: query, required: true, schema: { type: string } }
+        - { name: sess, in: query, schema: { type: string }, description: Archive session id from GET /archives/entries (unsigned bearer bound to the user and the archive) }
+      responses:
+        "200":
+          description: Member bytes (inline or attachment per policy)
+          content:
+            "*/*":
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/archives/extract-entries:
+    post:
+      tags: [archives]
+      summary: Queue an extract task limited to selected members (SPEC §8.11)
+      operationId: archivesExtractEntries
+      description: |
+        The same `extract` task as `POST /archives/extract` with `entries` (a folder name includes everything below
+        it), but the names are checked against the archive index first: an unknown member answers `404`
+        (`reason: entry_not_found`, `details.entries`) and nothing is queued. The password travels in the JSON body;
+        the task payload only records `hasPassword`.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ArchiveExtractEntriesRequest" }
+      responses:
+        "202":
+          description: Task queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskAccepted" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+  /api/v1/archives/add:
+    post:
+      tags: [archives]
+      summary: Queue a zip_edit task that adds files or folders to an unencrypted zip (SPEC §8.11)
+      operationId: archivesAdd
+      description: |
+        Zip only: other formats, encrypted zips and archives above 2 GiB answer `415 UNSUPPORTED_TYPE`
+        (`reason: format | encrypted | too_large_to_modify`). Sources (1..1000 files or folders of the user's root;
+        blocked extensions refused, the archive itself refused with `reason: into_itself`) land under `innerDir`
+        (`''` = root); folders are walked, symlinks and special files are skipped and listed in `result.skipped`.
+        The task rewrites the zip in `DATA_DIR/tmp/ar-<task>`: kept members are copied raw (`OpenRaw`/`CreateRaw`,
+        no re-compression; a new file with the same name replaces the old member), new files are deflated, the
+        result is verified and renamed over the original, so a failure or a cancel leaves the original untouched.
+        Progress unit: bytes (archive size + new bytes). Quota is reserved for the new bytes and committed with the
+        real size delta.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ArchiveAddRequest" }
+      responses:
+        "202":
+          description: Task queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskAccepted" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/archives/remove-entries:
+    post:
+      tags: [archives]
+      summary: Queue a zip_edit task that removes members from an unencrypted zip (SPEC §8.11)
+      operationId: archivesRemoveEntries
+      description: |
+        Entries (1..1000; a folder name removes everything below it) must exist in the index (`404` otherwise).
+        Same rewrite and guarantees as `POST /archives/add`. `POST /archives/remove-entry` is an alias that also
+        accepts a single `entry`.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ArchiveRemoveRequest" }
+      responses:
+        "202":
+          description: Task queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskAccepted" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/archives/remove-entry:
+    post:
+      tags: [archives]
+      summary: Alias of POST /archives/remove-entries (PROMPT Step 14b name)
+      operationId: archivesRemoveEntry
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ArchiveRemoveRequest" }
+      responses:
+        "202":
+          description: Task queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskAccepted" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
   /api/v1/remote-downloads:
     post:
       tags: [remote]
@@ -2755,6 +2999,93 @@ components:
         encoding: { type: string, enum: [auto, utf-8, gbk, cp437, shift_jis, big5, windows-1252], default: auto, description: "Legacy name encoding of zip entries without the UTF-8 flag (alias name_encoding)" }
         onConflict: { type: string, enum: [fail, overwrite, skip, rename], default: fail, description: "aliases on_conflict, policy" }
         entries: { type: array, maxItems: 1000, items: { type: string }, description: "Entry names or folder prefixes to extract (partial extraction)" }
+    ArchiveEntry:
+      type: object
+      description: One member of the archive index (SPEC §8.11 archive browser)
+      required: [path, name, isDir, size, compressedSize, mtime, encrypted, itemCount]
+      properties:
+        path: { type: string, description: "Member path inside the archive (no leading slash)" }
+        name: { type: string }
+        isDir: { type: boolean }
+        isSymlink: { type: boolean }
+        size: { type: integer, format: int64 }
+        compressedSize: { type: integer, format: int64, description: "-1 when the container does not record it" }
+        mtime: { type: string, format: date-time }
+        encrypted: { type: boolean }
+        method: { type: string, description: "Compression method as named by the container (zip: store, deflate, …)" }
+        implicit: { type: boolean, description: "Folder synthesised from member names (no entry of its own)" }
+        itemCount: { type: integer, description: "Direct children of a folder" }
+    ArchiveEntriesResponse:
+      type: object
+      required: [archive, inner, format, items, total, totalEntries, size, encrypted, supportsModify]
+      properties:
+        archive: { type: string }
+        inner: { type: string }
+        format: { type: string }
+        items: { type: array, items: { $ref: "#/components/schemas/ArchiveEntry" } }
+        nextCursor: { type: string }
+        total: { type: integer, description: "Members in this folder" }
+        totalEntries: { type: integer, description: "Members in the whole archive" }
+        size: { type: integer, format: int64, description: "Archive file size" }
+        encrypted: { type: boolean }
+        encoding: { type: string, description: "Name encoding applied (detected for auto)" }
+        supportsModify: { type: boolean }
+        modifyReason: { type: string, enum: [format, encrypted, too_large_to_modify] }
+        session: { type: string, description: "Archive session id (present when a password was accepted); pass it to POST /archives/sign" }
+        unsafe: { type: integer, description: "Members left out because their name is not a valid path" }
+    ArchiveSignRequest:
+      type: object
+      required: [path, inner]
+      properties:
+        path: { type: string, description: "Archive file (alias archive)" }
+        inner: { type: string, description: "Member path inside the archive (alias entry)" }
+        session: { type: string, description: "Archive session id of an encrypted archive" }
+    ArchiveSignResponse:
+      type: object
+      required: [url, expiresAt, purpose, path, inner]
+      properties:
+        url: { type: string, description: "Relative URL (/api/v1/archives/entry-content?…[&sess=])" }
+        expiresAt: { type: string, format: date-time }
+        purpose: { type: string, enum: [entry] }
+        path: { type: string }
+        inner: { type: string }
+    ArchiveExtractEntriesRequest:
+      type: object
+      required: [path, entries]
+      properties:
+        path: { type: string, description: "Archive file (alias archive)" }
+        entries: { type: array, minItems: 1, maxItems: 1000, items: { type: string }, description: "Member paths; a folder includes everything below it" }
+        dest: { type: string, default: new, description: "new | here | <folder path> (aliases destPath, dest_path)" }
+        password: { type: string, maxLength: 256 }
+        encoding: { type: string, enum: [auto, utf-8, gbk, cp437, shift_jis, big5, windows-1252], default: auto, description: "alias name_encoding" }
+        onConflict: { type: string, enum: [fail, overwrite, skip, rename], default: fail, description: "aliases on_conflict, policy" }
+    ArchiveAddRequest:
+      type: object
+      required: [path, sources]
+      properties:
+        path: { type: string, description: "Zip file (alias archive)" }
+        sources: { type: array, minItems: 1, maxItems: 1000, items: { type: string }, description: "Files or folders of the user's root (alias paths)" }
+        innerDir: { type: string, description: "Folder inside the zip ('' = root; aliases inner_dir, into)" }
+    ArchiveRemoveRequest:
+      type: object
+      required: [path, entries]
+      properties:
+        path: { type: string, description: "Zip file (alias archive)" }
+        entries: { type: array, minItems: 1, maxItems: 1000, items: { type: string }, description: "Member paths (a folder removes everything below it); `entry` accepts a single one" }
+    ZipEditResult:
+      type: object
+      description: Result of a `zip_edit` task (SPEC §7.1)
+      required: [path, size, entries, added, removed, replaced]
+      properties:
+        path: { type: string }
+        size: { type: integer, format: int64, description: "Size of the rewritten zip" }
+        entries: { type: integer, description: "Members in the rewritten zip" }
+        added: { type: integer }
+        removed: { type: integer }
+        replaced: { type: integer, description: "Old members replaced by a new file of the same name" }
+        skipped:
+          type: array
+          items: { $ref: "#/components/schemas/ArchiveSkip" }
     ArchiveCompressResult:
       type: object
       required: [path, size, files, dirs, status]

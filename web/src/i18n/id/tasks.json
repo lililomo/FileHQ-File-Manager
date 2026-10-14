@@ -39,7 +39,9 @@
     "checksum": "Checksum {{name}}",
     "remoteDownload": "Unduh {{name}} ke {{to}}",
     "compress": "Kompres {{name}}",
-    "extract": "Ekstrak {{name}}"
+    "extract": "Ekstrak {{name}}",
+    "zipEditAdd": "Tambah {{n}} item ke {{name}}",
+    "zipEditRemove": "Hapus {{n}} entri dari {{name}}"
   },
   "meta": {
     "items": "{{done}} / {{total}} item",

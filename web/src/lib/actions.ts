@@ -143,6 +143,13 @@ export interface ActionContext {
   /** Step 14a: compress the selection / extract the focused archive (tasks). */
   compress?: () => void
   extractArchive?: () => void
+  /** Step 14b: open the archive browser overlay for the focused archive. */
+  browseArchive?: () => void
+  /** Archive browser only (context "archive"): selected members. */
+  extractEntries?: () => void
+  downloadEntry?: () => void
+  removeEntries?: (() => void) | undefined
+  archiveCanModify?: boolean
 }
 
 export interface ActionDef {
@@ -405,9 +412,34 @@ export const ACTIONS: ActionDef[] = [
     labelKey: 'browseArchive',
     group: 'archive',
     icon: FolderSearch,
-    available: false,
     isApplicable: (c) => oneFile(c) && c.selection[0]!.category === 'archive',
-    run: noop,
+    run: (c) => c.browseArchive?.(),
+  },
+  // --- archive browser (14b): members of the open archive ---
+  {
+    id: 'extractEntries',
+    labelKey: 'extractEntries',
+    group: 'archive',
+    icon: PackageOpen,
+    isApplicable: (c) => c.selectionCount > 0 && !!c.extractEntries,
+    run: (c) => c.extractEntries?.(),
+  },
+  {
+    id: 'downloadEntry',
+    labelKey: 'downloadEntry',
+    group: 'archive',
+    icon: Download,
+    isApplicable: (c) => c.selectionCount === 1 && !!c.downloadEntry,
+    run: (c) => c.downloadEntry?.(),
+  },
+  {
+    id: 'removeEntries',
+    labelKey: 'removeEntries',
+    group: 'archive',
+    icon: Trash2,
+    destructive: true,
+    isApplicable: (c) => c.selectionCount > 0 && !!c.archiveCanModify && !!c.removeEntries,
+    run: (c) => c.removeEntries?.(),
   },
   {
     id: 'folderSize',
@@ -761,7 +793,7 @@ export function applicableActions(ctx: ActionContext): ActionDef[] {
 
 /** Context-menu matrix (SPEC §9.5), `|` = separator. Unavailable or inapplicable
  *  actions are dropped; empty groups collapse. */
-export type MenuContext = 'file' | 'folder' | 'multi' | 'background' | 'trash'
+export type MenuContext = 'file' | 'folder' | 'multi' | 'background' | 'trash' | 'archive'
 
 export const MENU_MATRIX: Record<MenuContext, string[]> = {
   file: [
@@ -870,6 +902,8 @@ export const MENU_MATRIX: Record<MenuContext, string[]> = {
   ],
   // Recycle Bin item(s) (SPEC §8.6): restore, restore elsewhere, purge.
   trash: ['restore', 'restoreTo', '|', 'purge'],
+  // Members inside the archive browser (SPEC §8.11): extract, download one, remove (zip).
+  archive: ['extractEntries', 'downloadEntry', '|', 'removeEntries'],
 }
 
 /** Which context a selection belongs to (null = nothing selected → background). */

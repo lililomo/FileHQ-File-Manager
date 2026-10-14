@@ -48,5 +48,88 @@
     "shift_jis": "Shift_JIS (Jepang)",
     "big5": "Big5 (Tiongkok tradisional)",
     "windows-1252": "Windows-1252 (Eropa Barat)"
+  },
+  "browser": {
+    "grid": "Isi arsip",
+    "breadcrumb": "Lokasi di dalam arsip",
+    "loading": "Membaca daftar isi arsip…",
+    "error": "Arsip tidak bisa dibuka",
+    "empty": "Folder ini kosong",
+    "loadMore": "Muat lebih banyak",
+    "retry": "Coba lagi",
+    "selectAll": "Pilih semua entri",
+    "selectRow": "Pilih {{name}}",
+    "encrypted": "Terenkripsi",
+    "items_one": "{{count}} item",
+    "items_other": "{{count}} item",
+    "summary_one": "{{format}} · {{size}} · {{n}} entri",
+    "summary_other": "{{format}} · {{size}} · {{n}} entri",
+    "columns": {
+      "name": "Nama",
+      "size": "Ukuran",
+      "compressed": "Terkompresi",
+      "ratio": "Rasio",
+      "mtime": "Diubah"
+    },
+    "actions": {
+      "up": "Naik satu level",
+      "extractAll": "Extract semua",
+      "extractSelected_one": "Extract yang dipilih ke…",
+      "extractSelected_other": "Extract {{count}} yang dipilih ke…",
+      "downloadEntry": "Unduh entri",
+      "add": "Tambah file…",
+      "remove_one": "Hapus entry",
+      "remove_other": "Hapus {{count}} entry"
+    },
+    "modify": {
+      "format": "Hanya arsip zip yang bisa diubah.",
+      "encrypted": "Zip ber-password tidak bisa diubah.",
+      "too_large_to_modify": "Arsip lebih besar dari 2 GB tidak bisa diubah."
+    },
+    "status": {
+      "items_one": "{{n}} item",
+      "items_other": "{{n}} item",
+      "selected_one": "{{n}} dipilih",
+      "selected_other": "{{n}} dipilih",
+      "locked": "Terkunci — masukkan password untuk melihat isi",
+      "unlocked": "Terbuka (password tersimpan selama jendela ini terbuka)",
+      "encoding": "Encoding nama terdeteksi: {{encoding}}"
+    },
+    "preview": {
+      "label": "Pratinjau entri",
+      "loading": "Memuat pratinjau…",
+      "unavailable": "Pratinjau tidak tersedia untuk tipe atau ukuran ini.",
+      "method": "Metode"
+    },
+    "password": {
+      "title": "Password arsip",
+      "description": "{{name}} terkunci. Masukkan password untuk membaca isinya.",
+      "submit": "Buka",
+      "wrong": "Password salah.",
+      "needed": "Arsip ini membutuhkan password.",
+      "enter": "Masukkan password"
+    },
+    "extractAll": {
+      "title": "Extract semua"
+    },
+    "extractSelected": {
+      "title_one": "Extract {{count}} entri",
+      "title_other": "Extract {{count}} entri"
+    },
+    "add": {
+      "title": "Tambah file ke arsip",
+      "description": "Ke {{name}} di folder {{dir}}. Arsip ditulis ulang; entri lama disalin apa adanya.",
+      "pick": "Tambahkan ke daftar",
+      "count_one": "{{count}} item dipilih",
+      "count_other": "{{count}} item dipilih",
+      "remove": "Hapus {{path}} dari daftar",
+      "submit": "Tambahkan"
+    },
+    "remove": {
+      "title_one": "Hapus {{count}} entry dari arsip?",
+      "title_other": "Hapus {{count}} entry dari arsip?",
+      "description": "{{name}} akan ditulis ulang tanpa entry ini. Tidak bisa diurungkan.",
+      "confirm": "Hapus entry"
+    }
   }
 }

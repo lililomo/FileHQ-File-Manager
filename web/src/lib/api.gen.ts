@@ -2081,6 +2081,178 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/archives/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List one folder of an archive without extracting it (SPEC §8.11 archive browser)
+         * @description The member list is read once (zip/7z/rar headers, a single pass for tar.* streams, `7z l -slt` for iso) and
+         *     cached in memory per (user, archive, size, mtime, encoding) for 10 minutes, so navigating inside the archive
+         *     never re-reads the file. Folders first in natural order; parents that have no member of their own are
+         *     synthesised (`implicit: true`). Pages of ≤ 1000 with an opaque `cursor`. The password of an encrypted archive
+         *     travels in the `X-Archive-Password` header — a `password` query parameter is refused with `400` — is verified
+         *     against the first encrypted member and remembered server-side for 10 minutes under a random `session` id that
+         *     `POST /archives/sign` attaches to entry URLs. An encrypted archive still lists without a password (members
+         *     flagged `encrypted`); only their content needs it. Wrong password → `422 ARCHIVE_PASSWORD_WRONG`.
+         *     `supportsModify` is true only for an unencrypted zip ≤ 2 GiB (`modifyReason` otherwise: format | encrypted |
+         *     too_large_to_modify). Names that cannot be mapped to a path (absolute, `..`, NUL) are left out and counted in
+         *     `unsafe`.
+         */
+        get: operations["archivesEntries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archives/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign an entry-content URL for one member (purpose entry)
+         * @description The in-archive counterpart of `POST /files/sign`: a signed URL of `GET /archives/entry-content` for one member
+         *     (`purpose=entry`, TTL `MEDIA_URL_TTL`). For an encrypted archive the client passes the `session` id it received
+         *     from `GET /archives/entries`; it is appended unsigned (`&sess=`) and resolved server-side to the password, so the
+         *     password itself never appears in a URL. Unknown, expired or another user's session → `404`
+         *     (`reason: session_expired`).
+         */
+        post: operations["archivesSign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archives/entry-content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream one member straight out of its archive (signed URL, no cookie)
+         * @description Authenticated by the signature only (`<img>`, `fetch`, `<a download>`). The member is decoded on the fly
+         *     (random access for zip/7z/rar, a forward walk for tar.* streams) and written to the response: nothing is
+         *     extracted to `DATA_DIR/tmp`. Limit 50 MB per member (`413 FILE_TOO_LARGE`); iso members cannot be previewed
+         *     (`415`, reason cli_only). The inline policy of `/files/raw` applies (ADR-06: raster images, audio and video
+         *     inline; text, PDF and the rest attachments; HTML/SVG/XML/JS/CSS always `application/octet-stream`), the MIME
+         *     type is sniffed from the first bytes, `Cache-Control: private, max-age=300`, no Range support. Encrypted member
+         *     without a session → `401 ARCHIVE_PASSWORD_REQUIRED`; `sess` unknown, expired or of another user → `404`.
+         *     Counts against the per-user download concurrency limit (`429`).
+         */
+        get: operations["archivesEntryContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /** Headers of one streamed member (same parameters as GET) */
+        head: operations["archivesEntryContentHead"];
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archives/extract-entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue an extract task limited to selected members (SPEC §8.11)
+         * @description The same `extract` task as `POST /archives/extract` with `entries` (a folder name includes everything below
+         *     it), but the names are checked against the archive index first: an unknown member answers `404`
+         *     (`reason: entry_not_found`, `details.entries`) and nothing is queued. The password travels in the JSON body;
+         *     the task payload only records `hasPassword`.
+         */
+        post: operations["archivesExtractEntries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archives/add": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue a zip_edit task that adds files or folders to an unencrypted zip (SPEC §8.11)
+         * @description Zip only: other formats, encrypted zips and archives above 2 GiB answer `415 UNSUPPORTED_TYPE`
+         *     (`reason: format | encrypted | too_large_to_modify`). Sources (1..1000 files or folders of the user's root;
+         *     blocked extensions refused, the archive itself refused with `reason: into_itself`) land under `innerDir`
+         *     (`''` = root); folders are walked, symlinks and special files are skipped and listed in `result.skipped`.
+         *     The task rewrites the zip in `DATA_DIR/tmp/ar-<task>`: kept members are copied raw (`OpenRaw`/`CreateRaw`,
+         *     no re-compression; a new file with the same name replaces the old member), new files are deflated, the
+         *     result is verified and renamed over the original, so a failure or a cancel leaves the original untouched.
+         *     Progress unit: bytes (archive size + new bytes). Quota is reserved for the new bytes and committed with the
+         *     real size delta.
+         */
+        post: operations["archivesAdd"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archives/remove-entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue a zip_edit task that removes members from an unencrypted zip (SPEC §8.11)
+         * @description Entries (1..1000; a folder name removes everything below it) must exist in the index (`404` otherwise).
+         *     Same rewrite and guarantees as `POST /archives/add`. `POST /archives/remove-entry` is an alias that also
+         *     accepts a single `entry`.
+         */
+        post: operations["archivesRemoveEntries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archives/remove-entry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Alias of POST /archives/remove-entries (PROMPT Step 14b name) */
+        post: operations["archivesRemoveEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/remote-downloads": {
         parameters: {
             query?: never;
@@ -3117,6 +3289,128 @@ export interface components {
             onConflict: "fail" | "overwrite" | "skip" | "rename";
             /** @description Entry names or folder prefixes to extract (partial extraction) */
             entries?: string[];
+        };
+        /** @description One member of the archive index (SPEC §8.11 archive browser) */
+        ArchiveEntry: {
+            /** @description Member path inside the archive (no leading slash) */
+            path: string;
+            name: string;
+            isDir: boolean;
+            isSymlink?: boolean;
+            /** Format: int64 */
+            size: number;
+            /**
+             * Format: int64
+             * @description -1 when the container does not record it
+             */
+            compressedSize: number;
+            /** Format: date-time */
+            mtime: string;
+            encrypted: boolean;
+            /** @description Compression method as named by the container (zip: store, deflate, …) */
+            method?: string;
+            /** @description Folder synthesised from member names (no entry of its own) */
+            implicit?: boolean;
+            /** @description Direct children of a folder */
+            itemCount: number;
+        };
+        ArchiveEntriesResponse: {
+            archive: string;
+            inner: string;
+            format: string;
+            items: components["schemas"]["ArchiveEntry"][];
+            nextCursor?: string;
+            /** @description Members in this folder */
+            total: number;
+            /** @description Members in the whole archive */
+            totalEntries: number;
+            /**
+             * Format: int64
+             * @description Archive file size
+             */
+            size: number;
+            encrypted: boolean;
+            /** @description Name encoding applied (detected for auto) */
+            encoding?: string;
+            supportsModify: boolean;
+            /** @enum {string} */
+            modifyReason?: "format" | "encrypted" | "too_large_to_modify";
+            /** @description Archive session id (present when a password was accepted); pass it to POST /archives/sign */
+            session?: string;
+            /** @description Members left out because their name is not a valid path */
+            unsafe?: number;
+        };
+        ArchiveSignRequest: {
+            /** @description Archive file (alias archive) */
+            path: string;
+            /** @description Member path inside the archive (alias entry) */
+            inner: string;
+            /** @description Archive session id of an encrypted archive */
+            session?: string;
+        };
+        ArchiveSignResponse: {
+            /** @description Relative URL (/api/v1/archives/entry-content?…[&sess=]) */
+            url: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @enum {string} */
+            purpose: "entry";
+            path: string;
+            inner: string;
+        };
+        ArchiveExtractEntriesRequest: {
+            /** @description Archive file (alias archive) */
+            path: string;
+            /** @description Member paths; a folder includes everything below it */
+            entries: string[];
+            /**
+             * @description new | here | <folder path> (aliases destPath, dest_path)
+             * @default new
+             */
+            dest: string;
+            password?: string;
+            /**
+             * @description alias name_encoding
+             * @default auto
+             * @enum {string}
+             */
+            encoding: "auto" | "utf-8" | "gbk" | "cp437" | "shift_jis" | "big5" | "windows-1252";
+            /**
+             * @description aliases on_conflict, policy
+             * @default fail
+             * @enum {string}
+             */
+            onConflict: "fail" | "overwrite" | "skip" | "rename";
+        };
+        ArchiveAddRequest: {
+            /** @description Zip file (alias archive) */
+            path: string;
+            /** @description Files or folders of the user's root (alias paths) */
+            sources: string[];
+            /** @description Folder inside the zip ('' = root; aliases inner_dir, into) */
+            innerDir?: string;
+        };
+        ArchiveRemoveRequest: {
+            /** @description Zip file (alias archive) */
+            path: string;
+            /** @description Member paths (a folder removes everything below it); `entry` accepts a single one */
+            entries: string[];
+        };
+        /** @description Result of a `zip_edit` task (SPEC §7.1) */
+        ZipEditResult: {
+            path: string;
+            /**
+             * Format: int64
+             * @description Size of the rewritten zip
+             */
+            size: number;
+            /** @description Members in the rewritten zip */
+            entries: number;
+            added: number;
+            removed: number;
+            /** @description Old members replaced by a new file of the same name */
+            replaced: number;
+            skipped?: components["schemas"]["ArchiveSkip"][];
         };
         ArchiveCompressResult: {
             path: string;
@@ -4666,6 +4960,274 @@ export interface operations {
             415: components["responses"]["Error"];
             429: components["responses"]["Error"];
             501: components["responses"]["Error"];
+        };
+    };
+    archivesEntries: {
+        parameters: {
+            query: {
+                /** @description Archive file (virtual path) */
+                path: string;
+                /** @description Folder inside the archive ('' = root) */
+                inner?: string;
+                /** @description Legacy name encoding of zip entries without the UTF-8 flag (alias name_encoding) */
+                encoding?: "auto" | "utf-8" | "gbk" | "cp437" | "shift_jis" | "big5" | "windows-1252";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: {
+                /** @description Password of an encrypted archive (never a query parameter */
+                "X-Archive-Password"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of one archive folder */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveEntriesResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            415: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            501: components["responses"]["Error"];
+        };
+    };
+    archivesSign: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveSignRequest"];
+            };
+        };
+        responses: {
+            /** @description Signed entry URL */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveSignResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    archivesEntryContent: {
+        parameters: {
+            query: {
+                /** @description Archive file */
+                path: string;
+                /** @description Member path inside the archive (signed) */
+                inner: string;
+                purpose: "entry";
+                scope: string;
+                exp: number;
+                sig: string;
+                /** @description Archive session id from GET /archives/entries (unsigned bearer bound to the user and the archive) */
+                sess?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Member bytes (inline or attachment per policy) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            413: components["responses"]["Error"];
+            415: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    archivesEntryContentHead: {
+        parameters: {
+            query: {
+                path: string;
+                inner: string;
+                purpose: "entry";
+                scope: string;
+                exp: number;
+                sig: string;
+                sess?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Headers only */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            413: components["responses"]["Error"];
+            415: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    archivesExtractEntries: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveExtractEntriesRequest"];
+            };
+        };
+        responses: {
+            /** @description Task queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskAccepted"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            415: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            501: components["responses"]["Error"];
+        };
+    };
+    archivesAdd: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveAddRequest"];
+            };
+        };
+        responses: {
+            /** @description Task queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskAccepted"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            415: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    archivesRemoveEntries: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveRemoveRequest"];
+            };
+        };
+        responses: {
+            /** @description Task queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskAccepted"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            415: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    archivesRemoveEntry: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveRemoveRequest"];
+            };
+        };
+        responses: {
+            /** @description Task queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskAccepted"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            415: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     remoteDownloadsCreate: {

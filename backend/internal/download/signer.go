@@ -27,12 +27,15 @@ const (
 	PurposeThumb    Purpose = "thumb"
 	PurposeInline   Purpose = "inline"
 	PurposeZip      Purpose = "zip"
+	// PurposeEntry streams one member of an archive (Step 14b): Path is the
+	// archive, Extra the member name (query "inner").
+	PurposeEntry Purpose = "entry"
 )
 
 // ParsePurpose validates a purpose string.
 func ParsePurpose(s string) (Purpose, bool) {
 	switch Purpose(s) {
-	case PurposeDownload, PurposeMedia, PurposeThumb, PurposeInline, PurposeZip:
+	case PurposeDownload, PurposeMedia, PurposeThumb, PurposeInline, PurposeZip, PurposeEntry:
 		return Purpose(s), true
 	}
 	return "", false
@@ -116,9 +119,12 @@ func (s *Signer) Query(p Params) url.Values {
 	q.Set("purpose", string(p.Purpose))
 	q.Set("scope", p.Scope)
 	q.Set("exp", strconv.FormatInt(p.Exp, 10))
-	if p.Purpose == PurposeThumb && p.Extra != "" {
+	switch {
+	case p.Purpose == PurposeThumb && p.Extra != "":
 		q.Set("size", p.Extra)
-	} else if p.Extra != "" {
+	case p.Purpose == PurposeEntry:
+		q.Set("inner", p.Extra)
+	case p.Extra != "":
 		q.Set("token", p.Extra)
 	}
 	q.Set("sig", s.Sign(p))
@@ -136,9 +142,12 @@ func FromQuery(q url.Values) (Params, string, error) {
 		return Params{}, "", ErrSignatureInvalid
 	}
 	p := Params{Scope: q.Get("scope"), Path: q.Get("path"), Purpose: purpose, Exp: exp}
-	if purpose == PurposeThumb {
+	switch purpose {
+	case PurposeThumb:
 		p.Extra = q.Get("size")
-	} else {
+	case PurposeEntry:
+		p.Extra = q.Get("inner")
+	default:
 		p.Extra = q.Get("token")
 	}
 	return p, q.Get("sig"), nil
@@ -152,7 +161,7 @@ func ShareScope(shareID string) string { return "s:" + shareID }
 // download/inline/zip use the short TTL, media/thumb the long one.
 func TTLFor(p Purpose, signedTTL, mediaTTL time.Duration) time.Duration {
 	switch p {
-	case PurposeMedia, PurposeThumb:
+	case PurposeMedia, PurposeThumb, PurposeEntry:
 		return mediaTTL
 	default:
 		return signedTTL
@@ -180,6 +189,8 @@ func Route(p Purpose) string {
 		return "/api/v1/files/download"
 	case PurposeZip:
 		return "/api/v1/files/zip"
+	case PurposeEntry:
+		return "/api/v1/archives/entry-content"
 	default:
 		return "/api/v1/files/raw"
 	}

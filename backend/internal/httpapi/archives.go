@@ -32,6 +32,7 @@ func (s *Server) mountArchives(api chi.Router) {
 		g.Post("/archives/compress", s.handleArchiveCompress)
 		g.Post("/archives/extract", s.handleArchiveExtract)
 	})
+	s.mountArchiveBrowser(api)
 }
 
 func (s *Server) handleArchiveCapabilities(w http.ResponseWriter, r *http.Request) {

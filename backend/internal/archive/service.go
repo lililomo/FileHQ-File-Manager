@@ -22,12 +22,15 @@ import (
 const (
 	TaskCompress = "compress"
 	TaskExtract  = "extract"
+	// TaskZipEdit rewrites a zip to add or remove members (Step 14b).
+	TaskZipEdit = "zip_edit"
 )
 
 // Activity actions recorded by this package.
 const (
 	ActCompress = "compress"
 	ActExtract  = "extract"
+	ActZipEdit  = "archive_edit"
 )
 
 // TmpPrefix names DATA_DIR/tmp/<prefix><task_id> working folders.
@@ -164,10 +167,12 @@ type Options struct {
 
 // Service validates and enqueues archive tasks and runs them.
 type Service struct {
-	o      Options
-	logger *slog.Logger
-	now    func() time.Time
-	step   int64
+	o        Options
+	logger   *slog.Logger
+	now      func() time.Time
+	step     int64
+	index    *indexCache
+	sessions *sessionStore
 }
 
 // New builds a Service and registers the runners when Tasks is set.
@@ -193,10 +198,11 @@ func New(o Options) *Service {
 	if o.Runner == nil && o.DataDir != "" {
 		o.Runner = fmexec.New(path.Join(o.DataDir, "tmp"))
 	}
-	s := &Service{o: o, logger: o.Logger, now: o.Now, step: o.ProgressStep}
+	s := &Service{o: o, logger: o.Logger, now: o.Now, step: o.ProgressStep, index: newIndexCache(o.Now), sessions: newSessionStore(o.Now)}
 	if o.Tasks != nil {
 		o.Tasks.Register(TaskCompress, tasks.Spec{Unit: tasks.UnitBytes, Run: s.runCompress, Link: compressLink})
 		o.Tasks.Register(TaskExtract, tasks.Spec{Unit: tasks.UnitBytes, Run: s.runExtract, Link: extractLink})
+		o.Tasks.Register(TaskZipEdit, tasks.Spec{Unit: tasks.UnitBytes, Run: s.runZipEdit, Link: zipEditLink})
 	}
 	return s
 }
