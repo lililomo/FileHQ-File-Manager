@@ -219,6 +219,7 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		{http.MethodGet, "/api/v1/me/folder-prefs?path=/"},
 		{http.MethodPut, "/api/v1/me/folder-prefs"},
 		{http.MethodDelete, "/api/v1/me/folder-prefs?path=/"},
+		{http.MethodPost, "/api/v1/files/sign"},
 	}
 	for _, b := range blocked {
 		var body any
@@ -254,6 +255,14 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		"GET /api/v1/me/folder-prefs": true, "PUT /api/v1/me/folder-prefs": true, "DELETE /api/v1/me/folder-prefs": true,
 		"GET /api/v1/files/list": true, "GET /api/v1/files/stat": true,
 		"POST /api/v1/files/mkdir": true, "POST /api/v1/files/create": true,
+		"POST /api/v1/files/sign": true,
+		// signed URL only (no cookie): a user who must change the password cannot
+		// obtain one because /files/sign is gated (Step 8).
+		"GET /api/v1/files/thumb": true,
+	}
+	// the signed endpoint rejects cookie-only access: no signature → 403
+	if r := env.call(http.MethodGet, "/api/v1/files/thumb?path=/x&size=128", ip, nil, nil, ck); r.rec.Code != 403 || r.code(t) != "SIGNATURE_INVALID" {
+		t.Fatalf("thumb without signature: %d %s", r.rec.Code, r.rec.Body.String())
 	}
 	for _, rt := range chiRoutes(t, env.handler) {
 		if !known[rt] {

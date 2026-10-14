@@ -53,8 +53,8 @@ func TestMigrateUpDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(st) != 3 {
-		t.Fatalf("want 3 embedded migrations, got %d", len(st))
+	if len(st) != 4 {
+		t.Fatalf("want 4 embedded migrations, got %d", len(st))
 	}
 	for _, m := range st {
 		if m.Applied {
@@ -72,13 +72,13 @@ func TestMigrateUpDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(applied) != 3 || applied[0] != 1 || applied[2] != 3 {
+	if len(applied) != 4 || applied[0] != 1 || applied[3] != 4 {
 		t.Fatalf("applied = %v", applied)
 	}
 	if err := d.Ready(ctx); err != nil {
 		t.Fatalf("Ready after up: %v", err)
 	}
-	for _, tbl := range []string{"users", "sessions", "settings", "user_preferences", "folder_view_prefs", "audit_logs", "login_attempts"} {
+	for _, tbl := range []string{"users", "sessions", "settings", "user_preferences", "folder_view_prefs", "audit_logs", "login_attempts", "media_metadata"} {
 		var n int
 		if err := d.Reader().QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tbl).Scan(&n); err != nil || n != 1 {
 			t.Fatalf("table %s missing (n=%d, err=%v)", tbl, n, err)
@@ -89,7 +89,7 @@ func TestMigrateUpDownUp(t *testing.T) {
 		t.Fatalf("second up: %v %v", again, err)
 	}
 
-	for want := int64(3); want >= 1; want-- {
+	for want := int64(4); want >= 1; want-- {
 		v, err := d.MigrateDown(ctx)
 		if err != nil || v != want {
 			t.Fatalf("down: got %d err=%v, want %d", v, err, want)
@@ -102,7 +102,7 @@ func TestMigrateUpDownUp(t *testing.T) {
 	if err := d.Reader().QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'goose_%' AND name NOT LIKE 'sqlite_%'").Scan(&n); err != nil || n != 0 {
 		t.Fatalf("tables left after down: %d (%v)", n, err)
 	}
-	if applied, err := d.MigrateUp(ctx); err != nil || len(applied) != 3 {
+	if applied, err := d.MigrateUp(ctx); err != nil || len(applied) != 4 {
 		t.Fatalf("re-up: %v %v", applied, err)
 	}
 }

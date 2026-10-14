@@ -95,6 +95,20 @@ type AuditRepo interface {
 	DeleteAuditOlderThan(ctx context.Context, before string) (int64, error)
 }
 
+// MediaRepo caches per-file media metadata and thumbnail state (SPEC §4.2
+// media_metadata, §8.4). Prefix operations take a folder path ("/" = whole
+// root) and cover the folder itself plus everything below it.
+type MediaRepo interface {
+	GetMedia(ctx context.Context, userID, path string) (sqlc.MediaMetadatum, error)
+	ListMediaByPaths(ctx context.Context, userID string, paths []string) ([]sqlc.MediaMetadatum, error)
+	UpsertMedia(ctx context.Context, p sqlc.UpsertMediaMetadataParams) error
+	SetMediaThumbState(ctx context.Context, p sqlc.SetMediaThumbStateParams) error
+	DeleteMedia(ctx context.Context, userID, path string) error
+	ListMediaPrefix(ctx context.Context, userID, dir string) ([]sqlc.MediaMetadatum, error)
+	DeleteMediaPrefix(ctx context.Context, userID, dir string) (int64, error)
+	CountMedia(ctx context.Context, userID string) (int64, error)
+}
+
 // LoginAttemptRepo backs lockout and the dashboard counter.
 type LoginAttemptRepo interface {
 	InsertLoginAttempt(ctx context.Context, p sqlc.InsertLoginAttemptParams) error
@@ -112,6 +126,7 @@ type Repository interface {
 	PrefRepo
 	AuditRepo
 	LoginAttemptRepo
+	MediaRepo
 	// WithTx runs fn with a Repository bound to one write transaction; nested
 	// calls reuse the outer transaction.
 	WithTx(ctx context.Context, fn func(tx Repository) error) error
@@ -393,4 +408,62 @@ func (s *Store) CountFailedLoginsSince(ctx context.Context, since string) (int64
 }
 func (s *Store) DeleteLoginAttemptsOlderThan(ctx context.Context, before string) (int64, error) {
 	return s.w.DeleteLoginAttemptsOlderThan(ctx, before)
+}
+
+// --- media_metadata ---
+
+// MaxMediaBatch bounds ListMediaByPaths (SQLite variable limit); callers
+// split larger sets.
+const MaxMediaBatch = 500
+
+func (s *Store) GetMedia(ctx context.Context, userID, path string) (sqlc.MediaMetadatum, error) {
+	return s.r.GetMediaMetadata(ctx, sqlc.GetMediaMetadataParams{UserID: userID, Path: path})
+}
+
+func (s *Store) ListMediaByPaths(ctx context.Context, userID string, paths []string) ([]sqlc.MediaMetadatum, error) {
+	out := make([]sqlc.MediaMetadatum, 0, len(paths))
+	for start := 0; start < len(paths); start += MaxMediaBatch {
+		end := min(start+MaxMediaBatch, len(paths))
+		rows, err := s.r.ListMediaMetadataByPaths(ctx, sqlc.ListMediaMetadataByPathsParams{UserID: userID, Paths: paths[start:end]})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rows...)
+	}
+	return out, nil
+}
+
+func (s *Store) UpsertMedia(ctx context.Context, p sqlc.UpsertMediaMetadataParams) error {
+	return s.w.UpsertMediaMetadata(ctx, p)
+}
+
+func (s *Store) SetMediaThumbState(ctx context.Context, p sqlc.SetMediaThumbStateParams) error {
+	return s.w.SetMediaThumbState(ctx, p)
+}
+
+func (s *Store) DeleteMedia(ctx context.Context, userID, path string) error {
+	return s.w.DeleteMediaMetadata(ctx, sqlc.DeleteMediaMetadataParams{UserID: userID, Path: path})
+}
+
+// mediaPrefix returns the (path, prefix) pair for a folder: "/" covers all
+// rows (prefix "/"), "/a" covers "/a" and "/a/...".
+func mediaPrefix(dir string) (string, string) {
+	if dir == "" || dir == "/" {
+		return "/", "/"
+	}
+	return dir, dir + "/"
+}
+
+func (s *Store) ListMediaPrefix(ctx context.Context, userID, dir string) ([]sqlc.MediaMetadatum, error) {
+	path, prefix := mediaPrefix(dir)
+	return s.r.ListMediaMetadataPrefix(ctx, sqlc.ListMediaMetadataPrefixParams{UserID: userID, Path: path, PrefixLen: int64(len(prefix)), Prefix: prefix})
+}
+
+func (s *Store) DeleteMediaPrefix(ctx context.Context, userID, dir string) (int64, error) {
+	path, prefix := mediaPrefix(dir)
+	return s.w.DeleteMediaMetadataPrefix(ctx, sqlc.DeleteMediaMetadataPrefixParams{UserID: userID, Path: path, PrefixLen: int64(len(prefix)), Prefix: prefix})
+}
+
+func (s *Store) CountMedia(ctx context.Context, userID string) (int64, error) {
+	return s.r.CountMediaMetadata(ctx, userID)
 }

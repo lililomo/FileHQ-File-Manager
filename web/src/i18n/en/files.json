@@ -200,7 +200,9 @@
     "folderItems_one": "{{n}} item",
     "folderItems_other": "{{n}} items",
     "loadingMore": "Loading more items…",
-    "broken": "Broken link"
+    "broken": "Broken link",
+    "count_one": "{{count}} item",
+    "count_other": "{{count}} items"
   },
   "status": {
     "items_one": "{{n}} item",
@@ -424,5 +426,14 @@
     "properties": "Properties",
     "filter": "Filter this folder",
     "help": "Keyboard shortcuts"
+  },
+  "view": {
+    "label": "View mode",
+    "details": "Details",
+    "list": "List",
+    "tiles": "Tiles",
+    "large": "Large icons",
+    "xlarge": "Extra large icons",
+    "rememberPerFolder": "Remember view per folder"
   }
 }

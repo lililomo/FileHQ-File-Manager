@@ -4,7 +4,6 @@ import {
   FilePlus2,
   FolderPlus,
   Globe,
-  LayoutGrid,
   MoreHorizontal,
   PanelRight,
   Pencil,
@@ -35,6 +34,7 @@ export interface ToolbarProps {
   onTogglePreview?: () => void
   columnsMenu?: ReactNode
   sortMenu?: ReactNode
+  viewSwitcher?: ReactNode
 }
 
 /** Toolbar (SPEC §9.3): "Baru", preview, sort and columns work; file operations
@@ -47,6 +47,7 @@ export function Toolbar({
   onTogglePreview,
   columnsMenu,
   sortMenu,
+  viewSwitcher,
 }: ToolbarProps) {
   const { t } = useTranslation('files')
   const soon = t('toolbar.comingSoon')
@@ -119,7 +120,7 @@ export function Toolbar({
           {disabledIcon(t('toolbar.rename'), Pencil)}
           {disabledIcon(t('toolbar.delete'), Trash2)}
           <div className="ml-auto flex items-center gap-1">
-            {disabledIcon(t('toolbar.view'), LayoutGrid)}
+            {viewSwitcher}
             {sortMenu}
             {columnsMenu}
             {onTogglePreview ? (
@@ -138,6 +139,7 @@ export function Toolbar({
         </>
       ) : (
         <div className="ml-auto flex items-center gap-1">
+          {viewSwitcher}
           {sortMenu}
           <IconButton label={t('toolbar.more')} disabled>
             <MoreHorizontal aria-hidden="true" />

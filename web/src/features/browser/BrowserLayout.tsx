@@ -19,7 +19,14 @@ import { useSelectionStore } from '@/stores/selection'
 import { MAX_TABS, useTabsStore } from '@/stores/tabs'
 import { useUIStore } from '@/stores/ui'
 import { AddressBar } from './AddressBar'
-import { getFolderPref, putFolderPref, type Item, type SortField } from './api'
+import {
+  getFolderPref,
+  isViewMode,
+  putFolderPref,
+  type Item,
+  type SortField,
+  type ViewMode,
+} from './api'
 import { ColumnContextMenuItems, ColumnMenu } from './ColumnMenu'
 import { MOBILE_COLUMNS, normalizeColumns, orderedVisible, type ColumnsPref } from './columns'
 import { DetailsView } from './DetailsView'
@@ -41,6 +48,9 @@ import { StatusBar } from './StatusBar'
 import { TabBar } from './TabBar'
 import { Toolbar } from './Toolbar'
 import { useListing } from './useListing'
+import { ListView } from './views/ListView'
+import { LargeIconsView, TilesView, XLIconsView } from './views/presets'
+import { ViewSwitcher } from './views/ViewSwitcher'
 import { baseName, parentPath, pathToSplat, ROOT } from './path'
 import { cycleSort, normalizeSort, sameSort, type SortPref } from './sortCycle'
 
@@ -87,6 +97,8 @@ export function BrowserLayout({ path }: { path: string }) {
   const globalSort = useMemo(() => normalizeSort(rawSort), [rawSort])
   const foldersFirst = usePref<boolean>('view.folders_first', true)
   const rememberPerFolder = usePref<boolean>('view.remember_per_folder', true)
+  const rawView = usePrefsStore((s) => s.prefs['view.mode'])
+  const globalView: ViewMode = isViewMode(rawView) ? rawView : 'details'
   const previewOpen = usePref<boolean>('ui.preview_panel', false)
   const tabsRestore = usePref<boolean>('tabs.restore', true)
 
@@ -104,12 +116,15 @@ export function BrowserLayout({ path }: { path: string }) {
     () => (folderPref.data?.columns ? normalizeColumns(folderPref.data.columns) : globalColumns),
     [folderPref.data, globalColumns],
   )
+  const view: ViewMode =
+    folderPref.data && isViewMode(folderPref.data.view) ? folderPref.data.view : globalView
 
   const persistFolder = useCallback(
-    (nextSort: SortPref, nextColumns: ColumnsPref) => {
+    (nextSort: SortPref, nextColumns: ColumnsPref, nextView: ViewMode) => {
       if (!rememberPerFolder) return
       const input = {
         path,
+        view: nextView,
         sort: nextSort.field,
         dir: nextSort.dir,
         ...(nextSort.field2 ? { sort2: nextSort.field2, dir2: nextSort.dir2 ?? 'asc' } : {}),
@@ -127,7 +142,7 @@ export function BrowserLayout({ path }: { path: string }) {
       qc.setQueryData(['folder-pref', path], (old: unknown) => ({
         ...(old && typeof old === 'object' ? old : {}),
         path,
-        view: 'details',
+        view: nextView,
         sort: nextSort,
         columns: nextColumns,
         updatedAt: new Date().toISOString(),
@@ -139,16 +154,25 @@ export function BrowserLayout({ path }: { path: string }) {
     (next: SortPref) => {
       if (sameSort(next, sort)) return
       setPref('view.sort', next)
-      persistFolder(next, columns)
+      persistFolder(next, columns, view)
     },
-    [sort, columns, setPref, persistFolder],
+    [sort, columns, view, setPref, persistFolder],
   )
   const changeColumns = useCallback(
     (next: ColumnsPref) => {
       setPref('view.columns', next)
-      persistFolder(sort, next)
+      persistFolder(sort, next, view)
     },
-    [sort, setPref, persistFolder],
+    [sort, view, setPref, persistFolder],
+  )
+  const changeView = useCallback(
+    (next: ViewMode) => {
+      if (next === view) return
+      setPref('view.mode', next)
+      persistFolder(sort, columns, next)
+      announce(t(`files:view.${next}`))
+    },
+    [view, sort, columns, setPref, persistFolder, t],
   )
   const onHeaderSort = useCallback(
     (field: SortField, secondary: boolean) => changeSort(cycleSort(sort, field, secondary)),
@@ -177,12 +201,18 @@ export function BrowserLayout({ path }: { path: string }) {
   }, [tabPaths, setPref])
 
   // --- listing ---
+  // Dimensi/Durasi columns ask the server to probe media metadata (SPEC §8.4).
+  const wantMedia =
+    view === 'details' &&
+    !isMobile &&
+    (columns.visible.includes('dimensions') || columns.visible.includes('duration'))
   const listing = useListing(path, {
     sort: sort.field,
     dir: sort.dir,
     sort2: sort.field2,
     dir2: sort.dir2,
     foldersFirst,
+    media: wantMedia,
   })
   const { items, total, isPending, isError, error, refetch, isFetching } = listing
   const filtered = useMemo(() => {
@@ -290,7 +320,11 @@ export function BrowserLayout({ path }: { path: string }) {
       registerShortcut('filter', () => filterRef.current?.focus()),
       registerShortcut('newFolder', () => setNewKind('folder')),
       registerShortcut('newFile', () => setNewKind('file')),
-      registerShortcut('viewDetails', () => setPref('view.mode', 'details')),
+      registerShortcut('viewDetails', () => changeView('details')),
+      registerShortcut('viewList', () => changeView('list')),
+      registerShortcut('viewTiles', () => changeView('tiles')),
+      registerShortcut('viewLarge', () => changeView('large')),
+      registerShortcut('viewXLarge', () => changeView('xlarge')),
       registerShortcut('properties', () => {
         if (focusItem) setProperties(focusItem)
       }),
@@ -328,6 +362,7 @@ export function BrowserLayout({ path }: { path: string }) {
     path,
     tabId,
     setPref,
+    changeView,
   ])
   useDialogScope(!!newKind || !!quickLook || !!properties)
 
@@ -502,39 +537,57 @@ export function BrowserLayout({ path }: { path: string }) {
       />
     )
   } else {
-    body = (
-      <DetailsView
-        items={filtered}
-        total={filter ? filtered.length : total}
-        path={path}
-        hasNextPage={listing.hasNextPage}
-        isFetchingNextPage={listing.isFetchingNextPage}
-        fetchNextPage={() => void listing.fetchNextPage()}
-        onOpen={onOpen}
-        onQuickLook={setQuickLook}
-        columns={isMobile ? MOBILE_PREF : columns}
-        onColumnsChange={changeColumns}
-        sort={sort}
-        onSortChange={onHeaderSort}
-        selection={selection}
-        onSelectionChange={setSelection}
-        activeIndex={activeIndex}
-        onActiveIndexChange={setActiveIndex}
-        headerMenu={
-          isMobile ? undefined : (
-            <ColumnContextMenuItems columns={columns} onChange={changeColumns} />
-          )
-        }
-        initialScroll={tab.scroll[path] ?? 0}
-        onScrollChange={(off) => useTabsStore.getState().setScroll(path, off)}
-        compact={isMobile}
-      />
-    )
+    const common = {
+      items: filtered,
+      total: filter ? filtered.length : total,
+      path,
+      hasNextPage: listing.hasNextPage,
+      isFetchingNextPage: listing.isFetchingNextPage,
+      fetchNextPage: () => void listing.fetchNextPage(),
+      onOpen,
+      onQuickLook: setQuickLook,
+      selection,
+      onSelectionChange: setSelection,
+      activeIndex,
+      onActiveIndexChange: setActiveIndex,
+      initialScroll: tab.scroll[path] ?? 0,
+      onScrollChange: (off: number) => useTabsStore.getState().setScroll(path, off),
+    }
+    switch (view) {
+      case 'list':
+        body = <ListView {...common} />
+        break
+      case 'tiles':
+        body = <TilesView {...common} />
+        break
+      case 'large':
+        body = <LargeIconsView {...common} />
+        break
+      case 'xlarge':
+        body = <XLIconsView {...common} />
+        break
+      default:
+        body = (
+          <DetailsView
+            {...common}
+            columns={isMobile ? MOBILE_PREF : columns}
+            onColumnsChange={changeColumns}
+            sort={sort}
+            onSortChange={onHeaderSort}
+            headerMenu={
+              isMobile ? undefined : (
+                <ColumnContextMenuItems columns={columns} onChange={changeColumns} />
+              )
+            }
+            compact={isMobile}
+          />
+        )
+    }
   }
 
   const visibleCount = orderedVisible(columns).length
   return (
-    <div className="relative flex h-full min-h-0 flex-col" data-testid="browser">
+    <div className="relative flex h-full min-h-0 flex-col" data-testid="browser" data-view={view}>
       <AddressBar
         path={path}
         canBack={tabs.canBack()}
@@ -576,6 +629,14 @@ export function BrowserLayout({ path }: { path: string }) {
         compact={isMobile}
         previewOpen={previewOpen}
         onTogglePreview={togglePreview}
+        viewSwitcher={
+          <ViewSwitcher
+            mode={view}
+            onModeChange={changeView}
+            rememberPerFolder={rememberPerFolder}
+            onRememberPerFolderChange={(v) => setPref('view.remember_per_folder', v)}
+          />
+        }
         columnsMenu={
           <ColumnMenu
             columns={columns}

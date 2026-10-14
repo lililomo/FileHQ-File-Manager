@@ -200,7 +200,9 @@
     "folderItems_one": "{{n}} item",
     "folderItems_other": "{{n}} item",
     "loadingMore": "Memuat item berikutnya…",
-    "broken": "Tautan rusak"
+    "broken": "Tautan rusak",
+    "count_one": "{{count}} item",
+    "count_other": "{{count}} item"
   },
   "status": {
     "items_one": "{{n}} item",
@@ -424,5 +426,14 @@
     "properties": "Properties",
     "filter": "Filter folder ini",
     "help": "Daftar pintasan keyboard"
+  },
+  "view": {
+    "label": "Mode tampilan",
+    "details": "Details",
+    "list": "List",
+    "tiles": "Tiles",
+    "large": "Ikon besar",
+    "xlarge": "Ikon ekstra besar",
+    "rememberPerFolder": "Ingat view per folder"
   }
 }

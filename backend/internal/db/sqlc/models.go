@@ -37,6 +37,26 @@ type LoginAttempt struct {
 	At       string `json:"at"`
 }
 
+type MediaMetadatum struct {
+	UserID     string  `json:"user_id"`
+	Path       string  `json:"path"`
+	Size       int64   `json:"size"`
+	MtimeUnix  int64   `json:"mtime_unix"`
+	Mime       string  `json:"mime"`
+	Width      *int64  `json:"width"`
+	Height     *int64  `json:"height"`
+	DurationMs *int64  `json:"duration_ms"`
+	CodecVideo *string `json:"codec_video"`
+	CodecAudio *string `json:"codec_audio"`
+	Bitrate    *int64  `json:"bitrate"`
+	ExifJson   *string `json:"exif_json"`
+	TagsJson   *string `json:"tags_json"`
+	HasCover   int64   `json:"has_cover"`
+	ThumbState string  `json:"thumb_state"`
+	ThumbError *string `json:"thumb_error"`
+	ComputedAt string  `json:"computed_at"`
+}
+
 type Session struct {
 	ID                string  `json:"id"`
 	UserID            string  `json:"user_id"`

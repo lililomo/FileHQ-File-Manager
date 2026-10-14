@@ -195,7 +195,9 @@ func TestSessions(t *testing.T) {
 	if n, _ := s.DeleteExpiredSessions(ctx, FormatTime(time.Now().Add(-7*24*time.Hour))); n != 0 {
 		t.Fatalf("7-day cutoff must keep recent rows, deleted %d", n)
 	}
-	n, err := s.DeleteExpiredSessions(ctx, Now())
+	// cutoff one second ahead: `other` was revoked in this same millisecond and
+	// the query compares with "<" (flaky at ms resolution otherwise)
+	n, err := s.DeleteExpiredSessions(ctx, FormatTime(time.Now().Add(time.Second)))
 	if err != nil || n != 2 { // idleExpired (idle in the past) + other (revoked before now)
 		t.Fatalf("delete expired: %d %v", n, err)
 	}
@@ -512,4 +514,78 @@ func TestConcurrentReadsDuringWrites(t *testing.T) {
 		t.Fatalf("no progress: writes=%d reads=%d", writes, reads)
 	}
 	t.Logf("writes=%d reads=%d in %s", writes, reads, dur)
+}
+
+func TestMediaMetadataRepo(t *testing.T) {
+	ctx := context.Background()
+	s := NewStore(openMigrated(t))
+	u, _ := s.CreateUser(ctx, newUser("budi", "user"))
+	v, _ := s.CreateUser(ctx, newUser("sari", "user"))
+	row := func(path string, w int64) sqlc.UpsertMediaMetadataParams {
+		return sqlc.UpsertMediaMetadataParams{UserID: u.ID, Path: path, Size: 10, MtimeUnix: 1, Mime: "image/png",
+			Width: Ptr(w), Height: Ptr(int64(10)), ThumbState: "pending", ComputedAt: Now()}
+	}
+	for _, p := range []string{"/a.png", "/dir/b.png", "/dir/sub/c.png", "/dir2/d.png", "/dirx.png"} {
+		if err := s.UpsertMedia(ctx, row(p, 100)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.UpsertMedia(ctx, sqlc.UpsertMediaMetadataParams{UserID: v.ID, Path: "/dir/b.png", Size: 1, MtimeUnix: 1, Mime: "image/png", ThumbState: "ready", ComputedAt: Now()}); err != nil {
+		t.Fatal(err)
+	}
+	// upsert replaces
+	if err := s.UpsertMedia(ctx, row("/a.png", 200)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetMedia(ctx, u.ID, "/a.png")
+	if err != nil || *got.Width != 200 {
+		t.Fatalf("get after upsert: %+v %v", got, err)
+	}
+	if _, err := s.GetMedia(ctx, v.ID, "/a.png"); !IsNotFound(err) {
+		t.Fatalf("user isolation: %v", err)
+	}
+	rows, err := s.ListMediaByPaths(ctx, u.ID, []string{"/a.png", "/dir/b.png", "/missing.png"})
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("by paths: %d %v", len(rows), err)
+	}
+	// batch splitting (> MaxMediaBatch paths)
+	many := make([]string, 0, MaxMediaBatch+5)
+	for i := range MaxMediaBatch + 5 {
+		many = append(many, fmt.Sprintf("/nope%d", i))
+	}
+	many = append(many, "/a.png")
+	if rows, err := s.ListMediaByPaths(ctx, u.ID, many); err != nil || len(rows) != 1 {
+		t.Fatalf("large batch: %d %v", len(rows), err)
+	}
+	// prefix covers the folder and everything below, not /dirx.png or /dir2
+	pre, err := s.ListMediaPrefix(ctx, u.ID, "/dir")
+	if err != nil || len(pre) != 2 {
+		t.Fatalf("prefix list: %d %v", len(pre), err)
+	}
+	if err := s.SetMediaThumbState(ctx, sqlc.SetMediaThumbStateParams{ThumbState: "failed", ThumbError: Ptr("boom"), ComputedAt: Now(), UserID: u.ID, Path: "/a.png"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetMedia(ctx, u.ID, "/a.png"); got.ThumbState != "failed" || *got.ThumbError != "boom" {
+		t.Fatalf("state: %+v", got)
+	}
+	if err := s.UpsertMedia(ctx, sqlc.UpsertMediaMetadataParams{UserID: u.ID, Path: "/x", Size: 1, MtimeUnix: 1, Mime: "x", ThumbState: "bogus", ComputedAt: Now()}); err == nil {
+		t.Fatal("CHECK constraint on thumb_state not enforced")
+	}
+	n, err := s.DeleteMediaPrefix(ctx, u.ID, "/dir")
+	if err != nil || n != 2 {
+		t.Fatalf("delete prefix: %d %v", n, err)
+	}
+	if err := s.DeleteMedia(ctx, u.ID, "/a.png"); err != nil {
+		t.Fatal(err)
+	}
+	cnt, _ := s.CountMedia(ctx, u.ID)
+	if cnt != 2 { // /dir2/d.png, /dirx.png
+		t.Fatalf("count = %d", cnt)
+	}
+	if n, _ := s.DeleteMediaPrefix(ctx, u.ID, "/"); n != 2 {
+		t.Fatalf("root prefix delete = %d", n)
+	}
+	if cnt, _ := s.CountMedia(ctx, v.ID); cnt != 1 {
+		t.Fatalf("other user's rows touched: %d", cnt)
+	}
 }

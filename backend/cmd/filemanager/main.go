@@ -25,9 +25,13 @@ import (
 	"kppbwi.app/filemanager/internal/auth"
 	"kppbwi.app/filemanager/internal/config"
 	"kppbwi.app/filemanager/internal/db"
+	"kppbwi.app/filemanager/internal/download"
+	fmexec "kppbwi.app/filemanager/internal/exec"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/httpapi"
 	"kppbwi.app/filemanager/internal/listing"
+	"kppbwi.app/filemanager/internal/media"
+	"kppbwi.app/filemanager/internal/thumbs"
 	"kppbwi.app/filemanager/internal/webassets"
 )
 
@@ -265,9 +269,28 @@ func runServe(envFile string, noMigrate bool) int {
 		return exitConfig
 	}
 
+	// External tools (SPEC §8.4): argv runner shared by thumbnails, media
+	// probes and later archive/search.
+	runner := fmexec.New(filepath.Join(cfg.DataDir, "tmp"))
+	prober := &media.Prober{Runner: runner, FFprobe: cfg.FFprobePath, Vipsheader: media.VipsheaderPath(cfg.VipsPath)}
+	mediaSvc := media.New(store, store, prober, logger)
+	thumbsSvc, err := thumbs.New(thumbs.Config{
+		Workers: cfg.ThumbWorkers, Vips: cfg.VipsPath, FFmpeg: cfg.FFmpegPath, FFprobe: cfg.FFprobePath,
+		Pdftoppm: cfg.PdftoppmPath, StorageRoot: cfg.StorageRoot, DataDir: cfg.DataDir,
+	}, runner, store, mediaSvc, logger)
+	if err != nil {
+		logger.Error("thumbnail cache unavailable", slog.String("error", err.Error()))
+		return exitConfig
+	}
+	defer func() { _ = thumbsSvc.Close() }()
+	if missing := thumbsSvc.MissingTools(); len(missing) > 0 {
+		logger.Warn("optional media tools missing; thumbnails/metadata degrade", slog.Any("missing", missing))
+	}
+
 	// Shared by handlers and (from Step 11) background tasks.
-	listingSvc := listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize})
+	listingSvc := listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize, Meta: mediaSvc})
 	locks := fsjail.NewLockManager()
+	signer := download.NewSigner(cfg.AppSecret, nil)
 
 	handler := httpapi.New(httpapi.Options{
 		Cfg:         cfg,
@@ -279,6 +302,16 @@ func runServe(envFile string, noMigrate bool) int {
 		Auth:        authSvc,
 		Listing:     listingSvc,
 		Locks:       locks,
+		Media:       mediaSvc,
+		Thumbs:      thumbsSvc,
+		Signer:      signer,
+		Warnings: func() []string {
+			var out []string
+			for _, tool := range thumbsSvc.MissingTools() {
+				out = append(out, "dependency missing: "+tool)
+			}
+			return out
+		},
 	})
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
@@ -291,6 +324,8 @@ func runServe(envFile string, noMigrate bool) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go authSvc.RunMaintenance(ctx)
+	thumbsSvc.Start(ctx)
+	logger.Info("thumbnail workers started", slog.Int("workers", thumbsSvc.Workers()))
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -312,6 +347,7 @@ func runServe(envFile string, noMigrate bool) int {
 			logger.Error("graceful shutdown failed", slog.String("error", err.Error()))
 			return 1
 		}
+		thumbsSvc.Wait()
 	}
 	logger.Info("stopped")
 	return 0

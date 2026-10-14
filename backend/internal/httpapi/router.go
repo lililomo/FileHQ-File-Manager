@@ -12,8 +12,11 @@ import (
 	"kppbwi.app/filemanager/internal/auth"
 	"kppbwi.app/filemanager/internal/config"
 	"kppbwi.app/filemanager/internal/db"
+	"kppbwi.app/filemanager/internal/download"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/listing"
+	"kppbwi.app/filemanager/internal/media"
+	"kppbwi.app/filemanager/internal/thumbs"
 )
 
 // JSONBodyLimit is the maximum JSON request body on /api/v1 (SPEC §6.2
@@ -34,6 +37,10 @@ type Options struct {
 	Auth        *auth.Service       // authentication service; nil disables the auth routes
 	Listing     *listing.Service    // directory listing; built from Cfg when nil
 	Locks       *fsjail.LockManager // per-user path locks shared with tasks; created when nil
+	Media       *media.Service      // media metadata cache; nil disables media columns/probes
+	Thumbs      *thumbs.Service     // thumbnail pipeline; nil disables GET /files/thumb
+	Signer      *download.Signer    // signed URLs; built from Cfg.AppSecret when nil
+	Warnings    func() []string     // non-fatal readiness warnings (missing optional tools)
 }
 
 // Server holds dependencies shared by handlers.
@@ -48,6 +55,11 @@ type Server struct {
 	listing     *listing.Service
 	locks       *fsjail.LockManager
 	jails       *jailCache
+	media       *media.Service
+	thumbs      *thumbs.Service
+	signer      *download.Signer
+	warnings    func() []string
+	thumbLimit  thumbLimiter
 }
 
 // New builds the router. The returned handler is safe for http.Server.
@@ -62,6 +74,13 @@ func New(o Options) http.Handler {
 		listing: o.Listing,
 		locks:   o.Locks,
 		jails:   newJailCache(nil),
+		media:   o.Media,
+		thumbs:  o.Thumbs,
+		signer:  o.Signer,
+	}
+	s.warnings = o.Warnings
+	if s.signer == nil && len(o.Cfg.AppSecret) > 0 {
+		s.signer = download.NewSigner(o.Cfg.AppSecret, nil)
 	}
 	if s.listing == nil {
 		s.listing = listing.New(listing.Options{Secret: o.Cfg.AppSecret, PageSize: o.Cfg.ListingPageSize})
@@ -106,6 +125,7 @@ func (s *Server) mountAPI(api chi.Router) {
 	if s.auth != nil && s.store != nil {
 		s.mountAuth(api)
 		s.mountFiles(api)
+		s.mountThumbs(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": s.cfg.AppName})

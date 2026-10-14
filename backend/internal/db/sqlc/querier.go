@@ -17,6 +17,7 @@ type Querier interface {
 	CountFailedLoginsSince(ctx context.Context, at string) (int64, error)
 	CountFolderViewPrefs(ctx context.Context, userID string) (int64, error)
 	CountLoginAttemptsByIPSince(ctx context.Context, arg CountLoginAttemptsByIPSinceParams) (int64, error)
+	CountMediaMetadata(ctx context.Context, userID string) (int64, error)
 	CountUsers(ctx context.Context, arg CountUsersParams) (int64, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
@@ -24,9 +25,12 @@ type Querier interface {
 	DeleteExpiredSessions(ctx context.Context, before string) (int64, error)
 	DeleteFolderViewPref(ctx context.Context, arg DeleteFolderViewPrefParams) error
 	DeleteLoginAttemptsOlderThan(ctx context.Context, at string) (int64, error)
+	DeleteMediaMetadata(ctx context.Context, arg DeleteMediaMetadataParams) error
+	DeleteMediaMetadataPrefix(ctx context.Context, arg DeleteMediaMetadataPrefixParams) (int64, error)
 	DeletePreferences(ctx context.Context, userID string) error
 	DeleteSetting(ctx context.Context, key string) error
 	GetFolderViewPref(ctx context.Context, arg GetFolderViewPrefParams) (FolderViewPref, error)
+	GetMediaMetadata(ctx context.Context, arg GetMediaMetadataParams) (MediaMetadatum, error)
 	GetPreferences(ctx context.Context, userID string) (UserPreference, error)
 	GetSession(ctx context.Context, id string) (Session, error)
 	GetSetting(ctx context.Context, key string) (Setting, error)
@@ -36,6 +40,10 @@ type Querier interface {
 	InsertAudit(ctx context.Context, arg InsertAuditParams) (int64, error)
 	InsertLoginAttempt(ctx context.Context, arg InsertLoginAttemptParams) error
 	ListAudit(ctx context.Context, arg ListAuditParams) ([]AuditLog, error)
+	ListMediaMetadataByPaths(ctx context.Context, arg ListMediaMetadataByPathsParams) ([]MediaMetadatum, error)
+	// prefix = "<dir>/" and prefix_len = len(prefix): sqlc's SQLite parser has no
+	// LIKE ... ESCAPE, substr avoids wildcard escaping.
+	ListMediaMetadataPrefix(ctx context.Context, arg ListMediaMetadataPrefixParams) ([]MediaMetadatum, error)
 	ListOldestFolderViewPrefPaths(ctx context.Context, arg ListOldestFolderViewPrefPathsParams) ([]string, error)
 	ListSettings(ctx context.Context) ([]Setting, error)
 	ListUserSessions(ctx context.Context, arg ListUserSessionsParams) ([]Session, error)
@@ -45,6 +53,7 @@ type Querier interface {
 	RevokeSession(ctx context.Context, arg RevokeSessionParams) (int64, error)
 	RevokeUserSessions(ctx context.Context, arg RevokeUserSessionsParams) (int64, error)
 	SetHomeProvisioned(ctx context.Context, arg SetHomeProvisionedParams) error
+	SetMediaThumbState(ctx context.Context, arg SetMediaThumbStateParams) error
 	SetMustChangePassword(ctx context.Context, arg SetMustChangePasswordParams) error
 	SetUserTOTP(ctx context.Context, arg SetUserTOTPParams) error
 	SoftDeleteUser(ctx context.Context, arg SoftDeleteUserParams) error
@@ -54,6 +63,7 @@ type Querier interface {
 	UpdateUserQuota(ctx context.Context, arg UpdateUserQuotaParams) error
 	UpdateUserStatus(ctx context.Context, arg UpdateUserStatusParams) error
 	UpsertFolderViewPref(ctx context.Context, arg UpsertFolderViewPrefParams) error
+	UpsertMediaMetadata(ctx context.Context, arg UpsertMediaMetadataParams) error
 	UpsertPreferences(ctx context.Context, arg UpsertPreferencesParams) error
 	UpsertSetting(ctx context.Context, arg UpsertSettingParams) error
 }

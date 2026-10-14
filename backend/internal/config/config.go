@@ -59,7 +59,7 @@ var defaults = map[string]string{
 	"FFPROBE_PATH":              "/usr/bin/ffprobe",
 	"VIPS_PATH":                 "/usr/bin/vipsthumbnail",
 	"PDFTOPPM_PATH":             "/usr/bin/pdftoppm",
-	"SEVENZIP_PATH":             "/usr/bin/7zz",
+	"SEVENZIP_PATH":             "/usr/lib/7zip/7z",
 	"RAR_PATH":                  "",
 	"UNRAR_PATH":                "",
 	"RG_PATH":                   "/usr/bin/rg",

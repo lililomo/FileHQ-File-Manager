@@ -59,6 +59,9 @@ func (s *SysDir) Close() error {
 
 // rel validates a name/relative path inside the SysDir.
 func (s *SysDir) rel(name string) (string, error) {
+	if s.root == nil {
+		return "", newErr(CodeInternal, "sys", VPath(name), "closed", ErrClosed)
+	}
 	v, err := Clean(name)
 	if err != nil {
 		return "", err
@@ -167,11 +170,19 @@ func (s *SysDir) ReadDirNames(name string) ([]string, error) {
 }
 
 // FS exposes the SysDir read-only.
-func (s *SysDir) FS() fs.FS { return s.root.FS() }
+func (s *SysDir) FS() fs.FS {
+	if s.root == nil {
+		return closedFS{}
+	}
+	return s.root.FS()
+}
 
 // HostPath returns the absolute host path of name for external tools (7zz
 // extracting into tmp). name components must not be symlinks.
 func (s *SysDir) HostPath(name string) (string, error) {
+	if s.root == nil {
+		return "", newErr(CodeInternal, "sys_host_path", VPath(name), "closed", ErrClosed)
+	}
 	rel := "."
 	if name != "" && name != "." {
 		r, err := s.rel(name)

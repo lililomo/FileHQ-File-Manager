@@ -342,6 +342,7 @@ paths:
         - { name: filter, in: query, schema: { type: string, maxLength: 255 }, description: Case-insensitive substring on the whole folder }
         - { name: types, in: query, schema: { type: string }, description: Comma-separated categories (folder,image,video,audio,archive,code,document,spreadsheet,presentation,pdf,text,font,other) }
         - { name: counts, in: query, schema: { type: boolean, default: false }, description: Fill itemCount for folders on the page (max 2000 per request) }
+        - { name: media, in: query, schema: { type: boolean, default: false }, description: Probe up to 50 media files of the page synchronously (Dimensi/Durasi columns); the rest is queued }
       responses:
         "200":
           description: One page
@@ -411,6 +412,61 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "413": { $ref: "#/components/responses/Error" }
+  /api/v1/files/sign:
+    post:
+      summary: Sign URLs for thumbnails (download/media/inline/zip from Step 12b)
+      description: Returns short-lived signed URLs (SPEC §8.9, ADR-15). One `path` or a batch `paths` (≤ 500). TTL for `thumb` is MEDIA_URL_TTL.
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SignRequest" }
+      responses:
+        "200":
+          description: Signed URL(s)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/SignResponse"
+                  - $ref: "#/components/schemas/SignBatchResponse"
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/files/thumb:
+    get:
+      summary: Serve a thumbnail (signed URL, no cookie)
+      description: |
+        Authenticated by the signature only (`<img>` tags, new tabs). `200 image/webp` with `ETag` and
+        `Cache-Control: private, max-age=86400` (`304` on `If-None-Match`); `202` + `Retry-After: 2` while
+        the thumbnail is being rendered (client retries at most 3×); `404` when the type is unsupported or
+        rendering failed (client shows the type icon); `403 SIGNATURE_*`; `429` above 20 parallel requests per user.
+      tags: [files]
+      security: []
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+        - { name: size, in: query, required: true, schema: { type: integer, enum: [128, 256, 512] } }
+        - { name: purpose, in: query, required: true, schema: { type: string, enum: [thumb] } }
+        - { name: scope, in: query, required: true, schema: { type: string }, description: "u:<user_id> (share scopes from Step 18a)" }
+        - { name: exp, in: query, required: true, schema: { type: integer, format: int64 }, description: Unix seconds }
+        - { name: sig, in: query, required: true, schema: { type: string }, description: base64url HMAC-SHA256, 32 chars }
+        - { name: If-None-Match, in: header, schema: { type: string } }
+      responses:
+        "200":
+          description: WebP thumbnail
+          content:
+            image/webp:
+              schema: { type: string, format: binary }
+        "202": { description: Rendering in progress; retry after `Retry-After` seconds }
+        "304": { description: Not modified }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     cookieAuth:
@@ -456,11 +512,20 @@ components:
         media:
           type: object
           nullable: true
+          description: Cached media metadata (media_metadata), null until probed
           properties:
+            mime: { type: string, description: From magic bytes }
             width: { type: integer }
             height: { type: integer }
             durationMs: { type: integer, format: int64 }
-        thumb: { type: boolean, description: Server can render a thumbnail }
+            codecVideo: { type: string }
+            codecAudio: { type: string }
+            hasCover: { type: boolean }
+            tags:
+              type: object
+              additionalProperties: { type: string }
+              description: title, artist, album, year, track
+        thumb: { type: boolean, description: Server can render a thumbnail (false once the pipeline marked the file failed/unsupported) }
         etag: { type: string }
     DirInfo:
       type: object
@@ -592,6 +657,35 @@ components:
           type: object
           additionalProperties: true
           description: "Key terdaftar di SPEC §8.18 (mis. ui.language, ui.theme, view.columns, view.sort, tabs.open); key tak dikenal → 400 VALIDATION_FAILED details.fields.<key>=unknown_key, nilai salah bentuk → invalid_value"
+    SignRequest:
+      type: object
+      required: [purpose]
+      properties:
+        path: { type: string, description: One path (mutually exclusive with paths) }
+        paths: { type: array, items: { type: string }, maxItems: 500 }
+        purpose: { type: string, enum: [thumb, download, media, inline, zip], description: Only thumb in Step 8 }
+        size: { type: integer, enum: [128, 256, 512], default: 256 }
+        share: { type: string, description: Share scope (Step 18a) }
+    SignResponse:
+      type: object
+      required: [url, expiresAt]
+      properties:
+        url: { type: string, description: "Relative URL (/api/v1/files/thumb?...)" }
+        expiresAt: { type: string, format: date-time }
+    SignBatchResponse:
+      type: object
+      required: [urls, expiresAt, invalid]
+      properties:
+        urls:
+          type: array
+          items:
+            type: object
+            required: [path, url]
+            properties:
+              path: { type: string }
+              url: { type: string }
+        expiresAt: { type: string, format: date-time }
+        invalid: { type: array, items: { type: string }, description: Paths that failed validation (omitted from urls) }
     Error:
       type: object
       required: [error]

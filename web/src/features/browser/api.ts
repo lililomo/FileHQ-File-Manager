@@ -1,11 +1,25 @@
 /** Listing API client (SPEC §6.3, §8.3). Types mirror `listing.Item`/`ListResult`. */
 import { api, type Query } from '@/lib/api'
 
+/** `media_metadata` cache (SPEC §4.2); null until the server probed the file. */
 export interface MediaMeta {
-  width?: number
-  height?: number
-  duration?: number
+  mime: string
+  width: number
+  height: number
+  durationMs: number
+  codecVideo?: string
+  codecAudio?: string
+  hasCover: boolean
+  tags?: Record<string, string>
 }
+
+export type ViewMode = 'details' | 'list' | 'tiles' | 'large' | 'xlarge'
+export const VIEW_MODES: ViewMode[] = ['details', 'list', 'tiles', 'large', 'xlarge']
+export function isViewMode(v: unknown): v is ViewMode {
+  return typeof v === 'string' && (VIEW_MODES as string[]).includes(v)
+}
+
+export type ThumbSize = 128 | 256 | 512
 
 export interface Item {
   name: string
@@ -79,6 +93,8 @@ export interface ListOptions {
   filter?: string
   limit?: number
   counts?: boolean
+  /** Probe media metadata for the page (Dimensi/Durasi columns). */
+  media?: boolean
 }
 
 export const DEFAULT_LIST: Required<Pick<ListOptions, 'sort' | 'dir' | 'foldersFirst'>> = {
@@ -99,6 +115,7 @@ export function listQueryKey(path: string, opts: ListOptions = {}) {
     o.foldersFirst,
     o.types ?? '',
     o.filter ?? '',
+    o.media ?? false,
   ] as const
 }
 
@@ -121,6 +138,7 @@ export function listDir(
     filter: o.filter,
     limit: o.limit,
     counts: o.counts,
+    media: o.media ? true : undefined,
     cursor,
   }
   return api<ListResponse>('/files/list', signal ? { query, signal } : { query })
@@ -169,10 +187,24 @@ export function statItem(path: string, signal?: AbortSignal): Promise<StatRespon
   )
 }
 
+/** Signed thumbnail URLs for a page of items (POST /files/sign, SPEC §8.9). */
+export interface SignBatchResponse {
+  urls: { path: string; url: string }[]
+  expiresAt: string
+  invalid: string[]
+}
+
+export function signThumbs(paths: string[], size: ThumbSize): Promise<SignBatchResponse> {
+  return api<SignBatchResponse>('/files/sign', {
+    method: 'POST',
+    body: { paths, purpose: 'thumb', size },
+  })
+}
+
 /** Folder view preference (SPEC §8.18 `folder_view_prefs`). */
 export interface FolderPref {
   path: string
-  view: 'details' | 'list' | 'tiles' | 'large' | 'xlarge'
+  view: ViewMode
   sort: { field: SortField; dir: SortDir; field2?: SortField; dir2?: SortDir }
   columns: { visible?: string[]; order?: string[]; widths?: Record<string, number> } | null
   updatedAt: string
@@ -187,7 +219,7 @@ export function getFolderPref(path: string, signal?: AbortSignal): Promise<Folde
 
 export interface FolderPrefInput {
   path: string
-  view?: FolderPref['view']
+  view?: ViewMode
   sort?: SortField
   dir?: SortDir
   sort2?: SortField

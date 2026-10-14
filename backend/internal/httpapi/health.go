@@ -66,9 +66,15 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sort.Strings(failed)
+	warnings := []string{}
+	if s.warnings != nil {
+		if w := s.warnings(); len(w) > 0 {
+			warnings = w
+		}
+	}
 	if ok {
-		WriteJSON(w, http.StatusOK, map[string]any{"status": "ok", "checks": checks})
+		WriteJSON(w, http.StatusOK, map[string]any{"status": "ok", "checks": checks, "warnings": warnings})
 		return
 	}
-	WriteJSON(w, http.StatusServiceUnavailable, map[string]any{"status": "degraded", "checks": checks, "failed": failed})
+	WriteJSON(w, http.StatusServiceUnavailable, map[string]any{"status": "degraded", "checks": checks, "failed": failed, "warnings": warnings})
 }

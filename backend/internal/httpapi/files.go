@@ -15,6 +15,7 @@ import (
 	"kppbwi.app/filemanager/internal/files"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/listing"
+	"kppbwi.app/filemanager/internal/media"
 )
 
 // scopeOwn is the listing scope of a user's own files; share/as_user scopes
@@ -37,6 +38,7 @@ func (s *Server) mountFiles(api chi.Router) {
 		g.Get("/files/stat", s.handleFilesStat)
 		g.Post("/files/mkdir", s.handleFilesMkdir)
 		g.Post("/files/create", s.handleFilesCreate)
+		g.Post("/files/sign", s.handleFilesSign)
 	})
 }
 
@@ -131,6 +133,10 @@ func (s *Server) handleFilesList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		fields["counts"] = "invalid"
 	}
+	wantMedia, ok := parseBoolDefault(q.Get("media"), false)
+	if !ok {
+		fields["media"] = "invalid"
+	}
 	spec, badField, err := listing.ParseSortSpec(q.Get("sort"), q.Get("dir"), q.Get("sort2"), q.Get("dir2"), foldersFirst)
 	if err != nil {
 		fields[badField] = "invalid"
@@ -176,6 +182,11 @@ func (s *Server) handleFilesList(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.writeListingError(w, r, err, string(dir))
 		return
+	}
+	if wantMedia && s.media != nil {
+		// Dimensi/Durasi columns: probe up to MaxSyncProbes files of this page
+		// now; the rest was queued by Annotate (SPEC §8.4, PROMPT Step 8 task 5).
+		s.media.FillPage(r.Context(), j, u.ID, res.Items, media.MaxSyncProbes)
 	}
 	WriteJSON(w, http.StatusOK, res)
 }

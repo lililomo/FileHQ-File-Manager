@@ -12,12 +12,17 @@ import (
 	"kppbwi.app/filemanager/internal/fsjail"
 )
 
-// Media is the cached metadata of an image/audio/video file (filled from
-// media_metadata by a later step; nil until then).
+// Media is the cached metadata of an image/audio/video file (SPEC §4.2
+// media_metadata; filled by media.Service.Annotate, nil when unknown).
 type Media struct {
-	Width      int   `json:"width"`
-	Height     int   `json:"height"`
-	DurationMs int64 `json:"durationMs"`
+	Mime       string            `json:"mime"`
+	Width      int               `json:"width"`
+	Height     int               `json:"height"`
+	DurationMs int64             `json:"durationMs"`
+	CodecVideo string            `json:"codecVideo,omitempty"`
+	CodecAudio string            `json:"codecAudio,omitempty"`
+	HasCover   bool              `json:"hasCover"`
+	Tags       map[string]string `json:"tags,omitempty"`
 }
 
 // Item is the API representation of one directory entry (SPEC §6.3 "Item").
@@ -131,6 +136,10 @@ func permString(m fs.FileMode) string {
 	}
 	return string(b[:])
 }
+
+// ModTime returns the entry's modification time (validity key of
+// media_metadata and thumbnails).
+func (it *Item) ModTime() time.Time { return it.mtime }
 
 // StatView is the extra "stat" object of GET /files/stat (SPEC §6.3).
 func (it *Item) StatView() map[string]any {

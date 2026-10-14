@@ -26,7 +26,7 @@ export function StatusBar({ total, selectedCount = 0, selectedBytes = 0 }: Statu
         {t('status.items', { count: total, n: formatNumber(total, lang) })}
       </span>
       {selectedCount > 0 ? (
-        <span>
+        <span data-testid="status-selected">
           {t('status.selected', {
             count: selectedCount,
             n: formatNumber(selectedCount, lang),

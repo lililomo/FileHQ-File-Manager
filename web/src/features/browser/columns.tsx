@@ -272,8 +272,8 @@ export function buildColumns(t: TFunction<'files'>, lang: string): ColumnDef[] {
       header: () => t('columns.duration'),
       meta: COLUMN_META.duration,
       cell: (it) => {
-        const d = it.media?.duration
-        return d ? formatDuration(d) : DASH
+        const d = it.media?.durationMs
+        return d ? formatDuration(d / 1000) : DASH
       },
     },
     {

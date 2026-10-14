@@ -197,7 +197,7 @@ func Lookup(name string) TypeInfo {
 		Mime:     def.mime,
 		Category: def.cat,
 		Label:    "type." + string(def.cat) + "." + label,
-		Thumb:    def.cat == CatImage || def.cat == CatVideo || def.cat == CatPDF,
+		Thumb:    def.cat == CatImage || def.cat == CatVideo || def.cat == CatPDF || def.cat == CatAudio, // audio: embedded cover (404 when none)
 	}
 }
 

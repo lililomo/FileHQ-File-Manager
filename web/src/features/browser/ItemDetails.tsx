@@ -4,16 +4,21 @@ import { toIconCategory } from '@/components/file-icon/categories'
 import { formatBytes, formatDateTimeFull, formatDuration, formatNumber } from '@/lib/format'
 import type { Item } from './api'
 import { typeLabel } from './columns'
+import { Thumb } from './views/Thumb'
 
 export function ItemHeader({ item, size = 48 }: { item: Item; size?: number }) {
   const { t } = useTranslation('files')
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <FileIcon
-        category={item.isDir ? 'folder' : toIconCategory(item.category)}
-        size={size}
-        className="shrink-0"
-      />
+      {item.thumb && !item.isDir ? (
+        <Thumb item={item} box={size} className="shrink-0" />
+      ) : (
+        <FileIcon
+          category={item.isDir ? 'folder' : toIconCategory(item.category)}
+          size={size}
+          className="shrink-0"
+        />
+      )}
       <div className="min-w-0">
         <div className="truncate font-medium text-text" title={item.name}>
           {item.name}
@@ -58,7 +63,8 @@ export function ItemFacts({
   if (item.mime) rows.push([t('props.mime'), item.mime])
   if (item.media?.width && item.media.height)
     rows.push([t('columns.dimensions'), `${item.media.width} × ${item.media.height}`])
-  if (item.media?.duration) rows.push([t('columns.duration'), formatDuration(item.media.duration)])
+  if (item.media?.durationMs)
+    rows.push([t('columns.duration'), formatDuration(item.media.durationMs / 1000)])
   if (item.isSymlink) rows.push([t('props.target'), item.symlinkTarget ?? DASH])
   if (item.note) rows.push([t('columns.note'), item.note])
   rows.push([t('columns.shared'), t(`shared.${item.shared}` as 'shared.none')])

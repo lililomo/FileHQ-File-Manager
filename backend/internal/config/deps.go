@@ -34,7 +34,7 @@ var toolSpecs = []toolSpec{
 	{"ffprobe", "FFPROBE_PATH", "metadata media (durasi, dimensi, codec)", false, []string{"-version"}},
 	{"vipsthumbnail", "VIPS_PATH", "thumbnail gambar cepat (fallback decoder Go)", false, []string{"--vips-version"}},
 	{"pdftoppm", "PDFTOPPM_PATH", "thumbnail PDF", false, []string{"-v"}},
-	{"7zz", "SEVENZIP_PATH", "tulis 7z, iso read-only", false, nil},
+	{"7z", "SEVENZIP_PATH", "tulis 7z, iso read-only (Ubuntu 24.04: /usr/lib/7zip/7z)", false, nil},
 	{"rg", "RG_PATH", "pencarian isi file cepat (fallback worker Go)", false, []string{"--version"}},
 	{"unrar", "UNRAR_PATH", "fallback extract rar (utama: library Go)", true, nil},
 	{"rar", "RAR_PATH", "compress rar (butuh lisensi)", true, nil},
