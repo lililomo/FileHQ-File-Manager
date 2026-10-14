@@ -23,6 +23,8 @@ tags:
     description: Recycle Bin per user (SPEC §8.6)
   - name: meta
     description: Favorit, pin, catatan, tag warna (SPEC §8.7)
+  - name: tasks
+    description: Task engine, SSE, notifikasi in-app (SPEC §7, §6.4, §8.16)
 
 paths:
   /healthz:
@@ -481,6 +483,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/OpResponse" }
+        "202":
+          description: Beyond the synchronous limits (> 2.000 entries / 200 MB, or a cross-filesystem move) the operation runs as a task (Step 11); `results` is empty and `undo` null.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskAccepted" }
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
@@ -504,6 +511,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/OpResponse" }
+        "202":
+          description: Beyond the synchronous limits (> 2.000 entries / 200 MB, or a cross-filesystem move) the operation runs as a task (Step 11); `results` is empty and `undo` null.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskAccepted" }
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
@@ -712,12 +724,20 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DirSizeResponse" }
+        "202":
+          description: The 60 s walk budget ran out; the partial numbers are returned with `task` (type `dir_size`) that finishes the walk (Step 11). `file.changed` is emitted when it completes.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/DirSizeResponse" }
+                  - { $ref: "#/components/schemas/TaskAccepted" }
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
   /api/v1/files/checksum:
     post:
       summary: MD5 / SHA-1 / SHA-256 of a file (≤ 100 MB synchronously)
-      description: Larger files answer `413 FILE_TOO_LARGE details.reason=task_required` until Step 11. Digests are cached 10 minutes per size+mtime and also appear as `checksums` in `GET /files/stat` (SPEC §8.7).
+      description: Larger files are hashed by a `checksum` task (`202 {task}`, Step 11); once cached the digest is served synchronously. Digests are cached 10 minutes per size+mtime and also appear as `checksums` in `GET /files/stat` (SPEC §8.7).
       tags: [files]
       security: [{ cookieAuth: [] }]
       parameters:
@@ -733,6 +753,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ChecksumResponse" }
+        "202":
+          description: File above 100 MB — hashed by a task; the result object carries the digests.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskAccepted" }
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "413": { $ref: "#/components/responses/Error" }
@@ -1212,7 +1237,196 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/StorageAnalysis" }
+        "202":
+          description: Walk cut by the 60 s budget — the partial report plus `task` (type `dir_size`, `payload.analysis=true`) that completes it (Step 11).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/StorageAnalysis" }
+                  - { $ref: "#/components/schemas/TaskAccepted" }
         "401": { $ref: "#/components/responses/Error" }
+  /api/v1/tasks:
+    get:
+      tags: [tasks]
+      summary: The user's tasks, newest first
+      operationId: tasksList
+      description: Hidden tasks (thumbnail batches) are omitted. Cursor = `nextCursor` of the previous page (SPEC §7).
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [queued, running, done, failed, cancelled, interrupted] } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskListResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/tasks/{id}:
+    get:
+      tags: [tasks]
+      summary: One task (404 for another user's id)
+      operationId: tasksGet
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskResponse" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [tasks]
+      summary: Remove a finished task from the list
+      operationId: tasksDelete
+      description: Only `done|failed|cancelled|interrupted` tasks; a live one answers `409 CONFLICT details.reason=task_final`.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Removed }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/tasks/{id}/logs:
+    get:
+      tags: [tasks]
+      summary: Task log lines (≤ 500 per call, after a log id)
+      operationId: tasksLogs
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: after, in: query, schema: { type: integer, minimum: 0 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/TaskLogEntry" } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/tasks/{id}/cancel:
+    post:
+      tags: [tasks]
+      summary: Cancel a queued or running task
+      operationId: tasksCancel
+      description: A queued task is cancelled at once; a running one when its runner observes the context and removed its partial results. Finished tasks answer `409 task_final`.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Cancellation requested (or done)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskResponse" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/tasks/{id}/retry:
+    post:
+      tags: [tasks]
+      summary: Retry a failed, cancelled or interrupted task as a new task
+      operationId: tasksRetry
+      description: The new task copies type, title and payload (`retryOf` = old id). Tasks that needed a password answer `409 needs_secret` (the UI asks again).
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      responses:
+        "202":
+          description: New task queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskResponse" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/events:
+    get:
+      tags: [tasks]
+      summary: Server-Sent Events stream (SPEC §6.4)
+      operationId: events
+      description: |
+        `text/event-stream` with `retry: 3000`, `id: <unix_ms>-<seq>`, a `: ping` comment every 25 s and `X-Accel-Buffering: no`.
+        `Last-Event-ID` (header or `lastEventId` query) replays the events still in the per-user ring (200); an unknown id yields a `resync` event (refetch tasks and notifications).
+        Events: `task.created|progress|done|failed|cancelled` (data: Task), `notification` (data: Notification), `file.changed` (`{dir, reason, paths?}`), `quota.updated` (`{used, trash, versions, limit, free, percent}`), `resync` (`{}`).
+        At most 5 connections per user (the oldest is closed). Excluded from the API timeout.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: lastEventId, in: query, schema: { type: string } }
+        - { name: Last-Event-ID, in: header, schema: { type: string } }
+      responses:
+        "200":
+          description: Event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/notifications:
+    get:
+      tags: [tasks]
+      summary: In-app notifications, newest first (SPEC §8.16)
+      operationId: notificationsList
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: unread, in: query, schema: { type: boolean } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationListResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/notifications/read:
+    post:
+      tags: [tasks]
+      summary: Mark notifications as read
+      operationId: notificationsRead
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationsReadRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [read, unread]
+                properties:
+                  read: { type: integer, description: Rows changed }
+                  unread: { type: integer, description: Remaining unread }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/v1/notifications/{id}:
+    delete:
+      tags: [tasks]
+      summary: Delete one notification
+      operationId: notificationsDelete
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     cookieAuth:
@@ -1902,6 +2116,93 @@ components:
             dirty: { type: boolean }
         cached: { type: boolean }
         durationMs: { type: integer, format: int64 }
+    TaskState:
+      type: string
+      enum: [queued, running, done, failed, cancelled, interrupted]
+    TaskProgress:
+      type: object
+      required: [done, total, unit, percent]
+      properties:
+        done: { type: integer, format: int64 }
+        total: { type: integer, format: int64, description: 0 = unknown }
+        unit: { type: string, enum: [bytes, items] }
+        percent: { type: number }
+    TaskError:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, description: "SPEC §6.2 code, CANCELLED or INTERRUPTED" }
+        message: { type: string }
+    Task:
+      type: object
+      description: Task view (SPEC §6.3 "Tasks & events"). `payload` never contains secrets; `result` depends on `type` (SPEC §7.1).
+      required: [id, type, state, title, payload, progress, cancelRequested, cancelable, retryable, createdAt]
+      properties:
+        id: { type: string }
+        type: { type: string, description: "copy, move, dir_size, checksum, … (SPEC §7.1)" }
+        state: { $ref: "#/components/schemas/TaskState" }
+        title: { type: string }
+        payload: { type: object, additionalProperties: true }
+        result: { type: object, additionalProperties: true, nullable: true }
+        error: { $ref: "#/components/schemas/TaskError" }
+        progress: { $ref: "#/components/schemas/TaskProgress" }
+        etaSeconds: { type: integer, format: int64, nullable: true }
+        speedBps: { type: integer, format: int64, nullable: true, description: Units per second over the last 10 s }
+        cancelRequested: { type: boolean }
+        cancelable: { type: boolean }
+        retryable: { type: boolean }
+        retryOf: { type: string, description: Id of the task this one retries }
+        createdAt: { type: string }
+        startedAt: { type: string, nullable: true }
+        finishedAt: { type: string, nullable: true }
+    TaskResponse:
+      type: object
+      required: [task]
+      properties:
+        task: { $ref: "#/components/schemas/Task" }
+    TaskAccepted:
+      type: object
+      description: "`202` answer of an operation converted into a task"
+      required: [task]
+      properties:
+        task: { $ref: "#/components/schemas/Task" }
+    TaskListResponse:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Task" } }
+        nextCursor: { type: string }
+    TaskLogEntry:
+      type: object
+      required: [id, at, level, message]
+      properties:
+        id: { type: integer, format: int64 }
+        at: { type: string }
+        level: { type: string, enum: [info, warn, error] }
+        message: { type: string }
+    Notification:
+      type: object
+      required: [id, type, title, readAt, createdAt]
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [task_done, task_failed, share_received, share_upload, system] }
+        title: { type: string }
+        body: { type: string }
+        link: { type: string, description: Frontend route }
+        readAt: { type: string, nullable: true }
+        createdAt: { type: string }
+    NotificationListResponse:
+      type: object
+      required: [items, unread]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Notification" } }
+        nextCursor: { type: string }
+        unread: { type: integer }
+    NotificationsReadRequest:
+      type: object
+      properties:
+        ids: { type: array, items: { type: string }, maxItems: 200 }
+        all: { type: boolean }
   responses:
     Error:
       description: Error envelope

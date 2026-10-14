@@ -12,6 +12,7 @@ import (
 	"kppbwi.app/filemanager/internal/files"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/listing"
+	"kppbwi.app/filemanager/internal/tasks"
 )
 
 // mountMeActivity registers Recent, the activity journal and the storage
@@ -241,11 +242,23 @@ func (s *Server) handleStorageAnalysis(w http.ResponseWriter, r *http.Request) {
 	}
 	out := itemView2(res)
 	out["computedAt"] = res.GeneratedAt
+	status := http.StatusOK
+	if res.Partial && s.tasks != nil {
+		// walk cut by the 60 s budget: finish it as a dir_size task (Step 11)
+		t, terr := s.tasks.Enqueue(r.Context(), tasks.EnqueueRequest{UserID: u.ID, Type: files.TaskDirSize, Title: "Analisis penyimpanan",
+			Payload: files.DirSizePayload{Path: "/", Analysis: true}})
+		if terr != nil {
+			s.writeTaskError(w, r, terr)
+			return
+		}
+		out["task"] = t
+		status = http.StatusAccepted
+	}
 	if s.quota != nil {
 		if usage, err := s.quota.Usage(r.Context(), u.ID); err == nil {
 			out["trash"], out["versions"] = usage.Trash, usage.Versions
 			out["quota"] = map[string]any{"limit": usage.Limit, "used": usage.Used, "free": usage.Free, "percent": usage.Percent, "dirty": usage.Dirty}
 		}
 	}
-	WriteJSON(w, http.StatusOK, out)
+	WriteJSON(w, status, out)
 }

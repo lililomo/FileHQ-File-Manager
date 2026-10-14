@@ -1,0 +1,72 @@
+{
+  "button": {
+    "text": "Tasks",
+    "label_zero": "Tasks (none running)",
+    "label_one": "Tasks ({{count}} running)",
+    "label_other": "Tasks ({{count}} running)"
+  },
+  "panel": {
+    "title": "Tasks",
+    "empty": "No tasks yet. Large operations (copying or moving thousands of files, checksums of big files) run here.",
+    "progress": "Progress {{percent}}%",
+    "showLog": "Show log",
+    "hideLog": "Hide log",
+    "noLog": "No log lines.",
+    "cancelling": "Cancelling…",
+    "offline": "Realtime connection lost; reconnecting",
+    "offlineShort": "offline"
+  },
+  "state": {
+    "queued": "Queued",
+    "running": "Running",
+    "done": "Done",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "interrupted": "Interrupted"
+  },
+  "actions": {
+    "cancel": "Cancel task",
+    "retry": "Retry task",
+    "remove": "Remove from list"
+  },
+  "label": {
+    "copy": "Copy {{n}} items to {{to}}",
+    "copyOne": "Copy {{name}} to {{to}}",
+    "move": "Move {{n}} items to {{to}}",
+    "moveOne": "Move {{name}} to {{to}}",
+    "dirSize": "Calculate size of {{name}}",
+    "analysis": "Storage analysis",
+    "checksum": "Checksum {{name}}"
+  },
+  "meta": {
+    "items": "{{done}} / {{total}} items",
+    "itemsDone": "{{done}} items",
+    "speedBytes": "{{speed}}/s",
+    "speedItems": "{{speed}} items/s",
+    "eta": "{{eta}} left"
+  },
+  "toast": {
+    "queued": "{{title}} runs as a background task",
+    "done": "{{title}} finished",
+    "failed": "{{title}} failed: {{reason}}",
+    "interrupted": "{{title}} was interrupted by a server stop: {{reason}}",
+    "cancelled": "{{title}} cancelled",
+    "cancelRequested": "Cancellation requested",
+    "retried": "Task retried"
+  },
+  "bell": {
+    "label_zero": "Notifications (none unread)",
+    "label_one": "Notifications ({{count}} unread)",
+    "label_other": "Notifications ({{count}} unread)",
+    "title": "Notifications",
+    "readAll": "Mark all as read",
+    "empty": "No notifications yet.",
+    "type": {
+      "task_done": "Task finished",
+      "task_failed": "Task failed",
+      "share_received": "Shared with you",
+      "share_upload": "Upload to your share",
+      "system": "System"
+    }
+  }
+}

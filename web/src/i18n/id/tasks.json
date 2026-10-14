@@ -1,0 +1,72 @@
+{
+  "button": {
+    "text": "Tasks",
+    "label_zero": "Task (tidak ada yang berjalan)",
+    "label_one": "Task ({{count}} berjalan)",
+    "label_other": "Task ({{count}} berjalan)"
+  },
+  "panel": {
+    "title": "Task",
+    "empty": "Belum ada task. Operasi besar (salin/pindah ribuan berkas, checksum berkas besar) berjalan di sini.",
+    "progress": "Progres {{percent}}%",
+    "showLog": "Tampilkan log",
+    "hideLog": "Sembunyikan log",
+    "noLog": "Tidak ada log.",
+    "cancelling": "Membatalkan…",
+    "offline": "Koneksi realtime terputus; mencoba menyambung kembali",
+    "offlineShort": "offline"
+  },
+  "state": {
+    "queued": "Antre",
+    "running": "Berjalan",
+    "done": "Selesai",
+    "failed": "Gagal",
+    "cancelled": "Dibatalkan",
+    "interrupted": "Terputus"
+  },
+  "actions": {
+    "cancel": "Batalkan task",
+    "retry": "Ulangi task",
+    "remove": "Hapus dari daftar"
+  },
+  "label": {
+    "copy": "Salin {{n}} item ke {{to}}",
+    "copyOne": "Salin {{name}} ke {{to}}",
+    "move": "Pindahkan {{n}} item ke {{to}}",
+    "moveOne": "Pindahkan {{name}} ke {{to}}",
+    "dirSize": "Hitung ukuran {{name}}",
+    "analysis": "Analisis penyimpanan",
+    "checksum": "Checksum {{name}}"
+  },
+  "meta": {
+    "items": "{{done}} / {{total}} item",
+    "itemsDone": "{{done}} item",
+    "speedBytes": "{{speed}}/dtk",
+    "speedItems": "{{speed}} item/dtk",
+    "eta": "{{eta}} tersisa"
+  },
+  "toast": {
+    "queued": "{{title}} dijalankan sebagai task di latar belakang",
+    "done": "{{title}} selesai",
+    "failed": "{{title}} gagal: {{reason}}",
+    "interrupted": "{{title}} terputus saat server berhenti: {{reason}}",
+    "cancelled": "{{title}} dibatalkan",
+    "cancelRequested": "Pembatalan diminta",
+    "retried": "Task diulang"
+  },
+  "bell": {
+    "label_zero": "Notifikasi (tidak ada yang belum dibaca)",
+    "label_one": "Notifikasi ({{count}} belum dibaca)",
+    "label_other": "Notifikasi ({{count}} belum dibaca)",
+    "title": "Notifikasi",
+    "readAll": "Tandai semua dibaca",
+    "empty": "Belum ada notifikasi.",
+    "type": {
+      "task_done": "Task selesai",
+      "task_failed": "Task gagal",
+      "share_received": "Dibagikan ke Anda",
+      "share_upload": "Unggahan ke share",
+      "system": "Sistem"
+    }
+  }
+}

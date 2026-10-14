@@ -3,6 +3,8 @@ import { PanelLeft, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { AppLogo } from '@/components/AppLogo'
 import { Button } from '@/components/ui/button'
+import { NotificationsBell } from '@/features/notifications/NotificationsBell'
+import { TasksButton } from '@/features/tasks/TasksButton'
 import { IconButton } from '@/components/ui/icon-button'
 import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { useOverlaysStore } from '@/stores/overlays'
@@ -56,6 +58,8 @@ export function TopBar() {
         </Button>
       </div>
       <div className="ml-auto flex items-center gap-0.5">
+        <TasksButton />
+        <NotificationsBell />
         <LanguageToggle />
         <ThemeToggle />
         <UserMenu />

@@ -260,6 +260,17 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		{http.MethodDelete, "/api/v1/me/activity"},
 		{http.MethodGet, "/api/v1/me/storage-analysis"},
 		{http.MethodPost, "/api/v1/me/storage-analysis"},
+		// Step 11
+		{http.MethodGet, "/api/v1/tasks"},
+		{http.MethodGet, "/api/v1/tasks/x"},
+		{http.MethodDelete, "/api/v1/tasks/x"},
+		{http.MethodGet, "/api/v1/tasks/x/logs"},
+		{http.MethodPost, "/api/v1/tasks/x/cancel"},
+		{http.MethodPost, "/api/v1/tasks/x/retry"},
+		{http.MethodGet, "/api/v1/events"},
+		{http.MethodGet, "/api/v1/notifications"},
+		{http.MethodPost, "/api/v1/notifications/read"},
+		{http.MethodDelete, "/api/v1/notifications/x"},
 	}
 	for _, b := range blocked {
 		var body any
@@ -310,6 +321,11 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		"GET /api/v1/me/recent": true, "POST /api/v1/me/recent": true,
 		"GET /api/v1/me/activity": true, "DELETE /api/v1/me/activity": true,
 		"GET /api/v1/me/storage-analysis": true, "POST /api/v1/me/storage-analysis": true,
+		// Step 11: tasks, SSE, notifications (all gated above)
+		"GET /api/v1/tasks": true, "GET /api/v1/tasks/{id}": true, "DELETE /api/v1/tasks/{id}": true,
+		"GET /api/v1/tasks/{id}/logs": true, "POST /api/v1/tasks/{id}/cancel": true, "POST /api/v1/tasks/{id}/retry": true,
+		"GET /api/v1/events": true, "GET /api/v1/notifications": true, "POST /api/v1/notifications/read": true,
+		"DELETE /api/v1/notifications/{id}": true,
 		// signed URL only (no cookie): a user who must change the password cannot
 		// obtain one because /files/sign is gated (Step 8).
 		"GET /api/v1/files/thumb": true,

@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -33,8 +34,11 @@ import (
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/media"
 	"kppbwi.app/filemanager/internal/meta"
+	"kppbwi.app/filemanager/internal/notify"
 	"kppbwi.app/filemanager/internal/quota"
 	"kppbwi.app/filemanager/internal/scheduler"
+	"kppbwi.app/filemanager/internal/sse"
+	"kppbwi.app/filemanager/internal/tasks"
 	"kppbwi.app/filemanager/internal/thumbs"
 	"kppbwi.app/filemanager/internal/trash"
 	"kppbwi.app/filemanager/internal/webassets"
@@ -334,6 +338,16 @@ func runServe(envFile string, noMigrate bool) int {
 		Invalidate: func(userID string, dir fsjail.VPath) { listingSvc.Invalidate(userID, "", dir) },
 	})
 
+	// Task engine, SSE broker and notifications (Step 11, SPEC §7, §6.4).
+	broker := sse.New(nil)
+	notifySvc := notify.New(store, broker, logger, nil)
+	engine := tasks.New(tasks.Options{
+		Repo: store, Logger: logger, MaxPerUser: cfg.TaskMaxPerUser, MaxGlobal: cfg.TaskMaxGlobal,
+		Events: broker, Notify: notifyAdapter{notifySvc}, Quota: quotaSvc, OpenJail: trashStore.OpenJail,
+		ErrorCode: files.TaskErrorCode, ItemDelay: devItemDelay(cfg),
+	})
+	files.RegisterTasks(engine, filesSvc)
+
 	handler := httpapi.New(httpapi.Options{
 		Cfg:         cfg,
 		Logger:      logger,
@@ -351,6 +365,9 @@ func runServe(envFile string, noMigrate bool) int {
 		Quota:       quotaSvc,
 		Audit:       auditRec,
 		Meta:        metaSvc,
+		Tasks:       engine,
+		Events:      broker,
+		Notify:      notifySvc,
 		Warnings: func() []string {
 			var out []string
 			for _, tool := range thumbsSvc.MissingTools() {
@@ -371,13 +388,18 @@ func runServe(envFile string, noMigrate bool) int {
 	defer stop()
 	go authSvc.RunMaintenance(ctx)
 	jobs := scheduler.New(cfg.TZDefault, logger, nil)
-	if err := registerJobs(jobs, cfg, trashStore, quotaSvc, filesSvc, auditRec, logger); err != nil {
+	if err := registerJobs(jobs, cfg, trashStore, quotaSvc, filesSvc, auditRec, engine, logger); err != nil {
 		logger.Error("scheduler setup failed", slog.String("error", err.Error()))
 		return exitConfig
 	}
 	go jobs.Start(ctx)
 	thumbsSvc.Start(ctx)
 	logger.Info("thumbnail workers started", slog.Int("workers", thumbsSvc.Workers()))
+	if err := engine.Start(ctx); err != nil {
+		logger.Error("task engine start failed", slog.String("error", err.Error()))
+		return 1
+	}
+	logger.Info("task engine started", slog.Int("maxPerUser", cfg.TaskMaxPerUser), slog.Int("maxGlobal", cfg.TaskMaxGlobal))
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -393,6 +415,11 @@ func runServe(envFile string, noMigrate bool) int {
 		}
 	case <-ctx.Done():
 		logger.Info("shutdown requested")
+		// Order (SPEC §7.3): stop task dispatch and cancel runners (≤ 10 s,
+		// survivors marked interrupted), drop SSE streams so Shutdown can
+		// drain, then close listeners.
+		engine.Shutdown(tasks.ShutdownGrace)
+		broker.Close()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
@@ -409,7 +436,16 @@ func runServe(envFile string, noMigrate bool) int {
 // purge_trash 03:00 (expired Recycle Bin items), recalc_quota 03:30 (every
 // account, bounded to one hour) and prune_logs 04:00 (activity journal
 // older than ACTIVITY_RETENTION_DAYS). Step 19b exposes RunNow for admins.
-func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *trash.Store, quotaSvc *quota.Service, filesSvc *files.Service, auditRec *audit.Recorder, logger *slog.Logger) error {
+func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *trash.Store, quotaSvc *quota.Service, filesSvc *files.Service, auditRec *audit.Recorder, engine *tasks.Engine, logger *slog.Logger) error {
+	if err := jobs.Add(scheduler.Job{Name: "cleanup_tasks", At: "04:30", Timeout: 15 * time.Minute, Run: func(ctx context.Context) error {
+		n, err := engine.Cleanup(ctx, tasks.Retention)
+		if n > 0 {
+			logger.Info("finished tasks pruned", slog.Int64("rows", n))
+		}
+		return err
+	}}); err != nil {
+		return err
+	}
 	if err := jobs.Add(scheduler.Job{Name: "purge_trash", At: "03:00", Timeout: time.Hour, Run: func(ctx context.Context) error {
 		if cfg.TrashRetentionDays == 0 {
 			return nil
@@ -439,4 +475,25 @@ func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *tra
 		}
 		return err
 	}})
+}
+
+// notifyAdapter narrows notify.Service to the engine's Notifier.
+type notifyAdapter struct{ s *notify.Service }
+
+func (a notifyAdapter) Create(ctx context.Context, userID, typ, title, body, link string) error {
+	_, err := a.s.Create(ctx, userID, typ, title, body, link)
+	return err
+}
+
+// devItemDelay reads DEV_TASK_ITEM_DELAY_MS, honoured only in development
+// (E2E demos of cancel/progress); production ignores it.
+func devItemDelay(cfg *config.Config) time.Duration {
+	if cfg.AppEnv != config.EnvDevelopment {
+		return 0
+	}
+	ms, err := strconv.Atoi(os.Getenv("DEV_TASK_ITEM_DELAY_MS"))
+	if err != nil || ms <= 0 || ms > 1000 {
+		return 0
+	}
+	return time.Duration(ms) * time.Millisecond
 }

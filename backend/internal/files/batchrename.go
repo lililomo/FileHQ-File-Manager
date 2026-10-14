@@ -268,7 +268,7 @@ func (s *Service) applyPairs(ctx context.Context, j *fsjail.Jail, userID string,
 	for _, p := range pairs {
 		lockPaths = append(lockPaths, p.from, p.to)
 	}
-	release, err := s.lock(userID, "batch_rename", fsjail.Write, lockPaths...)
+	release, err := s.lock(ctx, userID, "batch_rename", fsjail.Write, lockPaths...)
 	if err != nil {
 		return nil, err
 	}
@@ -355,7 +355,7 @@ func (s *Service) applyPairs(ctx context.Context, j *fsjail.Jail, userID string,
 	}
 	res.BatchID = batchID
 	if recordUndo {
-		s.withUndo(res, userID, UndoInfo{Kind: "batch_rename", BatchID: batchID, Items: undoItems})
+		s.withUndo(ctx, res, userID, UndoInfo{Kind: "batch_rename", BatchID: batchID, Items: undoItems})
 	}
 	return res, nil
 }

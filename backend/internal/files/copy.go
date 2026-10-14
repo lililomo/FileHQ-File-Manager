@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"kppbwi.app/filemanager/internal/db"
 	"kppbwi.app/filemanager/internal/fsjail"
@@ -30,12 +31,12 @@ func (s *Service) copy(ctx context.Context, j *fsjail.Jail, userID string, paths
 	}
 	// Read locks on sources, write locks on destinations. A destination
 	// inside a source (copy /a into /a/b is rejected by plan) cannot occur.
-	releaseR, err := s.lock(userID, action, fsjail.Read, srcs...)
+	releaseR, err := s.lock(ctx, userID, action, fsjail.Read, srcs...)
 	if err != nil {
 		return nil, err
 	}
 	defer releaseR()
-	releaseW, err := s.lock(userID, action, fsjail.Write, dsts...)
+	releaseW, err := s.lock(ctx, userID, action, fsjail.Write, dsts...)
 	if err != nil {
 		return nil, err
 	}
@@ -44,6 +45,10 @@ func (s *Service) copy(ctx context.Context, j *fsjail.Jail, userID string, paths
 	_, bytes, err := s.estimate(ctx, j, srcs)
 	if err != nil {
 		return nil, err
+	}
+	rep := reporterOf(ctx)
+	if rep != nil {
+		rep.SetTotal(bytes)
 	}
 	// Quota: reserve the estimated bytes before writing (SPEC §8.2
 	// "copy/duplicate"); the real delta per item is committed afterwards.
@@ -69,6 +74,9 @@ func (s *Service) copy(ctx context.Context, j *fsjail.Jail, userID string, paths
 	res := &Result{Results: []ItemResult{}}
 	var created []string
 	for _, it := range items {
+		if err := itemPause(ctx); err != nil {
+			return res, err
+		}
 		r := ItemResult{Path: string(it.src), IsDir: it.info.IsDir}
 		r.Status = decide(it)
 		if r.Status == "skipped" {
@@ -112,7 +120,7 @@ func (s *Service) copy(ctx context.Context, j *fsjail.Jail, userID string, paths
 		}
 	}
 	if len(created) > 0 {
-		s.withUndo(res, userID, UndoInfo{Kind: "delete_created", Created: created})
+		s.withUndo(ctx, res, userID, UndoInfo{Kind: "delete_created", Created: created})
 	}
 	return res, nil
 }
@@ -120,13 +128,14 @@ func (s *Service) copy(ctx context.Context, j *fsjail.Jail, userID string, paths
 // copyOne performs a single planned copy; a fresh destination is removed
 // again when the copy fails or ctx is cancelled (no partial results).
 func (s *Service) copyOne(ctx context.Context, j *fsjail.Jail, userID string, it plannedItem, dst fsjail.VPath, status string) error {
+	progress := progressFn(ctx)
 	switch status {
 	case "merged":
 		return s.mergeCopy(ctx, j, userID, it.src, dst, it.policy)
 	case "overwritten":
 		// file over file: write to a temporary name, then rename over
 		tmp := fsjail.VPath(string(dst) + ".fm-partial-" + db.NewID()[:8])
-		if err := j.CopyFile(ctx, it.src, tmp, nil); err != nil {
+		if err := j.CopyFile(ctx, it.src, tmp, progress); err != nil {
 			_ = j.Remove(tmp)
 			return err
 		}
@@ -140,9 +149,9 @@ func (s *Service) copyOne(ctx context.Context, j *fsjail.Jail, userID string, it
 	}
 	var err error
 	if it.info.IsDir {
-		err = j.CopyTree(ctx, it.src, dst, nil)
+		err = j.CopyTree(ctx, it.src, dst, progress)
 	} else {
-		err = j.CopyFile(ctx, it.src, dst, nil)
+		err = j.CopyFile(ctx, it.src, dst, progress)
 	}
 	if err != nil {
 		if rerr := j.RemoveAll(dst); rerr != nil && !isNotFound(rerr) {
@@ -161,7 +170,7 @@ func (s *Service) mergeCopy(ctx context.Context, j *fsjail.Jail, userID string, 
 		return err
 	}
 	for _, e := range entries {
-		if err := ctx.Err(); err != nil {
+		if err := itemPause(ctx); err != nil {
 			return err
 		}
 		from := e.Path
@@ -199,4 +208,27 @@ func (s *Service) mergeCopy(ctx context.Context, j *fsjail.Jail, userID string, 
 		}
 	}
 	return nil
+}
+
+// progressFn adapts the task Reporter (cumulative deltas) to the fsjail
+// ProgressFn of one copy call (bytes so far); nil outside tasks.
+func progressFn(ctx context.Context) fsjail.ProgressFn {
+	tc := taskOf(ctx)
+	if tc == nil || tc.Reporter == nil {
+		return nil
+	}
+	var last int64
+	return func(b int64) {
+		if b > last {
+			tc.Reporter.Add(b - last)
+			last = b
+		}
+		if tc.ItemDelay > 0 {
+			// development demo slowdown per copied file/chunk
+			select {
+			case <-ctx.Done():
+			case <-time.After(tc.ItemDelay):
+			}
+		}
+	}
 }

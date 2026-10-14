@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 
 	"kppbwi.app/filemanager/internal/audit"
 	"kppbwi.app/filemanager/internal/files"
+	"kppbwi.app/filemanager/internal/tasks"
 )
 
 type deletePermanentRequest struct {
@@ -74,6 +76,17 @@ func (s *Server) handleFilesDirSize(w http.ResponseWriter, r *http.Request) {
 		s.writeOpsError(w, r, err)
 		return
 	}
+	if res.Partial && s.tasks != nil {
+		// the 60 s budget ran out: finish the walk as a task (Step 11)
+		t, terr := s.tasks.Enqueue(r.Context(), tasks.EnqueueRequest{UserID: u.ID, Type: files.TaskDirSize, Title: "Hitung ukuran " + string(p),
+			Payload: files.DirSizePayload{Path: string(p)}, Locks: []string{string(p)}})
+		if terr != nil {
+			s.writeTaskError(w, r, terr)
+			return
+		}
+		WriteJSON(w, http.StatusAccepted, map[string]any{"task": t, "path": res.Path, "size": res.Size, "bytes": res.Bytes, "files": res.Files, "dirs": res.Dirs, "partial": true, "calculatedAt": res.CalculatedAt})
+		return
+	}
 	WriteJSON(w, http.StatusOK, res)
 }
 
@@ -108,6 +121,22 @@ func (s *Server) handleFilesChecksum(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 	sums, err := s.files.Checksum(r.Context(), j, u.ID, p, algos)
+	var fe *files.FileTooLargeError
+	if errors.As(err, &fe) && s.tasks != nil {
+		parsed, ok := files.ParseAlgos(algos)
+		if !ok {
+			s.writeOpsError(w, r, err)
+			return
+		}
+		t, terr := s.tasks.Enqueue(r.Context(), tasks.EnqueueRequest{UserID: u.ID, Type: files.TaskChecksum, Title: "Checksum " + p.Base(),
+			Payload: files.ChecksumPayload{Path: string(p), Algos: parsed}, Locks: []string{string(p)}})
+		if terr != nil {
+			s.writeTaskError(w, r, terr)
+			return
+		}
+		WriteJSON(w, http.StatusAccepted, map[string]any{"task": t, "path": string(p), "size": fe.Size})
+		return
+	}
 	if err != nil {
 		s.writeOpsError(w, r, err)
 		return

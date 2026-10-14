@@ -19,7 +19,10 @@ import (
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/media"
 	"kppbwi.app/filemanager/internal/meta"
+	"kppbwi.app/filemanager/internal/notify"
 	"kppbwi.app/filemanager/internal/quota"
+	"kppbwi.app/filemanager/internal/sse"
+	"kppbwi.app/filemanager/internal/tasks"
 	"kppbwi.app/filemanager/internal/thumbs"
 )
 
@@ -49,6 +52,9 @@ type Options struct {
 	Quota       *quota.Service      // quota accounting (Step 10a); nil = usage reported as zero
 	Audit       *audit.Recorder     // security audit log for delete-permanent / trash empty; built from Store when nil
 	Meta        *meta.Service       // favorites/pins/notes/tags (Step 10b); nil disables /meta
+	Tasks       *tasks.Engine       // task engine (Step 11); nil keeps the synchronous 413 answers
+	Events      *sse.Broker         // SSE broker (Step 11); nil disables GET /events
+	Notify      *notify.Service     // in-app notifications (Step 11); nil disables /notifications
 }
 
 // Server holds dependencies shared by handlers.
@@ -72,6 +78,9 @@ type Server struct {
 	quota       *quota.Service
 	audit       *audit.Recorder
 	meta        *meta.Service
+	tasks       *tasks.Engine
+	events      *sse.Broker
+	notify      *notify.Service
 }
 
 // New builds the router. The returned handler is safe for http.Server.
@@ -93,6 +102,9 @@ func New(o Options) http.Handler {
 		quota:   o.Quota,
 		audit:   o.Audit,
 		meta:    o.Meta,
+		tasks:   o.Tasks,
+		events:  o.Events,
+		notify:  o.Notify,
 	}
 	s.warnings = o.Warnings
 	if s.audit == nil && o.Store != nil {
@@ -122,7 +134,7 @@ func New(o Options) http.Handler {
 	r.Get("/readyz", s.handleReadyz)
 
 	r.Route("/api/v1", func(api chi.Router) {
-		api.Use(middleware.Timeout(APITimeout))
+		api.Use(TimeoutExcept(APITimeout, EventsPath))
 		api.Use(MaxBytes(JSONBodyLimit))
 		api.NotFound(func(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, r, CodeNotFound, 0, "endpoint not found", nil)
@@ -150,6 +162,8 @@ func (s *Server) mountAPI(api chi.Router) {
 		s.mountQuota(api)
 		s.mountMeta(api)
 		s.mountMeActivity(api)
+		s.mountTasks(api)
+		s.mountEvents(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": s.cfg.AppName})

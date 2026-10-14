@@ -297,3 +297,13 @@ func sysSize(ctx context.Context, d *fsjail.SysDir) (int64, error) {
 
 // SumAll returns Σ(used+trash+versions) over every user (admin dashboard).
 func (s *Service) SumAll(ctx context.Context) (int64, error) { return s.repo.SumQuotaUsed(ctx) }
+
+// QuotaEvent is the quota.updated SSE payload (SPEC §6.4) after a task or
+// background job changed the counters; ok is false when usage is unknown.
+func (s *Service) QuotaEvent(ctx context.Context, userID string) (any, bool) {
+	u, err := s.Usage(ctx, userID)
+	if err != nil {
+		return nil, false
+	}
+	return map[string]any{"used": u.Used, "trash": u.Trash, "versions": u.Versions, "limit": u.Limit, "free": u.Free, "percent": u.Percent, "dirty": u.Dirty}, true
+}

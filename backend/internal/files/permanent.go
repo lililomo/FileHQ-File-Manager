@@ -40,7 +40,7 @@ func (s *Service) DeletePermanent(ctx context.Context, j *fsjail.Jail, userID st
 			return nil, &ValidationError{Reason: "root", Path: string(p), Fields: map[string]string{"paths": "root"}}
 		}
 	}
-	release, err := s.lock(userID, "delete_permanent", fsjail.Write, paths...)
+	release, err := s.lock(ctx, userID, "delete_permanent", fsjail.Write, paths...)
 	if err != nil {
 		return nil, err
 	}

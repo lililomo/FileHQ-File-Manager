@@ -4,6 +4,9 @@ import { ChevronRight, FolderOpen, PieChart, RotateCw, Trash2 } from 'lucide-rea
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { taskOf } from '@/features/tasks/api'
+import { taskLabel } from '@/features/tasks/taskLabel'
+import { useTasksStore } from '@/stores/tasks'
 import { EmptyState } from '@/components/EmptyState'
 import { FileIcon } from '@/components/file-icon/FileIcon'
 import { toIconCategory } from '@/components/file-icon/categories'
@@ -72,6 +75,16 @@ export function StoragePage() {
     onSuccess: (data) => {
       qc.setQueryData(STORAGE_QUERY_KEY, data)
       void qc.invalidateQueries({ queryKey: QUOTA_QUERY_KEY })
+      const task = taskOf(data)
+      if (task) {
+        // partial walk: a task completes it and `task.done` refetches the page
+        useTasksStore.getState().upsert(task)
+        useTasksStore.getState().setPanel(true)
+        const msg = lt('tasks:toast.queued', { title: taskLabel(task, lt, lang) })
+        toast.info(msg)
+        announce(msg)
+        return
+      }
       announce(t('meta:storage.generatedAt', { at: formatDateTimeFull(data.generatedAt, lang) }))
     },
     onError: (e) => toast.error(errorMessage(lt, e)),

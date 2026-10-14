@@ -395,7 +395,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create an empty file or one from a template */
+        /**
+         * Create an empty file or one from a template
+         * @description Inline `content` (or the template body) is reserved against the user's quota before the file is written; over quota answers `413 QUOTA_EXCEEDED` (SPEC §8.2).
+         */
         post: {
             parameters: {
                 query?: never;
@@ -520,6 +523,15 @@ export interface paths {
                         "application/json": components["schemas"]["OpResponse"];
                     };
                 };
+                /** @description Beyond the synchronous limits (> 2.000 entries / 200 MB, or a cross-filesystem move) the operation runs as a task (Step 11); `results` is empty and `undo` null. */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskAccepted"];
+                    };
+                };
                 400: components["responses"]["Error"];
                 404: components["responses"]["Error"];
                 409: components["responses"]["Error"];
@@ -567,6 +579,15 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["OpResponse"];
+                    };
+                };
+                /** @description Beyond the synchronous limits (> 2.000 entries / 200 MB, or a cross-filesystem move) the operation runs as a task (Step 11); `results` is empty and `undo` null. */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskAccepted"];
                     };
                 };
                 400: components["responses"]["Error"];
@@ -821,7 +842,7 @@ export interface paths {
         put?: never;
         /**
          * Apply a batch rename rule (undoable)
-         * @description The server recomputes the preview; any collision or invalid name answers `409 CONFLICT` with `details.items`. Renames run in two phases through temporary names and roll back on failure.
+         * @description The server recomputes the preview; any collision or invalid name (including a file name ending in a blocked extension, reason `blocked_extension`) answers `409 CONFLICT` with `details.items`. Renames run in two phases through temporary names and roll back on failure.
          */
         post: {
             parameters: {
@@ -1010,6 +1031,15 @@ export interface paths {
                         "application/json": components["schemas"]["DirSizeResponse"];
                     };
                 };
+                /** @description The 60 s walk budget ran out; the partial numbers are returned with `task` (type `dir_size`) that finishes the walk (Step 11). `file.changed` is emitted when it completes. */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DirSizeResponse"] & components["schemas"]["TaskAccepted"];
+                    };
+                };
                 400: components["responses"]["Error"];
                 404: components["responses"]["Error"];
             };
@@ -1031,7 +1061,7 @@ export interface paths {
         put?: never;
         /**
          * MD5 / SHA-1 / SHA-256 of a file (≤ 100 MB synchronously)
-         * @description Larger files answer `413 FILE_TOO_LARGE details.reason=task_required` until Step 11. Digests are cached 10 minutes per size+mtime and also appear as `checksums` in `GET /files/stat` (SPEC §8.7).
+         * @description Larger files are hashed by a `checksum` task (`202 {task}`, Step 11); once cached the digest is served synchronously. Digests are cached 10 minutes per size+mtime and also appear as `checksums` in `GET /files/stat` (SPEC §8.7).
          */
         post: {
             parameters: {
@@ -1055,6 +1085,15 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["ChecksumResponse"];
+                    };
+                };
+                /** @description File above 100 MB — hashed by a task; the result object carries the digests. */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskAccepted"];
                     };
                 };
                 400: components["responses"]["Error"];
@@ -1465,6 +1504,178 @@ export interface paths {
         /** Recompute the storage analysis now ("Hitung ulang") */
         post: operations["meStorageAnalysisRecompute"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The user's tasks, newest first
+         * @description Hidden tasks (thumbnail batches) are omitted. Cursor = `nextCursor` of the previous page (SPEC §7).
+         */
+        get: operations["tasksList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One task (404 for another user's id) */
+        get: operations["tasksGet"];
+        put?: never;
+        post?: never;
+        /**
+         * Remove a finished task from the list
+         * @description Only `done|failed|cancelled|interrupted` tasks; a live one answers `409 CONFLICT details.reason=task_final`.
+         */
+        delete: operations["tasksDelete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Task log lines (≤ 500 per call, after a log id) */
+        get: operations["tasksLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a queued or running task
+         * @description A queued task is cancelled at once; a running one when its runner observes the context and removed its partial results. Finished tasks answer `409 task_final`.
+         */
+        post: operations["tasksCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry a failed, cancelled or interrupted task as a new task
+         * @description The new task copies type, title and payload (`retryOf` = old id). Tasks that needed a password answer `409 needs_secret` (the UI asks again).
+         */
+        post: operations["tasksRetry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Server-Sent Events stream (SPEC §6.4)
+         * @description `text/event-stream` with `retry: 3000`, `id: <unix_ms>-<seq>`, a `: ping` comment every 25 s and `X-Accel-Buffering: no`.
+         *     `Last-Event-ID` (header or `lastEventId` query) replays the events still in the per-user ring (200); an unknown id yields a `resync` event (refetch tasks and notifications).
+         *     Events: `task.created|progress|done|failed|cancelled` (data: Task), `notification` (data: Notification), `file.changed` (`{dir, reason, paths?}`), `quota.updated` (`{used, trash, versions, limit, free, percent}`), `resync` (`{}`).
+         *     At most 5 connections per user (the oldest is closed). Excluded from the API timeout.
+         */
+        get: operations["events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** In-app notifications, newest first (SPEC §8.16) */
+        get: operations["notificationsList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark notifications as read */
+        post: operations["notificationsRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete one notification */
+        delete: operations["notificationsDelete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2161,6 +2372,95 @@ export interface components {
             cached: boolean;
             /** Format: int64 */
             durationMs: number;
+        };
+        /** @enum {string} */
+        TaskState: "queued" | "running" | "done" | "failed" | "cancelled" | "interrupted";
+        TaskProgress: {
+            /** Format: int64 */
+            done: number;
+            /**
+             * Format: int64
+             * @description 0 = unknown
+             */
+            total: number;
+            /** @enum {string} */
+            unit: "bytes" | "items";
+            percent: number;
+        };
+        TaskError: {
+            /** @description SPEC §6.2 code, CANCELLED or INTERRUPTED */
+            code: string;
+            message?: string;
+        };
+        /** @description Task view (SPEC §6.3 "Tasks & events"). `payload` never contains secrets; `result` depends on `type` (SPEC §7.1). */
+        Task: {
+            id: string;
+            /** @description copy, move, dir_size, checksum, … (SPEC §7.1) */
+            type: string;
+            state: components["schemas"]["TaskState"];
+            title: string;
+            payload: {
+                [key: string]: unknown;
+            };
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            error?: components["schemas"]["TaskError"];
+            progress: components["schemas"]["TaskProgress"];
+            /** Format: int64 */
+            etaSeconds?: number | null;
+            /**
+             * Format: int64
+             * @description Units per second over the last 10 s
+             */
+            speedBps?: number | null;
+            cancelRequested: boolean;
+            cancelable: boolean;
+            retryable: boolean;
+            /** @description Id of the task this one retries */
+            retryOf?: string;
+            createdAt: string;
+            startedAt?: string | null;
+            finishedAt?: string | null;
+        };
+        TaskResponse: {
+            task: components["schemas"]["Task"];
+        };
+        /** @description `202` answer of an operation converted into a task */
+        TaskAccepted: {
+            task: components["schemas"]["Task"];
+        };
+        TaskListResponse: {
+            items: components["schemas"]["Task"][];
+            nextCursor?: string;
+        };
+        TaskLogEntry: {
+            /** Format: int64 */
+            id: number;
+            at: string;
+            /** @enum {string} */
+            level: "info" | "warn" | "error";
+            message: string;
+        };
+        Notification: {
+            id: string;
+            /** @enum {string} */
+            type: "task_done" | "task_failed" | "share_received" | "share_upload" | "system";
+            title: string;
+            body?: string;
+            /** @description Frontend route */
+            link?: string;
+            readAt: string | null;
+            createdAt: string;
+        };
+        NotificationListResponse: {
+            items: components["schemas"]["Notification"][];
+            nextCursor?: string;
+            unread: number;
+        };
+        NotificationsReadRequest: {
+            ids?: string[];
+            all?: boolean;
         };
     };
     responses: {
@@ -3256,7 +3556,276 @@ export interface operations {
                     "application/json": components["schemas"]["StorageAnalysis"];
                 };
             };
+            /** @description Walk cut by the 60 s budget — the partial report plus `task` (type `dir_size`, `payload.analysis=true`) that completes it (Step 11). */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageAnalysis"] & components["schemas"]["TaskAccepted"];
+                };
+            };
             401: components["responses"]["Error"];
+        };
+    };
+    tasksList: {
+        parameters: {
+            query?: {
+                state?: "queued" | "running" | "done" | "failed" | "cancelled" | "interrupted";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskListResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+        };
+    };
+    tasksGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    tasksDelete: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    tasksLogs: {
+        parameters: {
+            query?: {
+                after?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["TaskLogEntry"][];
+                    };
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    tasksCancel: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancellation requested (or done) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    tasksRetry: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description New task queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    events: {
+        parameters: {
+            query?: {
+                lastEventId?: string;
+            };
+            header?: {
+                "Last-Event-ID"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Event stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    notificationsList: {
+        parameters: {
+            query?: {
+                unread?: boolean;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationListResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+        };
+    };
+    notificationsRead: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationsReadRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Rows changed */
+                        read: number;
+                        /** @description Remaining unread */
+                        unread: number;
+                    };
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    notificationsDelete: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
         };
     };
 }

@@ -100,6 +100,17 @@ type MediaMetadatum struct {
 	ComputedAt string  `json:"computed_at"`
 }
 
+type Notification struct {
+	ID        string  `json:"id"`
+	UserID    string  `json:"user_id"`
+	Type      string  `json:"type"`
+	Title     string  `json:"title"`
+	Body      *string `json:"body"`
+	Link      *string `json:"link"`
+	ReadAt    *string `json:"read_at"`
+	CreatedAt string  `json:"created_at"`
+}
+
 type Pin struct {
 	UserID    string `json:"user_id"`
 	Path      string `json:"path"`
@@ -137,6 +148,39 @@ type Setting struct {
 	ValueJson string  `json:"value_json"`
 	UpdatedAt string  `json:"updated_at"`
 	UpdatedBy *string `json:"updated_by"`
+}
+
+type Task struct {
+	ID              string  `json:"id"`
+	UserID          *string `json:"user_id"`
+	Type            string  `json:"type"`
+	State           string  `json:"state"`
+	Title           string  `json:"title"`
+	PayloadJson     string  `json:"payload_json"`
+	ResultJson      *string `json:"result_json"`
+	ErrorCode       *string `json:"error_code"`
+	ErrorMessage    *string `json:"error_message"`
+	ProgressDone    int64   `json:"progress_done"`
+	ProgressTotal   int64   `json:"progress_total"`
+	ProgressUnit    string  `json:"progress_unit"`
+	EtaSeconds      *int64  `json:"eta_seconds"`
+	SpeedBps        *int64  `json:"speed_bps"`
+	CancelRequested int64   `json:"cancel_requested"`
+	LocksJson       string  `json:"locks_json"`
+	Hidden          int64   `json:"hidden"`
+	RetryOf         *string `json:"retry_of"`
+	CreatedAt       string  `json:"created_at"`
+	StartedAt       *string `json:"started_at"`
+	FinishedAt      *string `json:"finished_at"`
+	UpdatedAt       string  `json:"updated_at"`
+}
+
+type TaskLog struct {
+	ID      int64  `json:"id"`
+	TaskID  string `json:"task_id"`
+	At      string `json:"at"`
+	Level   string `json:"level"`
+	Message string `json:"message"`
 }
 
 type TrashItem struct {

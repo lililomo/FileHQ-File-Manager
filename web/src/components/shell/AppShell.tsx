@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuotaSync } from '@/features/quota/useQuota'
+import { TaskPanel } from '@/features/tasks/TaskPanel'
+import { useTaskEvents } from '@/features/tasks/useTaskEvents'
 import { GlobalOverlays } from './GlobalOverlays'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
@@ -8,6 +10,7 @@ import { TopBar } from './TopBar'
 export function AppShell({ children }: { children: ReactNode }) {
   const { t } = useTranslation()
   useQuotaSync()
+  useTaskEvents()
   return (
     <div className="flex h-dvh flex-col bg-bg text-text">
       <a
@@ -24,6 +27,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </main>
       </div>
       <GlobalOverlays />
+      <TaskPanel />
     </div>
   )
 }

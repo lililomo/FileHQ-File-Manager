@@ -3,6 +3,7 @@
  *  undoToken?, undo, warnings?}`. */
 import type { Item } from '@/features/browser/api'
 import { api, ApiError } from '@/lib/api'
+import type { Task } from '@/features/tasks/api'
 
 export type ConflictPolicy = 'fail' | 'overwrite' | 'skip' | 'rename'
 export type TransferOp = 'copy' | 'move'
@@ -27,6 +28,8 @@ export interface UndoInfo {
 
 export interface OpResponse {
   results: ItemResult[]
+  /** Present (202) when the operation runs as a background task (Step 11). */
+  task?: Task
   item?: Item
   batchId?: string
   undoToken?: string
@@ -197,6 +200,7 @@ export function deletePermanentItems(paths: string[]): Promise<PermanentResponse
 }
 
 export interface DirSizeResult {
+  task?: Task
   path: string
   size: number
   bytes: number
@@ -218,6 +222,7 @@ export type ChecksumAlgo = 'md5' | 'sha1' | 'sha256'
 export const CHECKSUM_ALGOS: ChecksumAlgo[] = ['md5', 'sha1', 'sha256']
 
 export interface ChecksumResult {
+  task?: Task
   path: string
   md5?: string
   sha1?: string

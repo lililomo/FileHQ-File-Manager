@@ -33,6 +33,8 @@ const env = {
   ADMIN_INITIAL_PASSWORD: 'E2e-Initial-Passw0rd!',
   ADMIN_CAN_BROWSE_USERS: 'false',
   LOG_LEVEL: 'warn',
+  // Step 11 tasks.spec: slow each copied file by 2 ms so a 5 000-file copy can be cancelled mid-way
+  DEV_TASK_ITEM_DELAY_MS: '2',
 }
 
 const child = spawn(bin, ['serve'], { env, stdio: 'inherit' })

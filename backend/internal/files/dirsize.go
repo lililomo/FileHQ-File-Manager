@@ -108,10 +108,20 @@ func (s *Service) DirSize(ctx context.Context, j *fsjail.Jail, userID string, p 
 		res.Cached = true
 		return res, nil
 	}
-	wctx, cancel := context.WithTimeout(ctx, DirSizeBudget)
+	// Inside a task (Step 11) the walk has no budget and reports items.
+	wctx, cancel := ctx, context.CancelFunc(func() {})
+	if !unbounded(ctx) {
+		wctx, cancel = context.WithTimeout(ctx, DirSizeBudget)
+	}
 	defer cancel()
+	rep := reporterOf(ctx)
 	var last fsjail.DirStats
-	st, err := j.DirSize(wctx, p, func(files, dirs, b int64) { last = fsjail.DirStats{Files: files, Dirs: dirs, Bytes: b} })
+	st, err := j.DirSize(wctx, p, func(files, dirs, b int64) {
+		if rep != nil {
+			rep.Add(files + dirs - last.Files - last.Dirs)
+		}
+		last = fsjail.DirStats{Files: files, Dirs: dirs, Bytes: b}
+	})
 	res := DirSizeResult{Path: string(p), CalculatedAt: s.now().UTC().Format("2006-01-02T15:04:05.000Z")}
 	switch {
 	case err == nil:

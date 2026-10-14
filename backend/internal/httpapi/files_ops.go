@@ -10,6 +10,7 @@ import (
 	"kppbwi.app/filemanager/internal/files"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/quota"
+	"kppbwi.app/filemanager/internal/tasks"
 	"kppbwi.app/filemanager/internal/trash"
 )
 
@@ -264,27 +265,16 @@ func (s *Server) parseTransfer(w http.ResponseWriter, r *http.Request) ([]fsjail
 }
 
 func (s *Server) handleFilesCopy(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
-		return
-	}
-	paths, to, pol, ok := s.parseTransfer(w, r)
-	if !ok {
-		return
-	}
-	j, u, release, ok := s.userJail(w, r)
-	if !ok {
-		return
-	}
-	defer release()
-	res, err := s.files.Copy(r.Context(), j, u.ID, paths, to, pol)
-	if err != nil {
-		s.writeOpsError(w, r, err)
-		return
-	}
-	WriteJSON(w, http.StatusOK, s.opView(r, j, u.ID, res, ""))
+	s.handleTransfer(w, r, files.ActCopy)
 }
 
 func (s *Server) handleFilesMove(w http.ResponseWriter, r *http.Request) {
+	s.handleTransfer(w, r, files.ActMove)
+}
+
+// handleTransfer runs copy/move synchronously within the limits of SPEC
+// §8.5; beyond them it enqueues a task and answers 202 {task} (Step 11).
+func (s *Server) handleTransfer(w http.ResponseWriter, r *http.Request, action string) {
 	if rejectScope(w, r) {
 		return
 	}
@@ -297,7 +287,40 @@ func (s *Server) handleFilesMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer release()
-	res, err := s.files.Move(r.Context(), j, u.ID, paths, to, pol)
+	var (
+		res *files.Result
+		err error
+	)
+	if action == files.ActMove {
+		res, err = s.files.Move(r.Context(), j, u.ID, paths, to, pol)
+	} else {
+		res, err = s.files.Copy(r.Context(), j, u.ID, paths, to, pol)
+	}
+	var te *files.TooLargeError
+	if errors.As(err, &te) && s.tasks != nil {
+		payload := files.TransferPayload{Paths: make([]string, 0, len(paths)), To: string(to), OnConflict: string(pol.Default)}
+		for _, p := range paths {
+			payload.Paths = append(payload.Paths, string(p))
+		}
+		if len(pol.PerItem) > 0 {
+			payload.PerItem = map[string]string{}
+			for k, v := range pol.PerItem {
+				payload.PerItem[k] = string(v)
+			}
+		}
+		locks := append(payload.Paths, string(to))
+		typ := files.TaskCopy
+		if action == files.ActMove {
+			typ = files.TaskMove
+		}
+		t, terr := s.tasks.Enqueue(r.Context(), tasks.EnqueueRequest{UserID: u.ID, Type: typ, Title: files.TransferTitle(action, len(paths), string(to)), Payload: payload, Locks: locks})
+		if terr != nil {
+			s.writeTaskError(w, r, terr)
+			return
+		}
+		WriteJSON(w, http.StatusAccepted, map[string]any{"task": t, "results": []any{}, "undo": nil})
+		return
+	}
 	if err != nil {
 		s.writeOpsError(w, r, err)
 		return

@@ -185,7 +185,8 @@ func TestTrashQuotaAC(t *testing.T) {
 	f, _ := os.Create(big)
 	_ = f.Truncate(200 << 20)
 	_ = f.Close()
-	if r := post("/files/checksum", map[string]any{"path": "/big.bin"}); r.rec.Code != 413 || r.code(t) != "FILE_TOO_LARGE" {
+	// Step 11: above the synchronous limit the digest is computed by a task
+	if r := post("/files/checksum", map[string]any{"path": "/big.bin"}); r.rec.Code != 202 || r.body["task"] == nil {
 		t.Fatalf("big checksum: %d %s", r.rec.Code, r.rec.Body.String())
 	}
 

@@ -86,6 +86,32 @@ func (u *UndoStore) Take(userID, token string) (UndoInfo, bool) {
 	return e.info, true
 }
 
+// TakeEntry is Take plus the entry's expiry (so a failed undo can be put
+// back with Restore).
+func (u *UndoStore) TakeEntry(userID, token string) (UndoInfo, time.Time, bool) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	e, ok := u.m[token]
+	if !ok {
+		return UndoInfo{}, time.Time{}, false
+	}
+	delete(u.m, token)
+	if e.userID != userID || !u.now().Before(e.expires) {
+		return UndoInfo{}, time.Time{}, false
+	}
+	return e.info, e.expires, true
+}
+
+// Restore puts a taken token back with its original expiry.
+func (u *UndoStore) Restore(userID, token string, info UndoInfo, expires time.Time) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if !u.now().Before(expires) {
+		return
+	}
+	u.m[token] = undoEntry{userID: userID, expires: expires, info: info}
+}
+
 // Len reports live tokens (tests).
 func (u *UndoStore) Len() int {
 	u.mu.Lock()

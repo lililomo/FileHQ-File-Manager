@@ -153,8 +153,12 @@ func (s *Service) Analyze(ctx context.Context, j *fsjail.Jail, userID string, fo
 		}
 	}
 	start := s.now()
-	wctx, cancel := context.WithTimeout(ctx, AnalysisBudget)
+	wctx, cancel := ctx, context.CancelFunc(func() {})
+	if !unbounded(ctx) {
+		wctx, cancel = context.WithTimeout(ctx, AnalysisBudget)
+	}
 	defer cancel()
+	rep := reporterOf(ctx)
 
 	acc := map[fsjail.VPath]*dirAcc{fsjail.Root: {path: fsjail.Root}}
 	top := &fileHeap{}
@@ -173,6 +177,9 @@ func (s *Service) Analyze(ctx context.Context, j *fsjail.Jail, userID string, fo
 		p := fsjail.VPath(vp)
 		if p.IsRoot() {
 			return nil
+		}
+		if rep != nil {
+			rep.Add(1)
 		}
 		parent := p.Dir()
 		if d.IsDir() {

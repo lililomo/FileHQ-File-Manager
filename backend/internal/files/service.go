@@ -21,6 +21,8 @@ const (
 	DefaultSyncMaxEntries       = 2000
 	// EstimateBudget bounds the pre-walk that counts entries and bytes.
 	EstimateBudget = 5 * time.Second
+	// TaskEstimateBudget is the same pre-walk inside a task (progress total).
+	TaskEstimateBudget = 60 * time.Second
 	// MaxBatchItems bounds paths per request (batch rename, delete, copy, move).
 	MaxBatchItems = 2000
 	// MaxBatchRenameItems is the synchronous batch rename limit (SPEC §8.5).
@@ -199,7 +201,12 @@ func isNotFound(err error) bool {
 
 // lock takes write locks on all paths at once (sorted, deduplicated by the
 // manager); it fails fast with fsjail.ErrLocked (OPERATION_IN_PROGRESS).
-func (s *Service) lock(userID, owner string, mode fsjail.Mode, paths ...fsjail.VPath) (func(), error) {
+// Inside a task (WithTask) it waits for the paths instead, so a queued
+// task simply runs after the synchronous operation holding them.
+func (s *Service) lock(ctx context.Context, userID, owner string, mode fsjail.Mode, paths ...fsjail.VPath) (func(), error) {
+	if unbounded(ctx) {
+		return s.locks.Acquire(ctx, userID, mode, "task:"+owner, paths...)
+	}
 	return s.locks.TryAcquire(userID, mode, owner, paths...)
 }
 
@@ -222,7 +229,10 @@ type Result struct {
 	Warnings  []string     `json:"warnings,omitempty"`
 }
 
-func (s *Service) withUndo(res *Result, userID string, info UndoInfo) {
+func (s *Service) withUndo(ctx context.Context, res *Result, userID string, info UndoInfo) {
+	if unbounded(ctx) {
+		return // tasks are not undoable (SPEC §8.5)
+	}
 	res.UndoToken = s.undo.Put(userID, info)
 	cp := info
 	res.Undo = &cp
@@ -230,7 +240,13 @@ func (s *Service) withUndo(res *Result, userID string, info UndoInfo) {
 
 // estimate walks paths and refuses operations beyond the synchronous limits.
 func (s *Service) estimate(ctx context.Context, j *fsjail.Jail, paths []fsjail.VPath) (entries int, bytes int64, err error) {
-	wctx, cancel := context.WithTimeout(ctx, EstimateBudget)
+	budget, limits := EstimateBudget, true
+	if unbounded(ctx) {
+		// task mode: count everything for the progress total; a walk that
+		// outlives the budget leaves the total unknown (0) instead of failing
+		budget, limits = TaskEstimateBudget, false
+	}
+	wctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	tooLarge := func(reason string) error {
 		return &TooLargeError{Entries: entries, Bytes: bytes, MaxEntries: s.syncMaxEntries, MaxBytes: s.syncMaxBytes, Reason: reason}
@@ -258,7 +274,7 @@ func (s *Service) estimate(ctx context.Context, j *fsjail.Jail, paths []fsjail.V
 						bytes += fi.Size()
 					}
 				}
-				if entries > s.syncMaxEntries || bytes > s.syncMaxBytes {
+				if limits && (entries > s.syncMaxEntries || bytes > s.syncMaxBytes) {
 					return stop
 				}
 				return nil
@@ -267,17 +283,20 @@ func (s *Service) estimate(ctx context.Context, j *fsjail.Jail, paths []fsjail.V
 				switch {
 				case errors.Is(err, stop):
 					// limits checked below
-				case errors.Is(err, context.DeadlineExceeded):
+				case errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil:
+					if !limits {
+						return entries, 0, nil
+					}
 					return entries, bytes, tooLarge("estimate_timeout")
 				default:
 					return 0, 0, err
 				}
 			}
 		}
-		if entries > s.syncMaxEntries {
+		if limits && entries > s.syncMaxEntries {
 			return entries, bytes, tooLarge("entries")
 		}
-		if bytes > s.syncMaxBytes {
+		if limits && bytes > s.syncMaxBytes {
 			return entries, bytes, tooLarge("bytes")
 		}
 	}

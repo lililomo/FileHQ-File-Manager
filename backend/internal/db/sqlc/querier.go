@@ -22,7 +22,11 @@ type Querier interface {
 	CountLoginAttemptsByIPSince(ctx context.Context, arg CountLoginAttemptsByIPSinceParams) (int64, error)
 	CountMediaMetadata(ctx context.Context, userID string) (int64, error)
 	CountPinsInDir(ctx context.Context, arg CountPinsInDirParams) (int64, error)
+	CountTaskLogs(ctx context.Context, taskID string) (int64, error)
+	CountTasksByState(ctx context.Context) ([]CountTasksByStateRow, error)
 	CountTrashActive(ctx context.Context, userID string) (int64, error)
+	CountUnreadNotifications(ctx context.Context, userID string) (int64, error)
+	CountUserTasksByState(ctx context.Context, arg CountUserTasksByStateParams) (int64, error)
 	CountUsers(ctx context.Context, arg CountUsersParams) (int64, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
@@ -37,16 +41,19 @@ type Querier interface {
 	DeleteFileTag(ctx context.Context, arg DeleteFileTagParams) (int64, error)
 	DeleteFileTagsPrefix(ctx context.Context, arg DeleteFileTagsPrefixParams) (int64, error)
 	DeleteFileVersionsPrefix(ctx context.Context, arg DeleteFileVersionsPrefixParams) (int64, error)
+	DeleteFinishedTasksBefore(ctx context.Context, before *string) (int64, error)
 	DeleteFolderViewPref(ctx context.Context, arg DeleteFolderViewPrefParams) error
 	DeleteLoginAttemptsOlderThan(ctx context.Context, at string) (int64, error)
 	DeleteMediaMetadata(ctx context.Context, arg DeleteMediaMetadataParams) error
 	DeleteMediaMetadataPrefix(ctx context.Context, arg DeleteMediaMetadataPrefixParams) (int64, error)
+	DeleteNotification(ctx context.Context, arg DeleteNotificationParams) (int64, error)
 	DeletePin(ctx context.Context, arg DeletePinParams) (int64, error)
 	DeletePinsPrefix(ctx context.Context, arg DeletePinsPrefixParams) (int64, error)
 	DeletePreferences(ctx context.Context, userID string) error
 	DeletePurgedTrashRowsBefore(ctx context.Context, purgedAt *string) (int64, error)
 	DeleteSetting(ctx context.Context, key string) error
 	DeleteTrashItemRow(ctx context.Context, arg DeleteTrashItemRowParams) error
+	DeleteUserTask(ctx context.Context, arg DeleteUserTaskParams) (int64, error)
 	GetFavorite(ctx context.Context, arg GetFavoriteParams) (Favorite, error)
 	GetFileNote(ctx context.Context, arg GetFileNoteParams) (FileNote, error)
 	GetFileTag(ctx context.Context, arg GetFileTagParams) (FileTag, error)
@@ -59,14 +66,23 @@ type Querier interface {
 	GetQuotaUsage(ctx context.Context, userID string) (QuotaUsage, error)
 	GetSession(ctx context.Context, id string) (Session, error)
 	GetSetting(ctx context.Context, key string) (Setting, error)
+	GetTask(ctx context.Context, id string) (Task, error)
 	GetTrashItem(ctx context.Context, arg GetTrashItemParams) (TrashItem, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
+	GetUserTask(ctx context.Context, arg GetUserTaskParams) (Task, error)
 	HardDeleteUser(ctx context.Context, id string) error
 	InsertActivity(ctx context.Context, arg InsertActivityParams) (int64, error)
 	InsertAudit(ctx context.Context, arg InsertAuditParams) (int64, error)
 	InsertFileVersion(ctx context.Context, arg InsertFileVersionParams) error
 	InsertLoginAttempt(ctx context.Context, arg InsertLoginAttemptParams) error
+	// In-app notifications (SPEC 4.2 notifications, 8.16). ASCII comments only.
+	InsertNotification(ctx context.Context, arg InsertNotificationParams) error
+	// Task engine persistence (SPEC 4.2 tasks / task_logs, 7.3). Comments are
+	// ASCII only (sqlc 1.31 offset bug). Every per-user query filters on user_id
+	// so another user's id answers "not found".
+	InsertTask(ctx context.Context, arg InsertTaskParams) error
+	InsertTaskLog(ctx context.Context, arg InsertTaskLogParams) error
 	InsertTrashItem(ctx context.Context, arg InsertTrashItemParams) error
 	ListActivity(ctx context.Context, arg ListActivityParams) ([]ActivityLog, error)
 	ListActivityFiltered(ctx context.Context, arg ListActivityFilteredParams) ([]ActivityLog, error)
@@ -89,16 +105,24 @@ type Querier interface {
 	// prefix = "<dir>/" and prefix_len = len(prefix): sqlc's SQLite parser has no
 	// LIKE ... ESCAPE, substr avoids wildcard escaping.
 	ListMediaMetadataPrefix(ctx context.Context, arg ListMediaMetadataPrefixParams) ([]MediaMetadatum, error)
+	ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]Notification, error)
 	ListOldestFolderViewPrefPaths(ctx context.Context, arg ListOldestFolderViewPrefPathsParams) ([]string, error)
 	ListPins(ctx context.Context, userID string) ([]Pin, error)
 	ListPinsInDir(ctx context.Context, arg ListPinsInDirParams) ([]Pin, error)
 	ListRecentActivity(ctx context.Context, arg ListRecentActivityParams) ([]ActivityLog, error)
 	ListSettings(ctx context.Context) ([]Setting, error)
+	ListTaskLogs(ctx context.Context, arg ListTaskLogsParams) ([]TaskLog, error)
+	ListTasksByState(ctx context.Context, state string) ([]Task, error)
 	ListTrashByBatch(ctx context.Context, arg ListTrashByBatchParams) ([]TrashItem, error)
 	ListTrashItems(ctx context.Context, userID string) ([]TrashItem, error)
 	ListTrashItemsByIDs(ctx context.Context, arg ListTrashItemsByIDsParams) ([]TrashItem, error)
 	ListUserSessions(ctx context.Context, arg ListUserSessionsParams) ([]Session, error)
+	ListUserTasks(ctx context.Context, arg ListUserTasksParams) ([]Task, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
+	MarkAllNotificationsRead(ctx context.Context, arg MarkAllNotificationsReadParams) (int64, error)
+	MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) (int64, error)
+	MarkRunningTasksInterrupted(ctx context.Context, arg MarkRunningTasksInterruptedParams) (int64, error)
+	PruneNotifications(ctx context.Context, arg PruneNotificationsParams) (int64, error)
 	RecordLoginFailure(ctx context.Context, arg RecordLoginFailureParams) error
 	RecordLoginSuccess(ctx context.Context, arg RecordLoginSuccessParams) error
 	RevokeSession(ctx context.Context, arg RevokeSessionParams) (int64, error)
@@ -113,6 +137,9 @@ type Querier interface {
 	SetMustChangePassword(ctx context.Context, arg SetMustChangePasswordParams) error
 	SetQuotaDirty(ctx context.Context, arg SetQuotaDirtyParams) error
 	SetQuotaUsage(ctx context.Context, arg SetQuotaUsageParams) error
+	SetTaskCancelRequested(ctx context.Context, arg SetTaskCancelRequestedParams) (int64, error)
+	SetTaskFinal(ctx context.Context, arg SetTaskFinalParams) error
+	SetTaskRunning(ctx context.Context, arg SetTaskRunningParams) error
 	SetTrashPurged(ctx context.Context, arg SetTrashPurgedParams) (int64, error)
 	SetTrashRestored(ctx context.Context, arg SetTrashRestoredParams) (int64, error)
 	SetUserTOTP(ctx context.Context, arg SetUserTOTPParams) error
@@ -120,6 +147,7 @@ type Querier interface {
 	SumQuotaUsed(ctx context.Context) (interface{}, error)
 	SumTrashBytes(ctx context.Context, userID string) (interface{}, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
+	UpdateTaskProgress(ctx context.Context, arg UpdateTaskProgressParams) error
 	UpdateTrashItemSize(ctx context.Context, arg UpdateTrashItemSizeParams) error
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error

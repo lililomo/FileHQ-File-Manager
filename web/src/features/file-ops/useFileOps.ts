@@ -10,6 +10,8 @@ import { formatBytes, formatNumber } from '@/lib/format'
 import { useClipboardStore } from '@/stores/clipboard'
 import { getPref } from '@/stores/prefs'
 import { QUOTA_QUERY_KEY } from '@/features/quota/api'
+import { taskLabel } from '@/features/tasks/taskLabel'
+import { useTasksStore } from '@/stores/tasks'
 import {
   batchRenameApply,
   chmodItems,
@@ -126,7 +128,7 @@ export interface FileOps {
 
 export function useFileOps(): FileOps {
   const qc = useQueryClient()
-  const { t, i18n } = useTranslation(['fileops', 'errors'])
+  const { t, i18n } = useTranslation(['fileops', 'errors', 'tasks'])
   const lang = i18n.resolvedLanguage ?? 'id'
   const lt = t as unknown as LooseT
 
@@ -171,6 +173,16 @@ export function useFileOps(): FileOps {
     [undo, t],
   )
   const n = useCallback((count: number) => formatNumber(count, lang), [lang])
+  const queuedTask = useCallback(
+    (task: NonNullable<OpResponse['task']>) => {
+      useTasksStore.getState().upsert(task)
+      useTasksStore.getState().setPanel(true)
+      const msg = t('tasks:toast.queued', { title: taskLabel(task, lt, lang) })
+      toast.info(msg)
+      announce(msg)
+    },
+    [t, lt, lang],
+  )
 
   const transfer = useCallback<FileOps['transfer']>(
     async (op, paths, to, policy = {}) => {
@@ -209,6 +221,12 @@ export function useFileOps(): FileOps {
         restore(qc, snap)
         return null
       }
+      if (res.task) {
+        // beyond the synchronous limits: the server queued a task (Step 11)
+        restore(qc, snap)
+        queuedTask(res.task)
+        return res
+      }
       invalidate([...sources, to])
       const okCount = res.results.filter((r) => r.status !== 'skipped').length
       const skipped = res.results.length - okCount
@@ -220,7 +238,7 @@ export function useFileOps(): FileOps {
       done(msg, res)
       return res
     },
-    [qc, invalidate, fail, done, t, n],
+    [qc, invalidate, fail, done, t, n, queuedTask],
   )
 
   const copy = useCallback<FileOps['copy']>(
@@ -352,6 +370,10 @@ export function useFileOps(): FileOps {
         patchLists(qc, parentOf(path), (items) =>
           items.map((it) => (it.path === path ? { ...it, size: res.size } : it)),
         )
+        if (res.task) {
+          queuedTask(res.task)
+          return res
+        }
         const msg = t(res.partial ? 'fileops:toast.dirSizePartial' : 'fileops:toast.dirSize', {
           name: path.split('/').pop() ?? path,
           size: formatBytes(res.size, lang),
@@ -366,7 +388,7 @@ export function useFileOps(): FileOps {
         return null
       }
     },
-    [qc, fail, t, n, lang],
+    [qc, fail, t, n, lang, queuedTask],
   )
 
   const chmod = useCallback<FileOps['chmod']>(

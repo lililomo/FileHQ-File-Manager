@@ -2,9 +2,12 @@ package httpapi
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -330,11 +333,32 @@ func TestFileOpsTooLargeNeedsTaskEngine(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = f.Close()
+	// Step 11: beyond the synchronous limit the copy becomes a task (202);
+	// without an engine the handler keeps answering 413 task_required.
 	r := env.call(http.MethodPost, "/api/v1/files/copy", "203.0.113.5:1", map[string]any{"paths": []string{"/big"}, "to": "/dest"}, hdr, ck)
-	if r.rec.Code != 413 || r.code(t) != "PAYLOAD_TOO_LARGE" || details(r)["reason"] != "task_required" {
+	if r.rec.Code != 202 || r.body["task"] == nil {
 		t.Fatalf("too large: %d %s", r.rec.Code, r.rec.Body.String())
 	}
-	if _, err := os.Stat(filepath.Join(home, "dest", "big")); err == nil {
-		t.Fatal("nothing must be copied")
+	task := r.body["task"].(map[string]any)
+	if task["type"] != "copy" || task["state"] != "queued" {
+		t.Fatalf("task: %v", task)
+	}
+	id := task["id"].(string)
+	waitTask(t, env, ck, hdr, id, "done")
+	if _, err := os.Stat(filepath.Join(home, "dest", "big", "blob.bin")); err != nil {
+		t.Fatalf("task did not copy: %v", err)
+	}
+	noEngine := New(Options{Cfg: env.cfg, Logger: slog.New(slog.DiscardHandler), Version: "test", Store: env.store, Auth: env.auth, Listing: env.listing, Locks: env.locks, Files: env.files, Quota: env.quota, Meta: env.meta})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/files/copy", strings.NewReader(`{"paths":["/big"],"to":"/dest","onConflict":"rename"}`))
+	req.RemoteAddr = "203.0.113.5:1"
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range hdr {
+		req.Header.Set(k, v)
+	}
+	req.AddCookie(ck)
+	rec := httptest.NewRecorder()
+	noEngine.ServeHTTP(rec, req)
+	if rec.Code != 413 || !strings.Contains(rec.Body.String(), "task_required") {
+		t.Fatalf("without engine: %d %s", rec.Code, rec.Body.String())
 	}
 }

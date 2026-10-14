@@ -2,6 +2,9 @@ import { Check, Copy, X } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { announce } from '@/lib/announce'
+import { taskLabel } from '@/features/tasks/taskLabel'
+import { useTasksStore } from '@/stores/tasks'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -288,13 +291,15 @@ function ChecksumPanel({
   item: Item
   initial?: Record<string, string> | undefined
 }) {
-  const { t } = useTranslation(['files', 'fileops', 'errors'])
+  const { t, i18n } = useTranslation(['files', 'fileops', 'errors', 'tasks'])
   const lt = t as unknown as (k: string, o?: Record<string, unknown>) => string
+  const lang = i18n.resolvedLanguage ?? 'id'
   const [sums, setSums] = useState<Partial<Record<ChecksumAlgo, string>>>(() => ({
     ...(initial ?? {}),
   }))
   const [busy, setBusy] = useState<ChecksumAlgo | 'all' | null>(null)
   const [tooLarge, setTooLarge] = useState(false)
+  const [queued, setQueued] = useState(false)
   const [algo, setAlgo] = useState<ChecksumAlgo>('sha256')
   const [expected, setExpected] = useState('')
   const [verdict, setVerdict] = useState<{ match: boolean; actual: string } | null>(null)
@@ -304,6 +309,16 @@ function ChecksumPanel({
     setBusy(key)
     try {
       const res = await checksumApi(item.path, algos)
+      if (res.task) {
+        // > 100 MB: hashed by a background task; reopen Properties when done
+        useTasksStore.getState().upsert(res.task)
+        useTasksStore.getState().setPanel(true)
+        const msg = lt('tasks:toast.queued', { title: taskLabel(res.task, lt, lang) })
+        toast.info(msg)
+        announce(msg)
+        setQueued(true)
+        return
+      }
       setSums((prev) => {
         const next = { ...prev }
         for (const a of CHECKSUM_ALGOS) if (res[a]) next[a] = res[a]
@@ -337,6 +352,11 @@ function ChecksumPanel({
       {tooLarge ? (
         <p className="text-xs text-warning" role="note" data-testid="checksum-too-large">
           {t('files:props.checksumTooLarge')}
+        </p>
+      ) : null}
+      {queued ? (
+        <p className="text-xs text-text-muted" role="note" data-testid="checksum-queued">
+          {lt('tasks:toast.queued', { title: lt('tasks:label.checksum', { name: item.name }) })}
         </p>
       ) : null}
       <dl className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 text-xs">

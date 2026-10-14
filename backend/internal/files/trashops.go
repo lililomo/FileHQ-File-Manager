@@ -110,7 +110,7 @@ func (s *Service) RestoreFromTrash(ctx context.Context, j *fsjail.Jail, userID s
 		if err := ctx.Err(); err != nil {
 			return out, err
 		}
-		release, err := s.lock(userID, "restore", fsjail.Write, p.dst)
+		release, err := s.lock(ctx, userID, "restore", fsjail.Write, p.dst)
 		if err != nil {
 			return out, err
 		}

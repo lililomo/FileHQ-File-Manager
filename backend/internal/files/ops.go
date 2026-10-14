@@ -34,7 +34,7 @@ func (s *Service) rename(ctx context.Context, j *fsjail.Jail, userID string, p f
 	if newPath == p {
 		return nil, &ValidationError{Reason: "same_name", Path: string(p), Fields: map[string]string{"newName": "unchanged"}}
 	}
-	release, err := s.lock(userID, "rename", fsjail.Write, p, newPath)
+	release, err := s.lock(ctx, userID, "rename", fsjail.Write, p, newPath)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func (s *Service) rename(ctx context.Context, j *fsjail.Jail, userID string, p f
 		res.Warnings = []string{}
 	}
 	if recordUndo {
-		s.withUndo(res, userID, UndoInfo{Kind: "rename", Path: string(newPath), NewName: p.Base()})
+		s.withUndo(ctx, res, userID, UndoInfo{Kind: "rename", Path: string(newPath), NewName: p.Base()})
 	}
 	return res, nil
 }
@@ -202,20 +202,31 @@ func (s *Service) move(ctx context.Context, j *fsjail.Jail, userID string, paths
 	for _, it := range items {
 		lockPaths = append(lockPaths, it.src, it.dst)
 	}
-	release, err := s.lock(userID, "move", fsjail.Write, lockPaths...)
+	release, err := s.lock(ctx, userID, "move", fsjail.Write, lockPaths...)
 	if err != nil {
 		return nil, err
 	}
 	defer release()
 	s.hook("move")
 	// Merges copy nothing (rename per entry) but still walk the tree:
-	// bound them like copies.
+	// bound them like copies. A move to another filesystem copies every
+	// byte (SPEC §5.6) and is bounded the same way; large ones run as a
+	// task (Step 11).
+	rep := reporterOf(ctx)
+	var total int64
+	crossFS := !onSameDevice(j, items, to)
 	for _, it := range items {
-		if it.exists != nil && it.policy == PolicyOverwrite && it.info.IsDir && it.exists.IsDir {
-			if _, _, err := s.estimate(ctx, j, []fsjail.VPath{it.src}); err != nil {
+		merge := it.exists != nil && it.policy == PolicyOverwrite && it.info.IsDir && it.exists.IsDir
+		if merge || crossFS || rep != nil {
+			_, b, err := s.estimate(ctx, j, []fsjail.VPath{it.src})
+			if err != nil {
 				return nil, err
 			}
+			total += b
 		}
+	}
+	if rep != nil {
+		rep.SetTotal(total)
 	}
 	res := &Result{Results: []ItemResult{}}
 	var undoItems []UndoItem
@@ -224,6 +235,9 @@ func (s *Service) move(ctx context.Context, j *fsjail.Jail, userID string, paths
 		action = ActUndo
 	}
 	for _, it := range items {
+		if err := itemPause(ctx); err != nil {
+			return res, err
+		}
 		r := ItemResult{Path: string(it.src), IsDir: it.info.IsDir}
 		r.Status = decide(it)
 		if r.Status == "skipped" {
@@ -243,6 +257,10 @@ func (s *Service) move(ctx context.Context, j *fsjail.Jail, userID string, paths
 			return res, &ValidationError{Reason: "type_mismatch", Path: string(dst), Fields: map[string]string{"on_conflict": "cannot overwrite a folder with a file or vice versa"}}
 		}
 		r.To = string(dst)
+		var itemBytes int64
+		if rep != nil {
+			itemBytes, _ = s.sizeOf(ctx, j, it.src)
+		}
 		// An overwrite destroys the destination's bytes (file over file, or
 		// files inside a merged folder): account the real delta (review B, D-2).
 		var before int64
@@ -261,8 +279,12 @@ func (s *Service) move(ctx context.Context, j *fsjail.Jail, userID string, paths
 				return res, err
 			}
 		} else {
-			if err := j.MoveTree(ctx, it.src, dst, nil); err != nil {
+			progress := progressFn(ctx)
+			if err := j.MoveTree(ctx, it.src, dst, progress); err != nil {
 				return res, err
+			}
+			if progress != nil {
+				progress(itemBytes) // same-device rename moved everything at once
 			}
 			if err := s.repo.WithTx(ctx, func(tx db.Repository) error {
 				return UpdateReferences(ctx, tx, userID, string(it.src), string(dst))
@@ -298,15 +320,30 @@ func (s *Service) move(ctx context.Context, j *fsjail.Jail, userID string, paths
 		}
 	}
 	if recordUndo && len(undoItems) > 0 {
-		s.withUndo(res, userID, UndoInfo{Kind: "move", Items: undoItems})
+		s.withUndo(ctx, res, userID, UndoInfo{Kind: "move", Items: undoItems})
 	}
 	return res, nil
+}
+
+// sameDevice reports whether every source and the destination folder live
+// on one filesystem (rename is atomic there; EXDEV means copy+delete).
+func onSameDevice(j *fsjail.Jail, items []plannedItem, to fsjail.VPath) bool {
+	dst, err := j.Lstat(to)
+	if err != nil {
+		return true
+	}
+	for _, it := range items {
+		if it.info.Dev != 0 && dst.Dev != 0 && it.info.Dev != dst.Dev {
+			return false
+		}
+	}
+	return true
 }
 
 // moveExact moves from to the exact path to (undo of a move, which may have
 // given the item a "(n)" name). The destination must be free.
 func (s *Service) moveExact(ctx context.Context, j *fsjail.Jail, userID string, from, to fsjail.VPath) (*ItemResult, error) {
-	release, err := s.lock(userID, "undo", fsjail.Write, from, to)
+	release, err := s.lock(ctx, userID, "undo", fsjail.Write, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -354,7 +391,7 @@ func (s *Service) mergeMove(ctx context.Context, j *fsjail.Jail, userID string, 
 		return err
 	}
 	for _, e := range entries {
-		if err := ctx.Err(); err != nil {
+		if err := itemPause(ctx); err != nil {
 			return err
 		}
 		from := e.Path
@@ -432,7 +469,7 @@ func (s *Service) Symlink(ctx context.Context, j *fsjail.Jail, userID string, li
 	if strings.HasPrefix(target, "/") {
 		return nil, &ValidationError{Reason: "target_absolute", Path: string(link), Fields: map[string]string{"target": "must be relative"}}
 	}
-	release, err := s.lock(userID, "symlink", fsjail.Write, link)
+	release, err := s.lock(ctx, userID, "symlink", fsjail.Write, link)
 	if err != nil {
 		return nil, err
 	}
@@ -452,7 +489,7 @@ func (s *Service) Symlink(ctx context.Context, j *fsjail.Jail, userID string, li
 		warnings = []string{}
 	}
 	res := &Result{Results: []ItemResult{{Path: string(link), Status: "ok", Warnings: warnings}}, Warnings: warnings}
-	s.withUndo(res, userID, UndoInfo{Kind: "delete_created", Created: []string{string(link)}})
+	s.withUndo(ctx, res, userID, UndoInfo{Kind: "delete_created", Created: []string{string(link)}})
 	return res, nil
 }
 
@@ -490,7 +527,7 @@ func (s *Service) Chmod(ctx context.Context, j *fsjail.Jail, userID string, req 
 			return nil, &ValidationError{Reason: "root", Path: string(p), Fields: map[string]string{"paths": "root"}}
 		}
 	}
-	release, err := s.lock(userID, "chmod", fsjail.Write, paths...)
+	release, err := s.lock(ctx, userID, "chmod", fsjail.Write, paths...)
 	if err != nil {
 		return nil, err
 	}
@@ -569,7 +606,7 @@ func (s *Service) delete(ctx context.Context, j *fsjail.Jail, userID string, pat
 	}
 	// A nested selection (/a and /a/b) only needs the ancestor.
 	paths = dropDescendants(paths)
-	release, err := s.lock(userID, "delete", fsjail.Write, paths...)
+	release, err := s.lock(ctx, userID, "delete", fsjail.Write, paths...)
 	if err != nil {
 		return nil, err
 	}
@@ -598,7 +635,7 @@ func (s *Service) delete(ctx context.Context, j *fsjail.Jail, userID string, pat
 		undoItems = append(undoItems, UndoTrashItem{ID: row.ID, Path: string(p)})
 	}
 	if recordUndo && len(undoItems) > 0 {
-		s.withUndo(res, userID, UndoInfo{Kind: "restore", BatchID: batchID, Trash: undoItems})
+		s.withUndo(ctx, res, userID, UndoInfo{Kind: "restore", BatchID: batchID, Trash: undoItems})
 	}
 	return res, nil
 }
@@ -624,7 +661,7 @@ func dropDescendants(paths []fsjail.VPath) []fsjail.VPath {
 // Undo executes the inverse of a previous operation (SPEC §8.5 "Undo").
 // Tokens are single use; a changed state answers ErrUndoConflict.
 func (s *Service) Undo(ctx context.Context, j *fsjail.Jail, userID, token string) (*Result, error) {
-	info, ok := s.undo.Take(userID, token)
+	info, expires, ok := s.undo.TakeEntry(userID, token)
 	if !ok {
 		return nil, ErrUndoNotFound
 	}
@@ -632,6 +669,13 @@ func (s *Service) Undo(ctx context.Context, j *fsjail.Jail, userID, token string
 		res *Result
 		err error
 	)
+	// A lock conflict (a task or another request holds the path) must not
+	// burn the token: the user can retry "Urungkan" (review B, m-04).
+	defer func() {
+		if errors.Is(err, fsjail.ErrLocked) {
+			s.undo.Restore(userID, token, info, expires)
+		}
+	}()
 	switch info.Kind {
 	case "rename":
 		p, perr := fsjail.Clean(info.Path)
@@ -661,7 +705,7 @@ func (s *Service) Undo(ctx context.Context, j *fsjail.Jail, userID, token string
 			if perr != nil {
 				return nil, perr
 			}
-			release, lerr := s.lock(userID, "restore", fsjail.Write, p)
+			release, lerr := s.lock(ctx, userID, "restore", fsjail.Write, p)
 			if lerr != nil {
 				return res, lerr
 			}

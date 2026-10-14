@@ -146,9 +146,6 @@ func (s *Service) Checksum(ctx context.Context, j *fsjail.Jail, userID string, p
 	if info.IsDir {
 		return nil, &ValidationError{Reason: "not_a_file", Path: string(p), Fields: map[string]string{"path": "not_a_file"}}
 	}
-	if info.Size > ChecksumSyncMax {
-		return nil, &FileTooLargeError{Size: info.Size, Max: ChecksumSyncMax}
-	}
 	key := statKey(info)
 	out := map[string]string{}
 	var missing []string
@@ -162,6 +159,11 @@ func (s *Service) Checksum(ctx context.Context, j *fsjail.Jail, userID string, p
 	}
 	if len(missing) == 0 {
 		return out, nil
+	}
+	// Big files are hashed by a task (Step 11); a cached digest above is
+	// still served synchronously.
+	if info.Size > ChecksumSyncMax && !unbounded(ctx) {
+		return nil, &FileTooLargeError{Size: info.Size, Max: ChecksumSyncMax}
 	}
 	f, err := j.Open(p)
 	if err != nil {
@@ -183,7 +185,11 @@ func (s *Service) Checksum(ctx context.Context, j *fsjail.Jail, userID string, p
 		hashes[a] = h
 		writers = append(writers, h)
 	}
-	if _, err := io.Copy(io.MultiWriter(writers...), &ctxReader{ctx: ctx, r: f}); err != nil {
+	rep := reporterOf(ctx)
+	if rep != nil {
+		rep.SetTotal(info.Size)
+	}
+	if _, err := io.Copy(io.MultiWriter(writers...), &ctxReader{ctx: ctx, r: f, rep: rep}); err != nil {
 		return nil, err
 	}
 	for a, h := range hashes {
@@ -218,11 +224,16 @@ func (s *Service) CachedChecksums(userID string, p fsjail.VPath, info fsjail.Inf
 type ctxReader struct {
 	ctx context.Context
 	r   io.Reader
+	rep Reporter // task progress (bytes), nil outside tasks
 }
 
 func (c *ctxReader) Read(b []byte) (int, error) {
 	if err := c.ctx.Err(); err != nil {
 		return 0, err
 	}
-	return c.r.Read(b)
+	n, err := c.r.Read(b)
+	if c.rep != nil && n > 0 {
+		c.rep.Add(int64(n))
+	}
+	return n, err
 }
