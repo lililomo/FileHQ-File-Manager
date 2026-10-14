@@ -13,6 +13,7 @@ import (
 	"kppbwi.app/filemanager/internal/config"
 	"kppbwi.app/filemanager/internal/db"
 	"kppbwi.app/filemanager/internal/download"
+	"kppbwi.app/filemanager/internal/files"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/media"
@@ -41,6 +42,7 @@ type Options struct {
 	Thumbs      *thumbs.Service     // thumbnail pipeline; nil disables GET /files/thumb
 	Signer      *download.Signer    // signed URLs; built from Cfg.AppSecret when nil
 	Warnings    func() []string     // non-fatal readiness warnings (missing optional tools)
+	Files       *files.Service      // file operations (Step 9a); nil disables the mutating routes
 }
 
 // Server holds dependencies shared by handlers.
@@ -60,6 +62,7 @@ type Server struct {
 	signer      *download.Signer
 	warnings    func() []string
 	thumbLimit  thumbLimiter
+	files       *files.Service
 }
 
 // New builds the router. The returned handler is safe for http.Server.
@@ -77,6 +80,7 @@ func New(o Options) http.Handler {
 		media:   o.Media,
 		thumbs:  o.Thumbs,
 		signer:  o.Signer,
+		files:   o.Files,
 	}
 	s.warnings = o.Warnings
 	if s.signer == nil && len(o.Cfg.AppSecret) > 0 {
@@ -125,6 +129,7 @@ func (s *Server) mountAPI(api chi.Router) {
 	if s.auth != nil && s.store != nil {
 		s.mountAuth(api)
 		s.mountFiles(api)
+		s.mountFileOps(api)
 		s.mountThumbs(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {

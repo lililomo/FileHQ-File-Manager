@@ -21,49 +21,83 @@ type Querier interface {
 	CountUsers(ctx context.Context, arg CountUsersParams) (int64, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	DeleteActivityOlderThan(ctx context.Context, at string) (int64, error)
 	DeleteAuditOlderThan(ctx context.Context, at string) (int64, error)
 	DeleteExpiredSessions(ctx context.Context, before string) (int64, error)
+	DeleteFavoritesPrefix(ctx context.Context, arg DeleteFavoritesPrefixParams) (int64, error)
+	DeleteFileNotesPrefix(ctx context.Context, arg DeleteFileNotesPrefixParams) (int64, error)
+	DeleteFileTagsPrefix(ctx context.Context, arg DeleteFileTagsPrefixParams) (int64, error)
+	DeleteFileVersionsPrefix(ctx context.Context, arg DeleteFileVersionsPrefixParams) (int64, error)
 	DeleteFolderViewPref(ctx context.Context, arg DeleteFolderViewPrefParams) error
 	DeleteLoginAttemptsOlderThan(ctx context.Context, at string) (int64, error)
 	DeleteMediaMetadata(ctx context.Context, arg DeleteMediaMetadataParams) error
 	DeleteMediaMetadataPrefix(ctx context.Context, arg DeleteMediaMetadataPrefixParams) (int64, error)
+	DeletePinsPrefix(ctx context.Context, arg DeletePinsPrefixParams) (int64, error)
 	DeletePreferences(ctx context.Context, userID string) error
 	DeleteSetting(ctx context.Context, key string) error
+	DeleteTrashItemRow(ctx context.Context, arg DeleteTrashItemRowParams) error
 	GetFolderViewPref(ctx context.Context, arg GetFolderViewPrefParams) (FolderViewPref, error)
 	GetMediaMetadata(ctx context.Context, arg GetMediaMetadataParams) (MediaMetadatum, error)
 	GetPreferences(ctx context.Context, userID string) (UserPreference, error)
 	GetSession(ctx context.Context, id string) (Session, error)
 	GetSetting(ctx context.Context, key string) (Setting, error)
+	GetTrashItem(ctx context.Context, arg GetTrashItemParams) (TrashItem, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
 	HardDeleteUser(ctx context.Context, id string) error
+	InsertActivity(ctx context.Context, arg InsertActivityParams) (int64, error)
 	InsertAudit(ctx context.Context, arg InsertAuditParams) (int64, error)
+	InsertFileVersion(ctx context.Context, arg InsertFileVersionParams) error
 	InsertLoginAttempt(ctx context.Context, arg InsertLoginAttemptParams) error
+	InsertTrashItem(ctx context.Context, arg InsertTrashItemParams) error
+	ListActivity(ctx context.Context, arg ListActivityParams) ([]ActivityLog, error)
 	ListAudit(ctx context.Context, arg ListAuditParams) ([]AuditLog, error)
+	ListFavorites(ctx context.Context, userID string) ([]Favorite, error)
+	ListFileNotes(ctx context.Context, userID string) ([]FileNote, error)
+	ListFileTags(ctx context.Context, userID string) ([]FileTag, error)
+	ListFileVersions(ctx context.Context, userID string) ([]FileVersion, error)
 	ListMediaMetadataByPaths(ctx context.Context, arg ListMediaMetadataByPathsParams) ([]MediaMetadatum, error)
 	// prefix = "<dir>/" and prefix_len = len(prefix): sqlc's SQLite parser has no
 	// LIKE ... ESCAPE, substr avoids wildcard escaping.
 	ListMediaMetadataPrefix(ctx context.Context, arg ListMediaMetadataPrefixParams) ([]MediaMetadatum, error)
 	ListOldestFolderViewPrefPaths(ctx context.Context, arg ListOldestFolderViewPrefPathsParams) ([]string, error)
+	ListPins(ctx context.Context, userID string) ([]Pin, error)
 	ListSettings(ctx context.Context) ([]Setting, error)
+	ListTrashByBatch(ctx context.Context, arg ListTrashByBatchParams) ([]TrashItem, error)
+	ListTrashItems(ctx context.Context, userID string) ([]TrashItem, error)
 	ListUserSessions(ctx context.Context, arg ListUserSessionsParams) ([]Session, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
 	RecordLoginFailure(ctx context.Context, arg RecordLoginFailureParams) error
 	RecordLoginSuccess(ctx context.Context, arg RecordLoginSuccessParams) error
 	RevokeSession(ctx context.Context, arg RevokeSessionParams) (int64, error)
 	RevokeUserSessions(ctx context.Context, arg RevokeUserSessionsParams) (int64, error)
+	RewriteFavorites(ctx context.Context, arg RewriteFavoritesParams) (int64, error)
+	RewriteFileNotes(ctx context.Context, arg RewriteFileNotesParams) (int64, error)
+	RewriteFileTags(ctx context.Context, arg RewriteFileTagsParams) (int64, error)
+	RewriteFileVersions(ctx context.Context, arg RewriteFileVersionsParams) (int64, error)
+	RewritePins(ctx context.Context, arg RewritePinsParams) (int64, error)
 	SetHomeProvisioned(ctx context.Context, arg SetHomeProvisionedParams) error
 	SetMediaThumbState(ctx context.Context, arg SetMediaThumbStateParams) error
 	SetMustChangePassword(ctx context.Context, arg SetMustChangePasswordParams) error
+	SetTrashPurged(ctx context.Context, arg SetTrashPurgedParams) (int64, error)
+	SetTrashRestored(ctx context.Context, arg SetTrashRestoredParams) (int64, error)
 	SetUserTOTP(ctx context.Context, arg SetUserTOTPParams) error
 	SoftDeleteUser(ctx context.Context, arg SoftDeleteUserParams) error
+	SumTrashBytes(ctx context.Context, userID string) (interface{}, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error
 	UpdateUserQuota(ctx context.Context, arg UpdateUserQuotaParams) error
 	UpdateUserStatus(ctx context.Context, arg UpdateUserStatusParams) error
+	// Path-keyed metadata tables (SPEC 5.7). Prefix matching uses substr because
+	// sqlc's SQLite parser has no LIKE ... ESCAPE: prefix = old || '/',
+	// prefix_len = len(prefix), from_pos = len(old) + 1.
+	UpsertFavorite(ctx context.Context, arg UpsertFavoriteParams) error
+	UpsertFileNote(ctx context.Context, arg UpsertFileNoteParams) error
+	UpsertFileTag(ctx context.Context, arg UpsertFileTagParams) error
 	UpsertFolderViewPref(ctx context.Context, arg UpsertFolderViewPrefParams) error
 	UpsertMediaMetadata(ctx context.Context, arg UpsertMediaMetadataParams) error
+	UpsertPin(ctx context.Context, arg UpsertPinParams) error
 	UpsertPreferences(ctx context.Context, arg UpsertPreferencesParams) error
 	UpsertSetting(ctx context.Context, arg UpsertSettingParams) error
 }

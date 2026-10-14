@@ -27,11 +27,13 @@ import (
 	"kppbwi.app/filemanager/internal/db"
 	"kppbwi.app/filemanager/internal/download"
 	fmexec "kppbwi.app/filemanager/internal/exec"
+	"kppbwi.app/filemanager/internal/files"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/httpapi"
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/media"
 	"kppbwi.app/filemanager/internal/thumbs"
+	"kppbwi.app/filemanager/internal/trash"
 	"kppbwi.app/filemanager/internal/webassets"
 )
 
@@ -291,6 +293,17 @@ func runServe(envFile string, noMigrate bool) int {
 	listingSvc := listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize, Meta: mediaSvc})
 	locks := fsjail.NewLockManager()
 	signer := download.NewSigner(cfg.AppSecret, nil)
+	trashStore := trash.New(cfg.DataDir, cfg.CrossFSTrash, cfg.TrashRetentionDays, store, logger, nil)
+	defer trashStore.Close()
+	filesSvc := files.New(files.Options{
+		Repo: store, Locks: locks, Trash: trashStore, Logger: logger,
+		OnChange: func(ctx context.Context, userID string, p fsjail.VPath, isDir bool) {
+			if err := thumbsSvc.Invalidate(ctx, userID, p, isDir); err != nil {
+				logger.Warn("thumbnail invalidation failed", slog.String("path", string(p)), slog.String("error", err.Error()))
+			}
+		},
+		Invalidate: func(userID string, dir fsjail.VPath) { listingSvc.Invalidate(userID, "", dir) },
+	})
 
 	handler := httpapi.New(httpapi.Options{
 		Cfg:         cfg,
@@ -305,6 +318,7 @@ func runServe(envFile string, noMigrate bool) int {
 		Media:       mediaSvc,
 		Thumbs:      thumbsSvc,
 		Signer:      signer,
+		Files:       filesSvc,
 		Warnings: func() []string {
 			var out []string
 			for _, tool := range thumbsSvc.MissingTools() {

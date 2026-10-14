@@ -412,6 +412,226 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "413": { $ref: "#/components/responses/Error" }
+  /api/v1/files/rename:
+    post:
+      summary: Rename a file or folder (undoable)
+      description: Metadata references (favorites, pins, notes, tags, versions) follow the item in one transaction (SPEC §5.7). The response carries a one-time `undoToken` valid for 60 s (SPEC §8.5).
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RenameRequest" }
+      responses:
+        "200":
+          description: Renamed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OpResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+  /api/v1/files/copy:
+    post:
+      summary: Copy items into a folder
+      description: |
+        Synchronous up to 2000 entries / 200 MB (`413 PAYLOAD_TOO_LARGE` with `details.reason=task_required` beyond that until the
+        task engine of Step 11). Without `onConflict` an occupied destination answers `409 ALREADY_EXISTS` with
+        `details.existing`, `details.incoming` and `details.conflicts[]`. Folder onto folder merges with the policy applied per file.
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransferRequest" }
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OpResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+  /api/v1/files/move:
+    post:
+      summary: Move items into a folder (undoable)
+      description: Same request and conflict handling as copy. Moving a folder into itself or a descendant answers `400 VALIDATION_FAILED` (`details.reason=cannot_move_into_self`).
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransferRequest" }
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OpResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+  /api/v1/files/duplicate:
+    post:
+      summary: Duplicate an item next to itself as "name (n).ext"
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PathRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OpResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+  /api/v1/files/symlink:
+    post:
+      summary: Create a symbolic link (relative target inside the root)
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SymlinkRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OpResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/files/chmod:
+    post:
+      summary: Change permission bits (rwx only; setuid/setgid/sticky are dropped)
+      description: "Recursive requests are bounded by the synchronous entry limit (`413` beyond it). Not undoable (`undo` is null)."
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChmodRequest" }
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OpResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+  /api/v1/files/delete:
+    post:
+      summary: Move items to the Recycle Bin (undoable)
+      description: Each item becomes a `trash_items` row and is renamed into `DATA_DIR/trash/<user>/<id>`; one request = one `batchId`. Metadata rows stay so a restore brings favorites/notes/tags back (SPEC §8.5, §8.6).
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PathsRequest" }
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OpResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/files/batch-rename/preview:
+    post:
+      summary: Preview a batch rename rule
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BatchRenameRequest" }
+      responses:
+        "200":
+          description: Preview rows
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BatchRenamePreviewResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+  /api/v1/files/batch-rename:
+    post:
+      summary: Apply a batch rename rule (undoable)
+      description: The server recomputes the preview; any collision or invalid name answers `409 CONFLICT` with `details.items`. Renames run in two phases through temporary names and roll back on failure.
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BatchRenameRequest" }
+      responses:
+        "200":
+          description: Applied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OpResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+  /api/v1/files/undo:
+    post:
+      summary: Undo the operation identified by a one-time token
+      description: Tokens live 60 s in memory and belong to the user who received them (`404` otherwise). A changed state answers `409 CONFLICT` (`details.reason=undo_conflict`).
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UndoRequest" }
+      responses:
+        "200":
+          description: Undone
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OpResponse" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /api/v1/files/sign:
     post:
       summary: Sign URLs for thumbnails (download/media/inline/zip from Step 12b)
@@ -585,6 +805,126 @@ components:
         name: { type: string }
         template: { type: string, enum: [txt, md, html, css, js, ts, json, php, py, sh, yaml] }
         content: { type: string, maxLength: 524288, description: Inline content (wins over template) }
+    RenameRequest:
+      type: object
+      required: [path, newName]
+      properties:
+        path: { type: string }
+        newName: { type: string, description: "Alias: new_name" }
+    PathRequest:
+      type: object
+      required: [path]
+      properties:
+        path: { type: string }
+    PathsRequest:
+      type: object
+      required: [paths]
+      properties:
+        paths: { type: array, items: { type: string }, maxItems: 2000 }
+    ConflictPolicy:
+      type: string
+      enum: [fail, overwrite, skip, rename]
+      description: "fail (default, alias ask) answers 409 ALREADY_EXISTS; overwrite merges folders per file; rename picks name (n).ext"
+    TransferRequest:
+      type: object
+      required: [paths, to]
+      properties:
+        paths: { type: array, items: { type: string }, maxItems: 2000, description: "Alias: items" }
+        to: { type: string, description: "Destination folder. Alias: dest" }
+        onConflict: { $ref: "#/components/schemas/ConflictPolicy" }
+        perItem:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/ConflictPolicy" }
+          description: "Policy per source path (wins over onConflict)"
+    SymlinkRequest:
+      type: object
+      required: [path, target]
+      properties:
+        path: { type: string, description: "Path of the link" }
+        target: { type: string, description: "Relative target resolved inside the root" }
+    ChmodRequest:
+      type: object
+      required: [paths, mode]
+      properties:
+        paths: { type: array, items: { type: string } }
+        mode: { type: string, example: "0644" }
+        recursive: { type: boolean, default: false }
+        dirMode: { type: string, example: "0755", description: "Folder mode when recursive (default adds x where r is set)" }
+    Numbering:
+      type: object
+      required: [pattern]
+      properties:
+        pattern: { type: string, example: "foto-{n}", description: "Tokens: {n} counter, {name} current stem, {ext} extension" }
+        start: { type: integer, default: 1 }
+        step: { type: integer, default: 1 }
+        pad: { type: integer, default: 0, maximum: 12 }
+    RenameRule:
+      type: object
+      properties:
+        find: { type: string, maxLength: 256 }
+        replace: { type: string, description: "$1 refers to regex groups when regex=true" }
+        regex: { type: boolean, default: false, description: RE2 syntax (Go regexp) }
+        case_insensitive: { type: boolean, default: false }
+        numbering: { $ref: "#/components/schemas/Numbering" }
+        case: { type: string, enum: [upper, lower, title, none] }
+        ext_mode: { type: string, enum: [keep, include], default: keep, description: "keep transforms the stem only; include transforms the whole name" }
+    BatchRenameRequest:
+      type: object
+      required: [paths, rule]
+      properties:
+        paths: { type: array, items: { type: string }, maxItems: 200, description: "Order defines the numbering" }
+        rule: { $ref: "#/components/schemas/RenameRule" }
+    PreviewItem:
+      type: object
+      required: [from, to, status]
+      properties:
+        from: { type: string }
+        to: { type: string }
+        status: { type: string, enum: [ok, collision, invalid] }
+        reason: { type: string }
+    BatchRenamePreviewResponse:
+      type: object
+      required: [items, clean]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/PreviewItem" } }
+        clean: { type: boolean }
+    UndoRequest:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string, description: "Aliases: undoToken, undo_token" }
+    ItemResult:
+      type: object
+      required: [path, status]
+      properties:
+        path: { type: string }
+        to: { type: string }
+        status: { type: string, enum: [ok, skipped, overwritten, renamed, merged] }
+        isDir: { type: boolean }
+        trashId: { type: string }
+        warnings: { type: array, items: { type: string } }
+    UndoInfo:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [rename, move, restore, delete_created, batch_rename] }
+        path: { type: string }
+        newName: { type: string }
+        items: { type: array, items: { type: object, properties: { from: { type: string }, to: { type: string } } } }
+        trash: { type: array, items: { type: object, properties: { id: { type: string }, path: { type: string } } } }
+        batchId: { type: string }
+        created: { type: array, items: { type: string } }
+    OpResponse:
+      type: object
+      required: [results, undo]
+      properties:
+        results: { type: array, items: { $ref: "#/components/schemas/ItemResult" } }
+        item: { $ref: "#/components/schemas/Item" }
+        batchId: { type: string }
+        undoToken: { type: string, description: "One-time token, 60 s; absent when the operation cannot be undone" }
+        undo: { oneOf: [{ $ref: "#/components/schemas/UndoInfo" }, { type: "null" }] }
+        warnings: { type: array, items: { type: string } }
+        items: { type: array, items: { $ref: "#/components/schemas/PreviewItem" }, description: "batch-rename only" }
     ItemResponse:
       type: object
       required: [item, warnings]

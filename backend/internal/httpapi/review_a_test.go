@@ -220,6 +220,17 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		{http.MethodPut, "/api/v1/me/folder-prefs"},
 		{http.MethodDelete, "/api/v1/me/folder-prefs?path=/"},
 		{http.MethodPost, "/api/v1/files/sign"},
+		// Step 9a file operations
+		{http.MethodPost, "/api/v1/files/rename"},
+		{http.MethodPost, "/api/v1/files/copy"},
+		{http.MethodPost, "/api/v1/files/move"},
+		{http.MethodPost, "/api/v1/files/duplicate"},
+		{http.MethodPost, "/api/v1/files/symlink"},
+		{http.MethodPost, "/api/v1/files/chmod"},
+		{http.MethodPost, "/api/v1/files/delete"},
+		{http.MethodPost, "/api/v1/files/batch-rename/preview"},
+		{http.MethodPost, "/api/v1/files/batch-rename"},
+		{http.MethodPost, "/api/v1/files/undo"},
 	}
 	for _, b := range blocked {
 		var body any
@@ -255,7 +266,11 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		"GET /api/v1/me/folder-prefs": true, "PUT /api/v1/me/folder-prefs": true, "DELETE /api/v1/me/folder-prefs": true,
 		"GET /api/v1/files/list": true, "GET /api/v1/files/stat": true,
 		"POST /api/v1/files/mkdir": true, "POST /api/v1/files/create": true,
-		"POST /api/v1/files/sign": true,
+		"POST /api/v1/files/sign":   true,
+		"POST /api/v1/files/rename": true, "POST /api/v1/files/copy": true, "POST /api/v1/files/move": true,
+		"POST /api/v1/files/duplicate": true, "POST /api/v1/files/symlink": true, "POST /api/v1/files/chmod": true,
+		"POST /api/v1/files/delete": true, "POST /api/v1/files/batch-rename/preview": true,
+		"POST /api/v1/files/batch-rename": true, "POST /api/v1/files/undo": true,
 		// signed URL only (no cookie): a user who must change the password cannot
 		// obtain one because /files/sign is gated (Step 8).
 		"GET /api/v1/files/thumb": true,

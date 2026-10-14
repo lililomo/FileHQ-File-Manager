@@ -20,6 +20,8 @@ import (
 	"kppbwi.app/filemanager/internal/db/sqlc"
 	"kppbwi.app/filemanager/internal/download"
 	"kppbwi.app/filemanager/internal/exec"
+	"kppbwi.app/filemanager/internal/files"
+	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/media"
 	"kppbwi.app/filemanager/internal/thumbs"
@@ -54,9 +56,15 @@ func withThumbs(t *testing.T, env *authEnv, ffmpeg string) *thumbs.Service {
 		svc.Wait()
 		_ = svc.Close()
 	})
+	env.listing = listing.New(listing.Options{Secret: env.cfg.AppSecret, PageSize: env.cfg.ListingPageSize, Meta: mediaSvc})
+	env.files = files.New(files.Options{Repo: env.store, Locks: env.locks, Trash: env.trash,
+		OnChange: func(ctx context.Context, userID string, p fsjail.VPath, isDir bool) {
+			_ = svc.Invalidate(ctx, userID, p, isDir)
+		},
+		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) }})
 	env.handler = New(Options{Cfg: env.cfg, Logger: config.NewLogger(env.logs, env.cfg.AppEnv, slog.LevelDebug), Version: "test", Store: env.store, Auth: env.auth,
-		Listing: listing.New(listing.Options{Secret: env.cfg.AppSecret, PageSize: env.cfg.ListingPageSize, Meta: mediaSvc}),
-		Media:   mediaSvc, Thumbs: svc, Signer: download.NewSigner(env.cfg.AppSecret, nil),
+		Listing: env.listing, Locks: env.locks, Files: env.files,
+		Media: mediaSvc, Thumbs: svc, Signer: download.NewSigner(env.cfg.AppSecret, nil),
 		Warnings: func() []string {
 			var out []string
 			for _, m := range svc.MissingTools() {

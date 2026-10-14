@@ -21,6 +21,10 @@ import (
 	"kppbwi.app/filemanager/internal/config"
 	"kppbwi.app/filemanager/internal/db"
 	"kppbwi.app/filemanager/internal/db/sqlc"
+	"kppbwi.app/filemanager/internal/files"
+	"kppbwi.app/filemanager/internal/fsjail"
+	"kppbwi.app/filemanager/internal/listing"
+	"kppbwi.app/filemanager/internal/trash"
 )
 
 const initialAdminPassword = "IB+35t3U5+I_p5ZJcHLodfcr"
@@ -56,6 +60,10 @@ type authEnv struct {
 	handler http.Handler
 	logs    *bytes.Buffer
 	clock   *fakeClock
+	locks   *fsjail.LockManager
+	trash   *trash.Store
+	listing *listing.Service
+	files   *files.Service
 }
 
 func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
@@ -95,9 +103,16 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 	if err := svc.Seed(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	h := New(Options{Cfg: cfg, Logger: logger, Version: "test", Store: store, Auth: svc,
+	env := &authEnv{cfg: cfg, store: store, auth: svc, logs: logs, clock: clock}
+	env.locks = fsjail.NewLockManager()
+	env.trash = trash.New(cfg.DataDir, cfg.CrossFSTrash, cfg.TrashRetentionDays, store, logger, nil)
+	t.Cleanup(env.trash.Close)
+	env.listing = listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize})
+	env.files = files.New(files.Options{Repo: store, Locks: env.locks, Trash: env.trash, Logger: logger,
+		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) }})
+	env.handler = New(Options{Cfg: cfg, Logger: logger, Version: "test", Store: store, Auth: svc, Listing: env.listing, Locks: env.locks, Files: env.files,
 		Assets: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("spa")) })})
-	return &authEnv{cfg: cfg, store: store, auth: svc, handler: h, logs: logs, clock: clock}
+	return env
 }
 
 type resp struct {

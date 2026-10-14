@@ -4,6 +4,17 @@
 
 package sqlc
 
+type ActivityLog struct {
+	ID          int64   `json:"id"`
+	UserID      string  `json:"user_id"`
+	At          string  `json:"at"`
+	Action      string  `json:"action"`
+	Path        *string `json:"path"`
+	Path2       *string `json:"path2"`
+	DetailsJson *string `json:"details_json"`
+	BatchID     *string `json:"batch_id"`
+}
+
 type AuditLog struct {
 	ID            int64   `json:"id"`
 	At            string  `json:"at"`
@@ -15,6 +26,38 @@ type AuditLog struct {
 	Ip            string  `json:"ip"`
 	UserAgent     string  `json:"user_agent"`
 	DetailsJson   *string `json:"details_json"`
+}
+
+type Favorite struct {
+	UserID    string `json:"user_id"`
+	Path      string `json:"path"`
+	CreatedAt string `json:"created_at"`
+}
+
+type FileNote struct {
+	UserID    string `json:"user_id"`
+	Path      string `json:"path"`
+	Note      string `json:"note"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type FileTag struct {
+	UserID    string `json:"user_id"`
+	Path      string `json:"path"`
+	Color     string `json:"color"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type FileVersion struct {
+	ID        string `json:"id"`
+	UserID    string `json:"user_id"`
+	Path      string `json:"path"`
+	VersionNo int64  `json:"version_no"`
+	Size      int64  `json:"size"`
+	Sha256    string `json:"sha256"`
+	BlobRel   string `json:"blob_rel"`
+	Reason    string `json:"reason"`
+	CreatedAt string `json:"created_at"`
 }
 
 type FolderViewPref struct {
@@ -57,6 +100,12 @@ type MediaMetadatum struct {
 	ComputedAt string  `json:"computed_at"`
 }
 
+type Pin struct {
+	UserID    string `json:"user_id"`
+	Path      string `json:"path"`
+	CreatedAt string `json:"created_at"`
+}
+
 type Session struct {
 	ID                string  `json:"id"`
 	UserID            string  `json:"user_id"`
@@ -76,6 +125,22 @@ type Setting struct {
 	ValueJson string  `json:"value_json"`
 	UpdatedAt string  `json:"updated_at"`
 	UpdatedBy *string `json:"updated_by"`
+}
+
+type TrashItem struct {
+	ID           string  `json:"id"`
+	UserID       string  `json:"user_id"`
+	OriginalPath string  `json:"original_path"`
+	Name         string  `json:"name"`
+	IsDir        int64   `json:"is_dir"`
+	SizeBytes    int64   `json:"size_bytes"`
+	ItemCount    int64   `json:"item_count"`
+	Kind         string  `json:"kind"`
+	DeletedAt    string  `json:"deleted_at"`
+	ExpiresAt    *string `json:"expires_at"`
+	BatchID      *string `json:"batch_id"`
+	RestoredAt   *string `json:"restored_at"`
+	PurgedAt     *string `json:"purged_at"`
 }
 
 type User struct {
