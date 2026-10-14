@@ -517,6 +517,15 @@ export function BrowserLayout({
       },
       remoteDownload: () => openDialog({ kind: 'remoteDownload', dir: path }),
       remoteDownloadEnabled,
+      compress: () => {
+        const target = selPaths.length ? selPaths : focusItem ? [focusItem.path] : []
+        if (target.length) openDialog({ kind: 'compress', paths: target, dir: path })
+      },
+      extractArchive: () => {
+        const item = selItems.length === 1 ? selItems[0] : focusItem
+        if (item && !item.isDir && item.category === 'archive')
+          openDialog({ kind: 'extract', archive: item, dir: path })
+      },
       openFolderProperties: () => {
         statItem(path)
           .then((stat) => setProperties({ items: [stat] }))

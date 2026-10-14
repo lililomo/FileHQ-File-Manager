@@ -290,7 +290,7 @@ func (s *Server) meConfig() map[string]any {
 			"ffprobe":  feature("ffprobe", s.cfg.FFprobePath),
 			"vips":     feature("vipsthumbnail", s.cfg.VipsPath),
 			"pdftoppm": feature("pdftoppm", s.cfg.PdftoppmPath),
-			"sevenzip": feature("7zz", s.cfg.SevenZipPath),
+			"sevenzip": feature("7z", s.cfg.SevenZipPath),
 			"rar":      feature("rar", s.cfg.RarPath),
 			"unrar":    feature("unrar", s.cfg.UnrarPath),
 			"rg":       feature("rg", s.cfg.RgPath),

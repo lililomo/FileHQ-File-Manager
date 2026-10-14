@@ -285,6 +285,10 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		// Step 13
 		{http.MethodPost, "/api/v1/remote-downloads"},
 		{http.MethodPost, "/api/v1/remote-downloads/probe"},
+		// Step 14a
+		{http.MethodGet, "/api/v1/archives/capabilities"},
+		{http.MethodPost, "/api/v1/archives/compress"},
+		{http.MethodPost, "/api/v1/archives/extract"},
 	}
 	for _, b := range blocked {
 		var body any
@@ -352,6 +356,8 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		"GET /api/v1/files/zip": true, "HEAD /api/v1/files/zip": true,
 		"POST /api/v1/files/zip":        true,
 		"POST /api/v1/remote-downloads": true, "POST /api/v1/remote-downloads/probe": true,
+		// Step 14a: archives (gated above)
+		"GET /api/v1/archives/capabilities": true, "POST /api/v1/archives/compress": true, "POST /api/v1/archives/extract": true,
 	}
 	// the signed endpoints reject cookie-only access: no signature → 403
 	for _, p := range []string{"/api/v1/files/thumb?path=/x&size=128", "/api/v1/files/download?path=/x", "/api/v1/files/raw?path=/x&purpose=media", "/api/v1/files/zip?token=x"} {

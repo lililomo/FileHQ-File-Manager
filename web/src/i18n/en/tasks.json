@@ -37,7 +37,9 @@
     "dirSize": "Calculate size of {{name}}",
     "analysis": "Storage analysis",
     "checksum": "Checksum {{name}}",
-    "remoteDownload": "Download {{name}} to {{to}}"
+    "remoteDownload": "Download {{name}} to {{to}}",
+    "compress": "Compress {{name}}",
+    "extract": "Extract {{name}}"
   },
   "meta": {
     "items": "{{done}} / {{total}} items",

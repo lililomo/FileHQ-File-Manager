@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"kppbwi.app/filemanager/internal/archive"
 	"kppbwi.app/filemanager/internal/audit"
 	"kppbwi.app/filemanager/internal/auth"
 	"kppbwi.app/filemanager/internal/config"
@@ -61,6 +62,7 @@ type Options struct {
 	ZipStore    *download.ZipStore  // zip payloads (Step 12b); opened on Cfg.DataDir/tmp when nil
 	Downloads   *download.Limiter   // concurrent download/zip slots per user; default 3
 	Remote      *remotedl.Service   // remote downloads (Step 13); nil disables /remote-downloads
+	Archives    *archive.Service    // compress/extract tasks (Step 14a); nil disables /archives
 }
 
 // Server holds dependencies shared by handlers.
@@ -91,34 +93,36 @@ type Server struct {
 	zips        *download.ZipStore
 	dlLimit     *download.Limiter
 	remote      *remotedl.Service
+	archives    *archive.Service
 }
 
 // New builds the router. The returned handler is safe for http.Server.
 func New(o Options) http.Handler {
 	s := &Server{
-		cfg:     o.Cfg,
-		logger:  o.Logger,
-		version: o.Version,
-		assets:  o.Assets,
-		store:   o.Store,
-		auth:    o.Auth,
-		listing: o.Listing,
-		locks:   o.Locks,
-		jails:   newJailCache(nil),
-		media:   o.Media,
-		thumbs:  o.Thumbs,
-		signer:  o.Signer,
-		files:   o.Files,
-		quota:   o.Quota,
-		audit:   o.Audit,
-		meta:    o.Meta,
-		tasks:   o.Tasks,
-		events:  o.Events,
-		notify:  o.Notify,
-		upload:  o.Upload,
-		zips:    o.ZipStore,
-		dlLimit: o.Downloads,
-		remote:  o.Remote,
+		cfg:      o.Cfg,
+		logger:   o.Logger,
+		version:  o.Version,
+		assets:   o.Assets,
+		store:    o.Store,
+		auth:     o.Auth,
+		listing:  o.Listing,
+		locks:    o.Locks,
+		jails:    newJailCache(nil),
+		media:    o.Media,
+		thumbs:   o.Thumbs,
+		signer:   o.Signer,
+		files:    o.Files,
+		quota:    o.Quota,
+		audit:    o.Audit,
+		meta:     o.Meta,
+		tasks:    o.Tasks,
+		events:   o.Events,
+		notify:   o.Notify,
+		upload:   o.Upload,
+		zips:     o.ZipStore,
+		dlLimit:  o.Downloads,
+		remote:   o.Remote,
+		archives: o.Archives,
 	}
 	s.warnings = o.Warnings
 	if s.dlLimit == nil {
@@ -192,6 +196,7 @@ func (s *Server) mountAPI(api chi.Router) {
 		s.mountUpload(api)
 		s.mountDownload(api)
 		s.mountRemoteDL(api)
+		s.mountArchives(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": s.cfg.AppName})

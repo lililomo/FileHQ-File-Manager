@@ -1,0 +1,52 @@
+{
+  "compress": {
+    "title": "Compress",
+    "description_one": "Create an archive from {{n}} item.",
+    "description_other": "Create an archive from {{n}} items.",
+    "format": "Format",
+    "level": "Compression level",
+    "name": "Archive name",
+    "destination": "Destination folder",
+    "password": "Password (optional)",
+    "confirm": "Repeat password",
+    "mismatch": "Passwords do not match.",
+    "hintZip": "The zip is AES-256 encrypted (WinZip AES). File names stay visible; contents do not.",
+    "hint7z": "The 7z is AES-256 encrypted. The password is handed to 7-Zip on stdin, never as a process argument.",
+    "encryptNames": "Also encrypt file names (7z, -mhe)",
+    "split": "Split into volumes (MB, 7z)",
+    "splitNone": "Not split",
+    "deleteSource": "Move the originals to the Recycle Bin once the archive is created",
+    "singleFile": "single file",
+    "singleFileOnly": "This format compresses one file only. Select a single file or use tar.gz/zip.",
+    "submit": "Create archive"
+  },
+  "extract": {
+    "title": "Extract",
+    "description": "Extract {{name}}",
+    "destination": "Destination",
+    "destNew": "New folder \"{{name}}\" next to the archive",
+    "destHere": "In this folder ({{dir}})",
+    "destChoose": "Choose a folder…",
+    "password": "Password",
+    "passwordHint": "Leave empty when the archive is not locked",
+    "encoding": "File name encoding",
+    "policy": "If a name already exists",
+    "policyFail": "Fail",
+    "submit": "Extract"
+  },
+  "level": {
+    "store": "Store only (no compression)",
+    "fast": "Fast",
+    "normal": "Normal",
+    "max": "Maximum"
+  },
+  "encoding": {
+    "auto": "Detect automatically",
+    "utf-8": "UTF-8",
+    "gbk": "GBK / GB18030 (Simplified Chinese)",
+    "cp437": "CP437 (DOS)",
+    "shift_jis": "Shift_JIS (Japanese)",
+    "big5": "Big5 (Traditional Chinese)",
+    "windows-1252": "Windows-1252 (Western European)"
+  }
+}

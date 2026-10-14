@@ -1,0 +1,52 @@
+{
+  "compress": {
+    "title": "Compress",
+    "description_one": "Buat arsip dari {{n}} item.",
+    "description_other": "Buat arsip dari {{n}} item.",
+    "format": "Format",
+    "level": "Tingkat kompresi",
+    "name": "Nama arsip",
+    "destination": "Folder tujuan",
+    "password": "Password (opsional)",
+    "confirm": "Ulangi password",
+    "mismatch": "Password tidak sama.",
+    "hintZip": "Zip dienkripsi AES-256 (WinZip AES). Nama file tetap terlihat; isi tidak.",
+    "hint7z": "7z dienkripsi AES-256. Password diberikan ke 7-Zip lewat stdin, tidak lewat argumen proses.",
+    "encryptNames": "Enkripsi juga nama file (7z, -mhe)",
+    "split": "Pecah menjadi volume (MB, 7z)",
+    "splitNone": "Tidak dipecah",
+    "deleteSource": "Pindahkan item asli ke Recycle Bin setelah arsip berhasil dibuat",
+    "singleFile": "satu file",
+    "singleFileOnly": "Format ini hanya untuk satu file. Pilih satu file atau gunakan tar.gz/zip.",
+    "submit": "Buat arsip"
+  },
+  "extract": {
+    "title": "Extract",
+    "description": "Ekstrak {{name}}",
+    "destination": "Tujuan",
+    "destNew": "Folder baru \"{{name}}\" di sebelah arsip",
+    "destHere": "Di folder ini ({{dir}})",
+    "destChoose": "Pilih folder…",
+    "password": "Password",
+    "passwordHint": "Kosongkan jika arsip tidak terkunci",
+    "encoding": "Encoding nama file",
+    "policy": "Jika nama sudah ada",
+    "policyFail": "Gagalkan",
+    "submit": "Ekstrak"
+  },
+  "level": {
+    "store": "Simpan saja (tanpa kompresi)",
+    "fast": "Cepat",
+    "normal": "Normal",
+    "max": "Maksimum"
+  },
+  "encoding": {
+    "auto": "Deteksi otomatis",
+    "utf-8": "UTF-8",
+    "gbk": "GBK / GB18030 (Tiongkok sederhana)",
+    "cp437": "CP437 (DOS)",
+    "shift_jis": "Shift_JIS (Jepang)",
+    "big5": "Big5 (Tiongkok tradisional)",
+    "windows-1252": "Windows-1252 (Eropa Barat)"
+  }
+}

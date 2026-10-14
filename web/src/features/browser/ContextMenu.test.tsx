@@ -105,14 +105,14 @@ describe('context-menu matrix (SPEC §9.5)', () => {
       ['open', 'quickLook'],
       ['download'],
       ['copy', 'cut', 'duplicate', 'rename', 'moveTo', 'copyTo'],
+      ['compress'], // Step 14a (extract/browseArchive only for archives)
       ['permissions', 'symlink', 'checksum'],
       ['copyPath', 'properties'],
       ['delete'],
     ])
     const flat = groups.flat()
-    // Step 12b: download is live; share/compress/versions still wait for their steps
-    for (const hidden of ['share', 'favorite', 'compress', 'versions'])
-      expect(flat).not.toContain(hidden)
+    // Step 14a: compress is live; share/versions still wait for their steps
+    for (const hidden of ['share', 'favorite', 'versions']) expect(flat).not.toContain(hidden)
     expect(flat[flat.length - 1]).toBe('delete')
     expect(actionById('delete')!.destructive).toBe(true)
   })
@@ -143,7 +143,7 @@ describe('context-menu matrix (SPEC §9.5)', () => {
     expect(groups).toEqual([
       ['downloadZip'],
       ['copy', 'cut', 'moveTo', 'copyTo'],
-      ['batchRename', 'permissions'],
+      ['compress', 'batchRename', 'permissions'],
       ['delete'],
     ])
   })

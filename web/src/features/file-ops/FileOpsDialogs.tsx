@@ -8,6 +8,8 @@ import { NewItemDialog } from './NewItemDialog'
 import { PermissionDialog } from './PermissionDialog'
 import { PrecheckDialog } from '@/features/upload/PrecheckDialog'
 import { RemoteDownloadDialog } from '@/features/remote-download/RemoteDownloadDialog'
+import { CompressDialog } from '@/features/archive/CompressDialog'
+import { ExtractDialog } from '@/features/archive/ExtractDialog'
 import { focusGrid, useFileOpsDialogs } from './store'
 import type { FileOps } from './useFileOps'
 
@@ -106,6 +108,24 @@ export function FileOpsDialogs({ ops }: { ops: FileOps }) {
     case 'remoteDownload':
       return (
         <RemoteDownloadDialog dir={dialog.dir} onClose={close} onCloseAutoFocus={returnFocus} />
+      )
+    case 'compress':
+      return (
+        <CompressDialog
+          paths={dialog.paths}
+          dir={dialog.dir}
+          onClose={close}
+          onCloseAutoFocus={returnFocus}
+        />
+      )
+    case 'extract':
+      return (
+        <ExtractDialog
+          archive={dialog.archive}
+          dir={dialog.dir}
+          onClose={close}
+          onCloseAutoFocus={returnFocus}
+        />
       )
     default:
       return null

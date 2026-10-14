@@ -29,6 +29,8 @@ tags:
     description: Upload resumable tus + precheck (SPEC §6.5, §8.8, ADR-03)
   - name: remote
     description: Remote download dari URL http/https dengan SSRF guard (SPEC §8.10, §10.1)
+  - name: archives
+    description: Compress & extract sebagai task, proteksi zip-slip/bomb (SPEC §8.11, ADR-08)
 
 paths:
   /healthz:
@@ -1595,6 +1597,96 @@ paths:
       responses:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/Error" }
+  /api/v1/archives/capabilities:
+    get:
+      tags: [archives]
+      summary: Archive format matrix as supported on this server (SPEC §8.11)
+      operationId: archivesCapabilities
+      description: |
+        Static matrix adjusted to the installed tools: without the 7-Zip binary (`SEVENZIP_PATH`) 7z cannot be written and
+        iso cannot be read (`reason: dependency_missing`); rar is read-only (`reason: rar_licence`). `passwordStdin` is the
+        Step 14a spike result: 7-Zip 23.01 reads passwords from a stdin pipe, so they never appear in process arguments.
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: Capabilities
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArchiveCapabilities" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/archives/compress:
+    post:
+      tags: [archives]
+      summary: Queue a compress task (SPEC §8.11)
+      operationId: archivesCompress
+      description: |
+        Validates sources (exist, not root, single-file formats take exactly one regular file), format/level, password
+        support (zip → WinZip AES-256, 7z → AES-256 via the 7-Zip CLI with the password on stdin; `encryptNames` = `-mhe=on`,
+        `splitVolumeMb` = `-v`), the archive name (`<ext>` appended when missing, blocked extensions refused) and that the
+        output is not inside a source. The archive is written under `DATA_DIR/tmp/ar-<task>` and moved atomically into the
+        destination; an existing name gets ` (n)`. `deleteSource` moves the originals to the Recycle Bin after success.
+        Progress unit: bytes read. The password lives only in the engine's memory: a retry of a password task fails with
+        `ARCHIVE_PASSWORD_REQUIRED`.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ArchiveCompressRequest" }
+      responses:
+        "202":
+          description: Task queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskAccepted" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+  /api/v1/archives/extract:
+    post:
+      tags: [archives]
+      summary: Queue an extract task (SPEC §8.11)
+      operationId: archivesExtract
+      description: |
+        The format is detected from magic bytes (extension only decides tar.gz vs gz); unknown → `415 UNSUPPORTED_TYPE`.
+        `dest`: `new` (folder named after the archive next to it, default), `here` (the archive's folder) or a folder path
+        (parent must exist). Entries are normalised (backslashes, `./`, NFC) and validated per segment; absolute names, `..`,
+        drive letters or NUL fail the whole task with `ARCHIVE_UNSAFE` (`details.reason`), other invalid names, device/FIFO
+        entries, links that resolve outside the destination, hard links and blocked extensions are skipped and listed in
+        `result.skipped`. Limits (`ARCHIVE_LIMIT`, `details.reason`: entries | max_extract_size | quota | disk) use the
+        container index when there is one and are enforced again while streaming; a 200:1 ratio above 1 GiB is
+        `ARCHIVE_UNSAFE` (reason ratio). Files are written to `DATA_DIR/tmp/ar-<task>/root` (mode 0640/0750, setuid bits
+        dropped, mtime kept, symlinks created last) and moved into the destination with the conflict policy (folders merge
+        per file under `overwrite`; `fail` answers `ALREADY_EXISTS` with `details.conflicts` before touching anything).
+        Encrypted archives without a password fail with `ARCHIVE_PASSWORD_REQUIRED`, a wrong one with
+        `ARCHIVE_PASSWORD_WRONG`. iso and multi-volume 7z go through the 7-Zip CLI (`501 DEPENDENCY_MISSING` when absent).
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ArchiveExtractRequest" }
+      responses:
+        "202":
+          description: Task queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskAccepted" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
   /api/v1/remote-downloads:
     post:
       tags: [remote]
@@ -2612,6 +2704,95 @@ components:
       required: [task]
       properties:
         task: { $ref: "#/components/schemas/Task" }
+    ArchiveCapability:
+      type: object
+      required: [format, extension, canRead, canWrite, passwordRead, passwordWrite, encryptNames, splitVolume, levels, singleFile, engine]
+      properties:
+        format: { type: string, enum: [zip, 7z, rar, tar, tar.gz, tar.bz2, tar.xz, tar.zst, gz, bz2, xz, zst, jar, war, iso] }
+        extension: { type: string }
+        canRead: { type: boolean }
+        canWrite: { type: boolean }
+        passwordRead: { type: boolean }
+        passwordWrite: { type: boolean }
+        encryptNames: { type: boolean, description: "7z -mhe=on" }
+        splitVolume: { type: boolean, description: "7z -v<n>m" }
+        levels: { type: boolean, description: "store|fast|normal|max apply" }
+        singleFile: { type: boolean, description: "gz/bz2/xz/zst: exactly one regular file" }
+        engine: { type: string, enum: [go, 7z] }
+        reason: { type: string, description: "dependency_missing | rar_licence when a capability is off" }
+    ArchiveCapabilities:
+      type: object
+      required: [formats, sevenZip, passwordStdin, maxExtractSize, maxEntries]
+      properties:
+        formats:
+          type: array
+          items: { $ref: "#/components/schemas/ArchiveCapability" }
+        sevenZip: { type: boolean }
+        sevenZipPath: { type: string }
+        passwordStdin: { type: boolean }
+        maxExtractSize: { type: integer, format: int64 }
+        maxEntries: { type: integer }
+    ArchiveCompressRequest:
+      type: object
+      required: [paths, format]
+      properties:
+        paths: { type: array, minItems: 1, maxItems: 1000, items: { type: string } }
+        format: { type: string, enum: [zip, 7z, tar, tar.gz, tar.bz2, tar.xz, tar.zst, gz, bz2, xz, zst, jar, war], description: "aliases tgz, tbz2, txz, tzst, gzip, bzip2, zstd" }
+        name: { type: string, description: "Archive file name; default <item>.<ext> / <parent>.<ext> / Arsip-<date>.<ext>; the extension is appended when missing" }
+        destPath: { type: string, description: "Destination folder; default the first source's folder (alias dest_path, dest)" }
+        level: { type: string, enum: [store, fast, normal, max], default: normal }
+        password: { type: string, maxLength: 256, description: "zip (AES-256) and 7z only; kept in memory for the task" }
+        encryptNames: { type: boolean, description: "7z with password only (alias encrypt_names)" }
+        deleteSource: { type: boolean, description: "Move sources to the Recycle Bin after success (alias delete_source)" }
+        splitVolumeMb: { type: integer, minimum: 1, description: "7z only (alias split_volume_mb)" }
+    ArchiveExtractRequest:
+      type: object
+      required: [path]
+      properties:
+        path: { type: string, description: "Archive file (alias archive)" }
+        dest: { type: string, default: new, description: "new | here | <folder path> (alias dest_path)" }
+        password: { type: string, maxLength: 256 }
+        encoding: { type: string, enum: [auto, utf-8, gbk, cp437, shift_jis, big5, windows-1252], default: auto, description: "Legacy name encoding of zip entries without the UTF-8 flag (alias name_encoding)" }
+        onConflict: { type: string, enum: [fail, overwrite, skip, rename], default: fail, description: "aliases on_conflict, policy" }
+        entries: { type: array, maxItems: 1000, items: { type: string }, description: "Entry names or folder prefixes to extract (partial extraction)" }
+    ArchiveCompressResult:
+      type: object
+      required: [path, size, files, dirs, status]
+      properties:
+        path: { type: string }
+        paths: { type: array, items: { type: string }, description: "All volumes when split" }
+        size: { type: integer, format: int64 }
+        files: { type: integer }
+        dirs: { type: integer }
+        skipped:
+          type: array
+          items: { $ref: "#/components/schemas/ArchiveSkip" }
+        status: { type: string, enum: [created, renamed] }
+        deletedSources: { type: integer }
+    ArchiveExtractResult:
+      type: object
+      required: [dest, format, files, dirs, links, bytes, warnings, renamed, overwritten, skippedDest]
+      properties:
+        dest: { type: string }
+        format: { type: string }
+        files: { type: integer }
+        dirs: { type: integer }
+        links: { type: integer }
+        bytes: { type: integer, format: int64 }
+        skipped:
+          type: array
+          items: { $ref: "#/components/schemas/ArchiveSkip" }
+        warnings: { type: integer }
+        encoding: { type: string, description: "Encoding chosen by auto detection" }
+        renamed: { type: integer }
+        overwritten: { type: integer }
+        skippedDest: { type: integer }
+    ArchiveSkip:
+      type: object
+      required: [name, reason]
+      properties:
+        name: { type: string }
+        reason: { type: string, enum: [absolute, dotdot, drive, nul, control, too_long, too_deep, invalid_name, system, empty, special_type, link_escape, hardlink, blocked_extension, nested_archive, duplicate, type_clash] }
     RemoteDownloadRequest:
       type: object
       required: [urls, path]

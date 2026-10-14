@@ -22,6 +22,16 @@ export function taskLabel(task: Task, t: LooseT, lang: string): string {
       return t('tasks:label.dirSize', { name: name(p.path) || '/' })
     case 'checksum':
       return t('tasks:label.checksum', { name: name(p.path) })
+    case 'compress': {
+      const n = typeof p.name === 'string' ? p.name : ''
+      if (n) return t('tasks:label.compress', { name: n })
+      break
+    }
+    case 'extract': {
+      const a = typeof p.archive === 'string' ? name(p.archive) : ''
+      if (a) return t('tasks:label.extract', { name: a })
+      break
+    }
     case 'remote_download': {
       const dest = typeof p.dest === 'string' ? p.dest : ''
       let label = typeof p.filename === 'string' ? p.filename : ''

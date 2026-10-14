@@ -37,7 +37,9 @@
     "dirSize": "Hitung ukuran {{name}}",
     "analysis": "Analisis penyimpanan",
     "checksum": "Checksum {{name}}",
-    "remoteDownload": "Unduh {{name}} ke {{to}}"
+    "remoteDownload": "Unduh {{name}} ke {{to}}",
+    "compress": "Kompres {{name}}",
+    "extract": "Ekstrak {{name}}"
   },
   "meta": {
     "items": "{{done}} / {{total}} item",

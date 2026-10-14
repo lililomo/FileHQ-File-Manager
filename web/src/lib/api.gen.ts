@@ -2002,6 +2002,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/archives/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Archive format matrix as supported on this server (SPEC §8.11)
+         * @description Static matrix adjusted to the installed tools: without the 7-Zip binary (`SEVENZIP_PATH`) 7z cannot be written and
+         *     iso cannot be read (`reason: dependency_missing`); rar is read-only (`reason: rar_licence`). `passwordStdin` is the
+         *     Step 14a spike result: 7-Zip 23.01 reads passwords from a stdin pipe, so they never appear in process arguments.
+         */
+        get: operations["archivesCapabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archives/compress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue a compress task (SPEC §8.11)
+         * @description Validates sources (exist, not root, single-file formats take exactly one regular file), format/level, password
+         *     support (zip → WinZip AES-256, 7z → AES-256 via the 7-Zip CLI with the password on stdin; `encryptNames` = `-mhe=on`,
+         *     `splitVolumeMb` = `-v`), the archive name (`<ext>` appended when missing, blocked extensions refused) and that the
+         *     output is not inside a source. The archive is written under `DATA_DIR/tmp/ar-<task>` and moved atomically into the
+         *     destination; an existing name gets ` (n)`. `deleteSource` moves the originals to the Recycle Bin after success.
+         *     Progress unit: bytes read. The password lives only in the engine's memory: a retry of a password task fails with
+         *     `ARCHIVE_PASSWORD_REQUIRED`.
+         */
+        post: operations["archivesCompress"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archives/extract": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue an extract task (SPEC §8.11)
+         * @description The format is detected from magic bytes (extension only decides tar.gz vs gz); unknown → `415 UNSUPPORTED_TYPE`.
+         *     `dest`: `new` (folder named after the archive next to it, default), `here` (the archive's folder) or a folder path
+         *     (parent must exist). Entries are normalised (backslashes, `./`, NFC) and validated per segment; absolute names, `..`,
+         *     drive letters or NUL fail the whole task with `ARCHIVE_UNSAFE` (`details.reason`), other invalid names, device/FIFO
+         *     entries, links that resolve outside the destination, hard links and blocked extensions are skipped and listed in
+         *     `result.skipped`. Limits (`ARCHIVE_LIMIT`, `details.reason`: entries | max_extract_size | quota | disk) use the
+         *     container index when there is one and are enforced again while streaming; a 200:1 ratio above 1 GiB is
+         *     `ARCHIVE_UNSAFE` (reason ratio). Files are written to `DATA_DIR/tmp/ar-<task>/root` (mode 0640/0750, setuid bits
+         *     dropped, mtime kept, symlinks created last) and moved into the destination with the conflict policy (folders merge
+         *     per file under `overwrite`; `fail` answers `ALREADY_EXISTS` with `details.conflicts` before touching anything).
+         *     Encrypted archives without a password fail with `ARCHIVE_PASSWORD_REQUIRED`, a wrong one with
+         *     `ARCHIVE_PASSWORD_WRONG`. iso and multi-volume 7z go through the 7-Zip CLI (`501 DEPENDENCY_MISSING` when absent).
+         */
+        post: operations["archivesExtract"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/remote-downloads": {
         parameters: {
             query?: never;
@@ -2016,7 +2095,7 @@ export interface paths {
          * @description Each URL becomes a `remote_download` task (progress in bytes, cancel/retry like any task; a retry resumes with `Range`
          *     from the kept part file when the server supports it). Validation before anything is queued: scheme `http`/`https` only,
          *     no userinfo, host not `localhost`, port 80/443 or ≥ 1024, literal private/special IPs refused, admin denylist (wins) and
-         *     allowlist (suffix match) → `400 SSRF_BLOCKED` (`details.reason`: scheme, userinfo, host, port, private_ip) or
+         *     allowlist (suffix match) → `422 SSRF_BLOCKED` (`details.reason`: scheme, userinfo, host, port, private_ip) or
          *     `403 FORBIDDEN` (`reason`: denylist, allowlist, disabled). DNS is resolved inside the task: any private/special address
          *     among the answers fails the task with `SSRF_BLOCKED`; redirects (max 5) are re-validated per hop. 1..10 URLs per request;
          *     10 tasks per hour per user → `429 RATE_LIMITED` + `Retry-After`. `filename` applies to a single URL (`filenames` maps
@@ -2959,6 +3038,119 @@ export interface components {
         };
         TaskResponse: {
             task: components["schemas"]["Task"];
+        };
+        ArchiveCapability: {
+            /** @enum {string} */
+            format: "zip" | "7z" | "rar" | "tar" | "tar.gz" | "tar.bz2" | "tar.xz" | "tar.zst" | "gz" | "bz2" | "xz" | "zst" | "jar" | "war" | "iso";
+            extension: string;
+            canRead: boolean;
+            canWrite: boolean;
+            passwordRead: boolean;
+            passwordWrite: boolean;
+            /** @description 7z -mhe=on */
+            encryptNames: boolean;
+            /** @description 7z -v<n>m */
+            splitVolume: boolean;
+            /** @description store|fast|normal|max apply */
+            levels: boolean;
+            /** @description gz/bz2/xz/zst: exactly one regular file */
+            singleFile: boolean;
+            /** @enum {string} */
+            engine: "go" | "7z";
+            /** @description dependency_missing | rar_licence when a capability is off */
+            reason?: string;
+        };
+        ArchiveCapabilities: {
+            formats: components["schemas"]["ArchiveCapability"][];
+            sevenZip: boolean;
+            sevenZipPath?: string;
+            passwordStdin: boolean;
+            /** Format: int64 */
+            maxExtractSize: number;
+            maxEntries: number;
+        };
+        ArchiveCompressRequest: {
+            paths: string[];
+            /**
+             * @description aliases tgz, tbz2, txz, tzst, gzip, bzip2, zstd
+             * @enum {string}
+             */
+            format: "zip" | "7z" | "tar" | "tar.gz" | "tar.bz2" | "tar.xz" | "tar.zst" | "gz" | "bz2" | "xz" | "zst" | "jar" | "war";
+            /** @description Archive file name; default <item>.<ext> / <parent>.<ext> / Arsip-<date>.<ext>; the extension is appended when missing */
+            name?: string;
+            /** @description Destination folder; default the first source's folder (alias dest_path, dest) */
+            destPath?: string;
+            /**
+             * @default normal
+             * @enum {string}
+             */
+            level: "store" | "fast" | "normal" | "max";
+            /** @description zip (AES-256) and 7z only; kept in memory for the task */
+            password?: string;
+            /** @description 7z with password only (alias encrypt_names) */
+            encryptNames?: boolean;
+            /** @description Move sources to the Recycle Bin after success (alias delete_source) */
+            deleteSource?: boolean;
+            /** @description 7z only (alias split_volume_mb) */
+            splitVolumeMb?: number;
+        };
+        ArchiveExtractRequest: {
+            /** @description Archive file (alias archive) */
+            path: string;
+            /**
+             * @description new | here | <folder path> (alias dest_path)
+             * @default new
+             */
+            dest: string;
+            password?: string;
+            /**
+             * @description Legacy name encoding of zip entries without the UTF-8 flag (alias name_encoding)
+             * @default auto
+             * @enum {string}
+             */
+            encoding: "auto" | "utf-8" | "gbk" | "cp437" | "shift_jis" | "big5" | "windows-1252";
+            /**
+             * @description aliases on_conflict, policy
+             * @default fail
+             * @enum {string}
+             */
+            onConflict: "fail" | "overwrite" | "skip" | "rename";
+            /** @description Entry names or folder prefixes to extract (partial extraction) */
+            entries?: string[];
+        };
+        ArchiveCompressResult: {
+            path: string;
+            /** @description All volumes when split */
+            paths?: string[];
+            /** Format: int64 */
+            size: number;
+            files: number;
+            dirs: number;
+            skipped?: components["schemas"]["ArchiveSkip"][];
+            /** @enum {string} */
+            status: "created" | "renamed";
+            deletedSources?: number;
+        };
+        ArchiveExtractResult: {
+            dest: string;
+            format: string;
+            files: number;
+            dirs: number;
+            links: number;
+            /** Format: int64 */
+            bytes: number;
+            skipped?: components["schemas"]["ArchiveSkip"][];
+            warnings: number;
+            /** @description Encoding chosen by auto detection */
+            encoding?: string;
+            renamed: number;
+            overwritten: number;
+            skippedDest: number;
+        };
+        ArchiveSkip: {
+            name: string;
+            /** @enum {string} */
+            reason: "absolute" | "dotdot" | "drive" | "nul" | "control" | "too_long" | "too_deep" | "invalid_name" | "system" | "empty" | "special_type" | "link_escape" | "hardlink" | "blocked_extension" | "nested_archive" | "duplicate" | "type_clash";
         };
         RemoteDownloadRequest: {
             urls: string[];
@@ -4389,6 +4581,93 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
+    archivesCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Capabilities */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveCapabilities"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    archivesCompress: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveCompressRequest"];
+            };
+        };
+        responses: {
+            /** @description Task queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskAccepted"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            415: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            501: components["responses"]["Error"];
+        };
+    };
+    archivesExtract: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveExtractRequest"];
+            };
+        };
+        responses: {
+            /** @description Task queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskAccepted"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            415: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            501: components["responses"]["Error"];
+        };
+    };
     remoteDownloadsCreate: {
         parameters: {
             query?: never;
@@ -4418,6 +4697,7 @@ export interface operations {
             403: components["responses"]["Error"];
             404: components["responses"]["Error"];
             415: components["responses"]["Error"];
+            422: components["responses"]["Error"];
             429: components["responses"]["Error"];
         };
     };
@@ -4451,6 +4731,7 @@ export interface operations {
             400: components["responses"]["Error"];
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
             502: components["responses"]["Error"];
         };
     };

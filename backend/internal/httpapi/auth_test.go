@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"kppbwi.app/filemanager/internal/archive"
 	"kppbwi.app/filemanager/internal/audit"
 	"kppbwi.app/filemanager/internal/auth"
 	"kppbwi.app/filemanager/internal/config"
@@ -82,6 +83,7 @@ type authEnv struct {
 	upload  *upload.Service
 	dl      *download.Limiter
 	remote  *remotedl.Service
+	archive *archive.Service
 }
 
 type notifyFunc func(ctx context.Context, userID, typ, title, body, link string) error
@@ -189,6 +191,10 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 		Version: "test", BaseURL: cfg.AppBaseURL, Repo: store, Quota: env.quota, Files: env.files, Locks: env.locks, Tasks: env.tasks, Guard: remoteGuard,
 		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) },
 		Logger:     logger, RetryBackoff: []time.Duration{}, ProgressStep: 64 << 10})
+	// Archives (Step 14a): real 7-Zip when installed, small limits are set per test via Options
+	env.archive = archive.New(archive.Options{DataDir: cfg.DataDir, SevenZip: cfg.SevenZipPath, MaxExtractSize: cfg.ArchiveMaxExtractSize, MaxEntries: cfg.ArchiveMaxEntries,
+		Repo: store, Quota: env.quota, Files: env.files, Locks: env.locks, Tasks: env.tasks, Logger: logger, ProgressStep: 64 << 10,
+		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) }})
 	engineCtx, stopEngine := context.WithCancel(context.Background())
 	if err := env.tasks.Start(engineCtx); err != nil {
 		t.Fatal(err)
@@ -203,7 +209,7 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 	}
 	env.dl = download.NewLimiter(0)
 	env.handler = New(Options{Cfg: cfg, Logger: logger, Version: "test", Store: store, Auth: svc, Listing: env.listing, Locks: env.locks, Files: env.files, Quota: env.quota, Meta: env.meta,
-		Tasks: env.tasks, Events: env.events, Notify: env.notify, Upload: env.upload, Downloads: env.dl, Remote: env.remote,
+		Tasks: env.tasks, Events: env.events, Notify: env.notify, Upload: env.upload, Downloads: env.dl, Remote: env.remote, Archives: env.archive,
 		Assets: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("spa")) })})
 	return env
 }

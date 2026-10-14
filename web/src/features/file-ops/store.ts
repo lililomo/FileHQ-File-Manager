@@ -23,6 +23,8 @@ export type FileOpsDialog =
   | { kind: 'deletePermanent'; paths: string[]; resolve: (ok: boolean) => void }
   | { kind: 'uploadPrecheck'; info: UploadPrecheckInfo; resolve: (proceed: boolean) => void }
   | { kind: 'remoteDownload'; dir: string }
+  | { kind: 'compress'; paths: string[]; dir: string }
+  | { kind: 'extract'; archive: Item; dir: string }
 
 /** What the precheck dialog shows before an upload starts (SPEC §8.8 step 2). */
 export interface UploadPrecheckInfo {

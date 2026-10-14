@@ -140,6 +140,9 @@ export interface ActionContext {
   /** Step 13: remote download dialog; hidden when the admin turned the feature off. */
   remoteDownload?: () => void
   remoteDownloadEnabled?: boolean
+  /** Step 14a: compress the selection / extract the focused archive (tasks). */
+  compress?: () => void
+  extractArchive?: () => void
 }
 
 export interface ActionDef {
@@ -386,19 +389,16 @@ export const ACTIONS: ActionDef[] = [
     labelKey: 'compress',
     group: 'archive',
     icon: Archive,
-    available: false,
     isApplicable: some,
-    run: noop,
+    run: (c) => c.compress?.(),
   },
   {
     id: 'extract',
     labelKey: 'extract',
     group: 'archive',
     icon: PackageOpen,
-    available: false,
-    submenu: true,
     isApplicable: (c) => oneFile(c) && c.selection[0]!.category === 'archive',
-    run: noop,
+    run: (c) => c.extractArchive?.(),
   },
   {
     id: 'browseArchive',
