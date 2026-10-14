@@ -258,7 +258,7 @@ func (s *Service) process(ctx context.Context, job Job) {
 	}
 	row, _, err := s.media.Ensure(jctx, j, job.UserID, info)
 	if err != nil {
-		s.logger.Debug("thumb job: probe failed", slog.String("path", string(job.Path)), slog.String("error", err.Error()))
+		s.logger.Debug("thumb job: probe failed", slog.String("path", string(job.Path)), slog.String("error", j.Redact(err.Error())))
 		return
 	}
 	if job.ProbeOnly || row.ThumbState == media.ThumbFailed || row.ThumbState == media.ThumbUnsupported {
@@ -282,7 +282,7 @@ func (s *Service) process(ctx context.Context, job Job) {
 				return // shutdown: leave the state untouched, the next request retries
 			}
 			state = media.ThumbFailed
-			msg := err.Error()
+			msg := j.Redact(err.Error())
 			if len(msg) > 500 {
 				msg = msg[:500]
 			}

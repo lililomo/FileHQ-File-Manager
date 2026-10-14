@@ -122,7 +122,7 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 		}
 	}})
 	env.listing = listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize, Meta: env.meta})
-	env.files = files.New(files.Options{Repo: store, Locks: env.locks, Trash: env.trash, Logger: logger, Quota: env.quota, Now: clock.Now,
+	env.files = files.New(files.Options{Repo: store, Locks: env.locks, Trash: env.trash, Logger: logger, Quota: env.quota, Now: clock.Now, BlockedExtensions: cfg.BlockedExtensions,
 		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) }})
 	env.handler = New(Options{Cfg: cfg, Logger: logger, Version: "test", Store: store, Auth: svc, Listing: env.listing, Locks: env.locks, Files: env.files, Quota: env.quota, Meta: env.meta,
 		Assets: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("spa")) })})

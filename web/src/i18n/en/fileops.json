@@ -133,6 +133,7 @@
       "control_char": "contains a control character",
       "too_long": "too long",
       "dot": "name . or ..",
+      "blocked_extension": "extension is not allowed",
       "invalid_utf8": "invalid UTF-8"
     }
   },

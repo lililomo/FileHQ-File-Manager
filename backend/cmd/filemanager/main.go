@@ -325,7 +325,7 @@ func runServe(envFile string, noMigrate bool) int {
 	collator := listing.NewCollator(cfg.DefaultLanguage)
 	trashStore.Less = func(a, b string) bool { return listing.NaturalLess(a, b, collator) }
 	filesSvc := files.New(files.Options{
-		Repo: store, Locks: locks, Trash: trashStore, Logger: logger, Quota: quotaSvc,
+		Repo: store, Locks: locks, Trash: trashStore, Logger: logger, Quota: quotaSvc, BlockedExtensions: cfg.BlockedExtensions,
 		OnChange: func(ctx context.Context, userID string, p fsjail.VPath, isDir bool) {
 			if err := thumbsSvc.Invalidate(ctx, userID, p, isDir); err != nil {
 				logger.Warn("thumbnail invalidation failed", slog.String("path", string(p)), slog.String("error", err.Error()))

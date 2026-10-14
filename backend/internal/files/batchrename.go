@@ -186,6 +186,11 @@ func (s *Service) BatchRenamePreview(ctx context.Context, j *fsjail.Jail, paths 
 			items = append(items, it)
 			continue
 		}
+		if !info.IsDir && s.Blocked(newName) {
+			it.Status, it.Reason = "invalid", "blocked_extension"
+			items = append(items, it)
+			continue
+		}
 		newPath, err := fsjail.Join(p.Dir(), newName)
 		if err != nil {
 			it.Status, it.Reason = "invalid", reasonOf(err)

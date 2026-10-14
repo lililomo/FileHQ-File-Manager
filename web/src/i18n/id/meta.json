@@ -51,15 +51,32 @@
       "gray": "Abu-abu"
     }
   },
-  "badges": { "favorite": "Favorit", "pinned": "Disematkan", "tag": "Tag {{color}}", "shared": "Dibagikan" },
+  "badges": {
+    "favorite": "Favorit",
+    "pinned": "Disematkan",
+    "tag": "Tag {{color}}",
+    "shared": "Dibagikan"
+  },
   "recent": {
     "title": "Recent",
     "subtitle": "File yang Anda buka, buat, unggah, atau pulihkan dalam {{days}} hari terakhir",
     "empty": "Belum ada aktivitas",
     "emptyHint": "Buka atau buat file untuk melihatnya di sini.",
     "openLocation": "Buka lokasi file",
-    "columns": { "name": "Nama", "location": "Lokasi", "action": "Aksi", "at": "Waktu", "size": "Ukuran" },
-    "actions": { "open": "Dibuka", "edit": "Diedit", "upload": "Diunggah", "create": "Dibuat", "restore": "Dipulihkan" }
+    "columns": {
+      "name": "Nama",
+      "location": "Lokasi",
+      "action": "Aksi",
+      "at": "Waktu",
+      "size": "Ukuran"
+    },
+    "actions": {
+      "open": "Dibuka",
+      "edit": "Diedit",
+      "upload": "Diunggah",
+      "create": "Dibuat",
+      "restore": "Dipulihkan"
+    }
   },
   "activity": {
     "title": "Aktivitas",
@@ -76,7 +93,13 @@
     "from": "Dari",
     "to": "Sampai",
     "search": "Cari path…",
-    "columns": { "at": "Waktu", "action": "Aksi", "item": "Item", "target": "Tujuan", "details": "Detail" },
+    "columns": {
+      "at": "Waktu",
+      "action": "Aksi",
+      "item": "Item",
+      "target": "Tujuan",
+      "details": "Detail"
+    },
     "gone": "(tidak ada lagi)",
     "actions": {
       "open": "Buka",
@@ -125,7 +148,14 @@
     "root": "File Saya",
     "topFiles": "50 file terbesar",
     "byType": "Ringkasan per jenis",
-    "types": { "image": "Gambar", "video": "Video", "audio": "Audio", "document": "Dokumen", "archive": "Arsip", "other": "Lainnya" },
+    "types": {
+      "image": "Gambar",
+      "video": "Video",
+      "audio": "Audio",
+      "document": "Dokumen",
+      "archive": "Arsip",
+      "other": "Lainnya"
+    },
     "columns": { "name": "Nama", "location": "Lokasi", "size": "Ukuran", "mtime": "Diubah" },
     "empty": "Folder Anda masih kosong",
     "openLocation": "Buka lokasi file",

@@ -17,6 +17,7 @@ import (
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/media"
 	"kppbwi.app/filemanager/internal/meta"
+	"kppbwi.app/filemanager/internal/quota"
 )
 
 // scopeOwn is the listing scope of a user's own files; share/as_user scopes
@@ -486,6 +487,18 @@ func (s *Server) handleFilesCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer unlock()
+	// Inline content is a write like any other: reserve it against the
+	// quota first and account it afterwards (SPEC §8.2; review B, D-1).
+	var rsv *quota.Reservation
+	if s.quota != nil && len(content) > 0 {
+		var qerr error
+		rsv, qerr = s.quota.Reserve(r.Context(), j, u.ID, int64(len(content)))
+		if qerr != nil {
+			s.writeOpsError(w, r, qerr)
+			return
+		}
+		defer rsv.Release()
+	}
 	f, err := j.Create(target, true)
 	if err != nil {
 		if errors.Is(err, fsjail.ErrExists) {
@@ -502,6 +515,11 @@ func (s *Server) handleFilesCreate(w http.ResponseWriter, r *http.Request) {
 		s.logger.ErrorContext(r.Context(), "create write failed", slog.String("path", string(target)), slog.Any("error", errors.Join(werr, cerr)))
 		WriteError(w, r, CodeInternal, 0, "could not write file", nil)
 		return
+	}
+	if rsv != nil {
+		if err := rsv.Commit(r.Context(), nil, int64(len(content))); err != nil {
+			s.logger.ErrorContext(r.Context(), "quota commit after create failed", slog.String("path", string(target)), slog.String("error", err.Error()))
+		}
 	}
 	s.invalidateUpTo(u.ID, target.Dir(), false)
 	if s.files != nil {

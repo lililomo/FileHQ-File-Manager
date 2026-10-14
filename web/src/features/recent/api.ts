@@ -19,5 +19,8 @@ export interface RecentResponse {
 export const RECENT_QUERY_KEY = ['recent'] as const
 
 export function listRecent(limit = 100, signal?: AbortSignal): Promise<RecentResponse> {
-  return api<RecentResponse>('/me/recent', signal ? { query: { limit }, signal } : { query: { limit } })
+  return api<RecentResponse>(
+    '/me/recent',
+    signal ? { query: { limit }, signal } : { query: { limit } },
+  )
 }

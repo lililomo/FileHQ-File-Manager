@@ -121,7 +121,7 @@ func (s *Service) Ensure(ctx context.Context, j *fsjail.Jail, userID string, inf
 	if perr != nil {
 		// probe tool failed (e.g. ffprobe missing): keep the MIME, mark thumbs failed
 		p.ThumbState = ThumbFailed
-		p.ThumbError = db.Ptr(trim(perr.Error()))
+		p.ThumbError = db.Ptr(trim(j.Redact(perr.Error())))
 	}
 	if err := s.store.UpsertMedia(ctx, p); err != nil {
 		return sqlc.MediaMetadatum{}, true, err
@@ -266,7 +266,7 @@ func (s *Service) FillPage(ctx context.Context, j *fsjail.Jail, userID string, i
 		}
 		row, probed, err := s.Ensure(ctx, j, userID, info)
 		if err != nil {
-			s.logger.DebugContext(ctx, "media probe failed", slog.String("path", it.Path), slog.String("error", err.Error()))
+			s.logger.DebugContext(ctx, "media probe failed", slog.String("path", it.Path), slog.String("error", j.Redact(err.Error())))
 			continue
 		}
 		if probed {

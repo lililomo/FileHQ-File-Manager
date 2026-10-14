@@ -243,6 +243,19 @@ func (s *Service) move(ctx context.Context, j *fsjail.Jail, userID string, paths
 			return res, &ValidationError{Reason: "type_mismatch", Path: string(dst), Fields: map[string]string{"on_conflict": "cannot overwrite a folder with a file or vice versa"}}
 		}
 		r.To = string(dst)
+		// An overwrite destroys the destination's bytes (file over file, or
+		// files inside a merged folder): account the real delta (review B, D-2).
+		var before int64
+		account := r.Status == "overwritten" || r.Status == "merged"
+		if account {
+			b1, ok1 := s.sizeOf(ctx, j, dst)
+			b2, ok2 := s.sizeOf(ctx, j, it.src)
+			before = b1 + b2
+			if !ok1 || !ok2 {
+				s.markQuotaDirty(ctx, userID)
+				account = false
+			}
+		}
 		if r.Status == "merged" {
 			if err := s.mergeMove(ctx, j, userID, it.src, dst, it.policy); err != nil {
 				return res, err
@@ -259,6 +272,18 @@ func (s *Service) move(ctx context.Context, j *fsjail.Jail, userID string, paths
 					s.logger.ErrorContext(ctx, "move rollback failed", slog.String("path", string(dst)), slog.String("error", rerr.Error()))
 				}
 				return res, fmt.Errorf("files: move references: %w", err)
+			}
+		}
+		if account && s.quota != nil {
+			a1, ok1 := s.sizeOf(ctx, j, dst)
+			a2, ok2 := s.sizeOf(ctx, j, it.src)
+			if !ok1 || !ok2 {
+				s.markQuotaDirty(ctx, userID)
+			} else if delta := a1 + a2 - before; delta != 0 {
+				if qerr := s.quota.Apply(ctx, nil, userID, delta, 0, 0); qerr != nil {
+					s.logger.ErrorContext(ctx, "quota update after move failed", slog.String("user", userID), slog.String("error", qerr.Error()))
+					s.markQuotaDirty(ctx, userID)
+				}
 			}
 		}
 		s.logActivity(ctx, s.repo, userID, action, string(it.src), string(dst), map[string]any{"op": ActMove, "status": r.Status, "isDir": it.info.IsDir}, "")
@@ -362,6 +387,10 @@ func (s *Service) mergeMove(ctx context.Context, j *fsjail.Jail, userID string, 
 		if err := s.repo.WithTx(ctx, func(tx db.Repository) error {
 			return UpdateReferences(ctx, tx, userID, string(from), string(target))
 		}); err != nil {
+			s.logger.ErrorContext(ctx, "reference update failed; rolling back merged entry", slog.String("path", string(from)), slog.String("error", err.Error()))
+			if rerr := j.MoveTree(ctx, target, from, nil); rerr != nil {
+				s.logger.ErrorContext(ctx, "merge rollback failed", slog.String("path", string(target)), slog.String("error", rerr.Error()))
+			}
 			return fmt.Errorf("files: merge references: %w", err)
 		}
 		s.changed(ctx, userID, from, e.IsDir)

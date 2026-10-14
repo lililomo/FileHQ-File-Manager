@@ -575,5 +575,15 @@ func (j *Jail) AbsForCLI(p VPath) (string, error) {
 	return filepath.Join(j.hostPath, filepath.FromSlash(p.Rel())), nil
 }
 
+// Redact replaces the jail's host directory in s (error text from an
+// external tool, which prints the absolute path it was given) with "<root>"
+// so stored or logged messages never carry STORAGE_ROOT (review B, G-1).
+func (j *Jail) Redact(s string) string {
+	if j == nil || j.hostPath == "" || s == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, j.hostPath, "<root>")
+}
+
 // HostPath is an alias of AbsForCLI (name used in SPEC §8.4).
 func (j *Jail) HostPath(p VPath) (string, error) { return j.AbsForCLI(p) }

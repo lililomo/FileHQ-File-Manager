@@ -51,15 +51,32 @@
       "gray": "Grey"
     }
   },
-  "badges": { "favorite": "Favourite", "pinned": "Pinned", "tag": "{{color}} tag", "shared": "Shared" },
+  "badges": {
+    "favorite": "Favourite",
+    "pinned": "Pinned",
+    "tag": "{{color}} tag",
+    "shared": "Shared"
+  },
   "recent": {
     "title": "Recent",
     "subtitle": "Files you opened, created, uploaded or restored in the last {{days}} days",
     "empty": "No activity yet",
     "emptyHint": "Open or create a file to see it here.",
     "openLocation": "Open file location",
-    "columns": { "name": "Name", "location": "Location", "action": "Action", "at": "When", "size": "Size" },
-    "actions": { "open": "Opened", "edit": "Edited", "upload": "Uploaded", "create": "Created", "restore": "Restored" }
+    "columns": {
+      "name": "Name",
+      "location": "Location",
+      "action": "Action",
+      "at": "When",
+      "size": "Size"
+    },
+    "actions": {
+      "open": "Opened",
+      "edit": "Edited",
+      "upload": "Uploaded",
+      "create": "Created",
+      "restore": "Restored"
+    }
   },
   "activity": {
     "title": "Activity",
@@ -76,7 +93,13 @@
     "from": "From",
     "to": "To",
     "search": "Search path…",
-    "columns": { "at": "When", "action": "Action", "item": "Item", "target": "Target", "details": "Details" },
+    "columns": {
+      "at": "When",
+      "action": "Action",
+      "item": "Item",
+      "target": "Target",
+      "details": "Details"
+    },
     "gone": "(no longer exists)",
     "actions": {
       "open": "Open",
@@ -125,7 +148,14 @@
     "root": "My Files",
     "topFiles": "50 largest files",
     "byType": "Totals per type",
-    "types": { "image": "Images", "video": "Video", "audio": "Audio", "document": "Documents", "archive": "Archives", "other": "Other" },
+    "types": {
+      "image": "Images",
+      "video": "Video",
+      "audio": "Audio",
+      "document": "Documents",
+      "archive": "Archives",
+      "other": "Other"
+    },
     "columns": { "name": "Name", "location": "Location", "size": "Size", "mtime": "Modified" },
     "empty": "Your folder is still empty",
     "openLocation": "Open file location",

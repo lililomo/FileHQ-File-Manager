@@ -90,7 +90,9 @@ export function Treemap({ node, width, height, onOpen, className }: TreemapProps
         width={width}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
-        role="img"
+        // a group, not an image: the folder cells inside are focusable buttons
+        // (axe nested-interactive, review B M-05)
+        role="group"
         aria-label={t('storage.treemap')}
         className="block overflow-hidden rounded-md"
       >

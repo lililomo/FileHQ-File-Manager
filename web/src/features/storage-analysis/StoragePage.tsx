@@ -348,28 +348,31 @@ export function StoragePage() {
                   const v = data.byType[c] ?? { bytes: 0, files: 0 }
                   const pct = data.total > 0 ? Math.round((v.bytes / data.total) * 100) : 0
                   return (
-                    <div key={c} className="space-y-0.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <dt className="flex items-center gap-2">
-                          <FileIcon
-                            category={toIconCategory(c === 'document' ? 'document' : c)}
-                            size={16}
-                          />
-                          {t(`meta:storage.types.${c}`)}
-                        </dt>
-                        <dd className="tabular text-text-muted">
-                          {formatBytes(v.bytes, lang)} · {formatNumber(v.files, lang)}
-                        </dd>
-                      </div>
-                      <div
-                        className="h-1 overflow-hidden rounded-full bg-surface-2"
+                    // dl > div > dt/dd only (axe definition-list/dlitem, review B M-05):
+                    // the bar is a second, presentational dd spanning both columns
+                    <div
+                      key={c}
+                      className="grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-0.5"
+                    >
+                      <dt className="flex items-center gap-2">
+                        <FileIcon
+                          category={toIconCategory(c === 'document' ? 'document' : c)}
+                          size={16}
+                        />
+                        {t(`meta:storage.types.${c}`)}
+                      </dt>
+                      <dd className="tabular text-text-muted">
+                        {formatBytes(v.bytes, lang)} · {formatNumber(v.files, lang)}
+                      </dd>
+                      <dd
+                        className="col-span-2 h-1 overflow-hidden rounded-full bg-surface-2"
                         aria-hidden="true"
                       >
                         <div
                           className="h-full rounded-full bg-accent"
                           style={{ width: `${pct}%` }}
                         />
-                      </div>
+                      </dd>
                     </div>
                   )
                 })}

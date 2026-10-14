@@ -416,6 +416,7 @@ paths:
   /api/v1/files/create:
     post:
       summary: Create an empty file or one from a template
+      description: Inline `content` (or the template body) is reserved against the user's quota before the file is written; over quota answers `413 QUOTA_EXCEEDED` (SPEC §8.2).
       tags: [files]
       security: [{ cookieAuth: [] }]
       parameters:
@@ -615,7 +616,7 @@ paths:
   /api/v1/files/batch-rename:
     post:
       summary: Apply a batch rename rule (undoable)
-      description: The server recomputes the preview; any collision or invalid name answers `409 CONFLICT` with `details.items`. Renames run in two phases through temporary names and roll back on failure.
+      description: The server recomputes the preview; any collision or invalid name (including a file name ending in a blocked extension, reason `blocked_extension`) answers `409 CONFLICT` with `details.items`. Renames run in two phases through temporary names and roll back on failure.
       tags: [files]
       security: [{ cookieAuth: [] }]
       parameters:

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"log/slog"
+	"slices"
 	"time"
 
 	"kppbwi.app/filemanager/internal/db"
@@ -45,6 +46,10 @@ type Options struct {
 	Invalidate     InvalidateFunc
 	// Quota enables reservation/accounting (Step 10a); nil = no limits.
 	Quota *quota.Service
+	// BlockedExtensions (SPEC §5.2 BLOCKED_EXTENSIONS, lowercase without the
+	// dot): batch rename refuses file names ending in one of them, like the
+	// single rename endpoint does (review B, F-1).
+	BlockedExtensions []string
 }
 
 // Service implements the file operations of SPEC §8.5 on top of fsjail,
@@ -61,6 +66,7 @@ type Service struct {
 	invalidate     InvalidateFunc
 	undo           *UndoStore
 	quota          *quota.Service
+	blocked        func(name string) bool
 	dirSizes       *dirSizeCache
 	checksums      *checksumCache
 	analyses       *analysisCache
@@ -87,11 +93,22 @@ func New(o Options) *Service {
 	if o.SyncMaxEntries <= 0 {
 		o.SyncMaxEntries = DefaultSyncMaxEntries
 	}
-	return &Service{repo: o.Repo, locks: o.Locks, trash: o.Trash, logger: o.Logger, now: o.Now,
+	s := &Service{repo: o.Repo, locks: o.Locks, trash: o.Trash, logger: o.Logger, now: o.Now,
 		syncMaxBytes: o.SyncMaxBytes, syncMaxEntries: o.SyncMaxEntries, onChange: o.OnChange,
 		invalidate: o.Invalidate, undo: NewUndoStore(o.Now), quota: o.Quota,
 		dirSizes: newDirSizeCache(o.Now), checksums: newChecksumCache(o.Now), analyses: newAnalysisCache(o.Now)}
+	if len(o.BlockedExtensions) > 0 {
+		blocked := slices.Clone(o.BlockedExtensions)
+		s.blocked = func(name string) bool {
+			ext := Ext(name)
+			return ext != "" && slices.Contains(blocked, ext)
+		}
+	}
+	return s
 }
+
+// Blocked reports whether a file name ends in a blocked extension.
+func (s *Service) Blocked(name string) bool { return s.blocked != nil && s.blocked(name) }
 
 // Quota exposes the accounting service (nil when disabled).
 func (s *Service) Quota() *quota.Service { return s.quota }

@@ -133,6 +133,7 @@
       "control_char": "berisi karakter kontrol",
       "too_long": "terlalu panjang",
       "dot": "nama . atau ..",
+      "blocked_extension": "ekstensi tidak diizinkan",
       "invalid_utf8": "UTF-8 tidak valid"
     }
   },
