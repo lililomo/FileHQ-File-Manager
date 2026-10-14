@@ -41,6 +41,7 @@ import (
 	"kppbwi.app/filemanager/internal/tasks"
 	"kppbwi.app/filemanager/internal/thumbs"
 	"kppbwi.app/filemanager/internal/trash"
+	"kppbwi.app/filemanager/internal/upload"
 	"kppbwi.app/filemanager/internal/webassets"
 )
 
@@ -348,6 +349,26 @@ func runServe(envFile string, noMigrate bool) int {
 	})
 	files.RegisterTasks(engine, filesSvc)
 
+	// Resumable uploads (Step 12a, SPEC §6.5): tusd handler + hooks share the
+	// quota, locks, listing cache and thumbnail invalidation of the file ops.
+	uploadSvc, err := upload.New(upload.Options{
+		DataDir: cfg.DataDir, MaxUploadSize: cfg.MaxUploadSize, ChunkSize: cfg.UploadChunkSize, BaseURL: cfg.AppBaseURL,
+		CrossFS: cfg.CrossFSTrash, Repo: store, Quota: quotaSvc, Files: filesSvc, Locks: locks, OpenJail: upload.OpenJailFunc(trashStore.OpenJail),
+		Invalidate: func(userID string, dir fsjail.VPath) { listingSvc.Invalidate(userID, "", dir) },
+		OnChange: func(ctx context.Context, userID string, p fsjail.VPath, isDir bool) {
+			if err := thumbsSvc.Invalidate(ctx, userID, p, isDir); err != nil {
+				logger.Warn("thumbnail invalidation failed", slog.String("path", string(p)), slog.String("error", err.Error()))
+			}
+		},
+		Publish:   broker.Publish,
+		RequestID: httpapi.RequestIDFrom,
+		Logger:    logger,
+	})
+	if err != nil {
+		logger.Error("upload service unavailable", slog.String("error", err.Error()))
+		return exitConfig
+	}
+
 	handler := httpapi.New(httpapi.Options{
 		Cfg:         cfg,
 		Logger:      logger,
@@ -368,6 +389,7 @@ func runServe(envFile string, noMigrate bool) int {
 		Tasks:       engine,
 		Events:      broker,
 		Notify:      notifySvc,
+		Upload:      uploadSvc,
 		Warnings: func() []string {
 			var out []string
 			for _, tool := range thumbsSvc.MissingTools() {
@@ -388,7 +410,7 @@ func runServe(envFile string, noMigrate bool) int {
 	defer stop()
 	go authSvc.RunMaintenance(ctx)
 	jobs := scheduler.New(cfg.TZDefault, logger, nil)
-	if err := registerJobs(jobs, cfg, trashStore, quotaSvc, filesSvc, auditRec, engine, logger); err != nil {
+	if err := registerJobs(jobs, cfg, trashStore, quotaSvc, filesSvc, auditRec, engine, uploadSvc, logger); err != nil {
 		logger.Error("scheduler setup failed", slog.String("error", err.Error()))
 		return exitConfig
 	}
@@ -433,10 +455,19 @@ func runServe(envFile string, noMigrate bool) int {
 }
 
 // registerJobs wires the background jobs of SPEC §7.3 that exist so far:
-// purge_trash 03:00 (expired Recycle Bin items), recalc_quota 03:30 (every
+// clean_uploads hourly (abandoned tus uploads, Step 12a), purge_trash 03:00 (expired Recycle Bin items), recalc_quota 03:30 (every
 // account, bounded to one hour) and prune_logs 04:00 (activity journal
 // older than ACTIVITY_RETENTION_DAYS). Step 19b exposes RunNow for admins.
-func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *trash.Store, quotaSvc *quota.Service, filesSvc *files.Service, auditRec *audit.Recorder, engine *tasks.Engine, logger *slog.Logger) error {
+func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *trash.Store, quotaSvc *quota.Service, filesSvc *files.Service, auditRec *audit.Recorder, engine *tasks.Engine, uploadSvc *upload.Service, logger *slog.Logger) error {
+	if err := jobs.Add(scheduler.Job{Name: "clean_uploads", Every: time.Hour, Timeout: 15 * time.Minute, Run: func(ctx context.Context) error {
+		res, err := uploadSvc.CleanExpired(ctx)
+		if res.Expired > 0 || res.Orphans > 0 {
+			logger.Info("abandoned uploads cleaned", slog.Int("expired", res.Expired), slog.Int("orphans", res.Orphans), slog.Int64("prunedRows", res.Pruned))
+		}
+		return err
+	}}); err != nil {
+		return err
+	}
 	if err := jobs.Add(scheduler.Job{Name: "cleanup_tasks", At: "04:30", Timeout: 15 * time.Minute, Run: func(ctx context.Context) error {
 		n, err := engine.Cleanup(ctx, tasks.Retention)
 		if n > 0 {

@@ -53,6 +53,7 @@ import {
   Undo2,
   Upload,
   X,
+  FolderUp,
 } from 'lucide-react'
 import type { Item } from '@/features/browser/api'
 
@@ -129,6 +130,10 @@ export interface ActionContext {
   /** Only provided by Search / Recent lists: navigate to the folder and select the item. */
   openLocation?: () => void
   openInNewWindow?: () => void
+  /** Step 12a: upload into the open folder / the focused folder. */
+  uploadFile?: () => void
+  uploadFolder?: () => void
+  uploadHere?: () => void
 }
 
 export interface ActionDef {
@@ -413,9 +418,8 @@ export const ACTIONS: ActionDef[] = [
     labelKey: 'uploadHere',
     group: 'transfer',
     icon: Upload,
-    available: false,
     isApplicable: oneFolder,
-    run: noop,
+    run: (c) => c.uploadHere?.(),
   },
   {
     id: 'searchHere',
@@ -589,18 +593,16 @@ export const ACTIONS: ActionDef[] = [
     group: 'transfer',
     icon: Upload,
     shortcut: 'upload',
-    available: false,
     isApplicable: always,
-    run: noop,
+    run: (c) => c.uploadFile?.(),
   },
   {
     id: 'uploadFolder',
     labelKey: 'uploadFolder',
     group: 'transfer',
-    icon: Upload,
-    available: false,
+    icon: FolderUp,
     isApplicable: always,
-    run: noop,
+    run: (c) => c.uploadFolder?.(),
   },
   {
     id: 'remoteDownload',

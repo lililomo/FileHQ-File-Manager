@@ -1681,10 +1681,138 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/upload/precheck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate planned uploads before the tus session starts (SPEC §8.8 step 2)
+         * @description Per file: `ok`, `conflict` (with the existing item's `size`/`mtime`/`isDir`; `reason: type_mismatch` when a folder is in the way),
+         *     `blocked_ext` (`BLOCKED_EXTENSIONS`), `too_large` (`MAX_UPLOAD_SIZE`) or `name_invalid` (`reason` from `fsjail.ValidateName`).
+         *     `relativePath` is the folder path below `path` for folder uploads ("a/b/c", no file name). `needed` sums the `ok` + `conflict`
+         *     files; `quotaOk` is false when `needed > free` (`quotaReason: quota`) or when the storage disk would drop below its reserve
+         *     (`quotaReason: disk`). `free` already subtracts the reservations of active uploads. Nothing is reserved by this call.
+         */
+        post: operations["uploadPrecheck"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/upload/tus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a resumable upload (tus 1.0.0 creation extension)
+         * @description The tus endpoint is `/api/v1/upload/tus/` (trailing slash; both spellings are accepted). Protocol headers: `Tus-Resumable: 1.0.0`,
+         *     `Upload-Length` (bytes; `Upload-Defer-Length` is rejected), `Upload-Metadata` (base64 pairs): `filename` (required), `path` (destination
+         *     folder, required), `relativePath` (folder path below `path` for folder uploads), `onConflict` (`overwrite|skip|rename`, default `rename`),
+         *     `lastModified` (epoch ms → mtime of the final file). Aliases `name`, `dest`, `relPath`, `policy` are accepted.
+         *     Session cookie and `X-CSRF-Token` are required on POST/PATCH/DELETE; `HEAD`/`OPTIONS` need the cookie only.
+         *     Creating reserves `Upload-Length` bytes against the quota (durable: the sum of active sessions survives restarts) and answers
+         *     `201` with an absolute `Location` built from `APP_BASE_URL`. Rejections use the JSON error envelope: `400 NAME_INVALID|PATH_INVALID|VALIDATION_FAILED`,
+         *     `404 NOT_FOUND` (destination folder), `413 PAYLOAD_TOO_LARGE` (above `MAX_UPLOAD_SIZE`) / `413 QUOTA_EXCEEDED`, `415 UNSUPPORTED_TYPE`.
+         *     An empty file (`Upload-Length: 0`) is finalised inside the POST (see the PATCH response headers).
+         */
+        post: operations["tusCreate"];
+        delete?: never;
+        /** tus capability discovery (`Tus-Version`, `Tus-Extension`, `Tus-Max-Size`) */
+        options: operations["tusOptions"];
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/upload/tus/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Upload id (UUIDv7) from Location */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Abort an upload (tus termination extension); its quota reservation is released */
+        delete: operations["tusDelete"];
+        /** tus capability discovery */
+        options: operations["tusOptionsID"];
+        /**
+         * Current offset of an upload (resume)
+         * @description Only the owner of an **active** session sees it; any other id answers `404 NOT_FOUND` (finished, aborted, expired or foreign uploads).
+         */
+        head: operations["tusHead"];
+        /**
+         * Append one chunk (`application/offset+octet-stream`, at most `UPLOAD_CHUNK_SIZE` bytes)
+         * @description `Upload-Offset` must equal the server offset (`409` otherwise). A body larger than `UPLOAD_CHUNK_SIZE` is refused with
+         *     `413 PAYLOAD_TOO_LARGE` (`reason: chunk_too_large`) before it is read. The PATCH that completes the upload also finalises it:
+         *     the stored size is verified, the file is moved atomically into `path/relativePath/filename` (folders created as needed) under
+         *     `onConflict`, quota is committed, `activity_logs` gets `upload`, listings/thumbnails are invalidated and `file.changed` is sent.
+         *     Finalisation answers with `Upload-Result: created|renamed|overwritten|skipped` and `Upload-Path` (percent-encoded virtual path,
+         *     empty when skipped). If the destination folder disappeared the upload is dropped (`404 NOT_FOUND`); a folder in the way of an
+         *     `overwrite` is `400 VALIDATION_FAILED type_mismatch` (upload dropped); a path lock answers `423 OPERATION_IN_PROGRESS` so tus
+         *     clients retry. Excluded from the API timeout and the JSON body limit.
+         */
+        patch: operations["tusPatch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        UploadPrecheckRequest: {
+            /** @description Destination folder (virtual path) */
+            path: string;
+            files: {
+                name: string;
+                size: number;
+                /** @description Folder path below `path` for folder uploads ("a/b/c") */
+                relativePath?: string;
+            }[];
+        };
+        UploadPrecheckItem: {
+            name: string;
+            relativePath?: string;
+            /** @description Virtual path the file would get (empty when the name is invalid) */
+            path: string;
+            /** @enum {string} */
+            status: "ok" | "conflict" | "blocked_ext" | "too_large" | "name_invalid";
+            /** @description `type_mismatch` for a folder in the way, the blocked extension, `max_upload_size`, or the `ValidateName` reason */
+            reason?: string;
+            existing?: {
+                size?: number;
+                /** Format: date-time */
+                mtime?: string;
+                isDir?: boolean;
+            } | null;
+        };
+        UploadPrecheckResponse: {
+            items: components["schemas"]["UploadPrecheckItem"][];
+            quotaOk: boolean;
+            /** @enum {string} */
+            quotaReason?: "quota" | "disk";
+            /** @description Bytes of the files that would be uploaded (ok + conflict) */
+            needed: number;
+            /** @description Quota left after used */
+            free: number;
+            limit: number;
+            maxUploadSize: number;
+            chunkSize: number;
+        };
         /** @description One directory entry (SPEC §6.3 Item). Metadata slots are null/false until later steps fill them. */
         Item: {
             name: string;
@@ -3826,6 +3954,208 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["Error"];
+        };
+    };
+    uploadPrecheck: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadPrecheckRequest"];
+            };
+        };
+        responses: {
+            /** @description Verdict per file plus the quota summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadPrecheckResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    tusCreate: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                "Tus-Resumable": "1.0.0";
+                "Upload-Length": number;
+                "Upload-Metadata": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Upload created */
+            201: {
+                headers: {
+                    /** @description Absolute upload URL (APP_BASE_URL + /api/v1/upload/tus/ + id) */
+                    Location?: string;
+                    /** @description Comma-separated name warnings (e.g. windows_incompatible) */
+                    "Upload-Warnings"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            413: components["responses"]["Error"];
+            415: components["responses"]["Error"];
+        };
+    };
+    tusOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Protocol headers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    tusDelete: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                "Tus-Resumable": "1.0.0";
+            };
+            path: {
+                /** @description Upload id (UUIDv7) from Location */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Upload removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    tusOptionsID: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Upload id (UUIDv7) from Location */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Protocol headers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tusHead: {
+        parameters: {
+            query?: never;
+            header: {
+                "Tus-Resumable": "1.0.0";
+            };
+            path: {
+                /** @description Upload id (UUIDv7) from Location */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Offset known */
+            200: {
+                headers: {
+                    "Upload-Offset"?: number;
+                    "Upload-Length"?: number;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    tusPatch: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                "Tus-Resumable": "1.0.0";
+                "Upload-Offset": number;
+            };
+            path: {
+                /** @description Upload id (UUIDv7) from Location */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/offset+octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Chunk stored (and, on the last one, the file finalised) */
+            204: {
+                headers: {
+                    "Upload-Offset"?: number;
+                    "Upload-Result"?: "created" | "renamed" | "overwritten" | "skipped";
+                    "Upload-Path"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            /** @description Mismatched offset (tus `ERR_MISMATCHED_OFFSET`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            413: components["responses"]["Error"];
+            423: components["responses"]["Error"];
         };
     };
 }

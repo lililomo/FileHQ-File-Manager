@@ -68,6 +68,21 @@ type Service struct {
 
 	mu       sync.Mutex
 	reserved map[string]int64
+	// extra reports reservations persisted outside this process (active
+	// upload sessions, SPEC §4.2): they survive restarts and are counted
+	// like in-memory reservations by Usage and Reserve.
+	extra []ReservedSource
+}
+
+// ReservedSource returns bytes a user has reserved durably (e.g. the sum of
+// active upload sessions). Errors are logged and treated as zero.
+type ReservedSource func(ctx context.Context, userID string) (int64, error)
+
+// AddReservedSource registers a durable reservation source.
+func (s *Service) AddReservedSource(src ReservedSource) {
+	s.mu.Lock()
+	s.extra = append(s.extra, src)
+	s.mu.Unlock()
 }
 
 // New builds a Service.
@@ -112,7 +127,16 @@ func (s *Service) usageFor(ctx context.Context, u sqlc.User) (Usage, error) {
 	}
 	s.mu.Lock()
 	out.Reserved = s.reserved[u.ID]
+	extra := s.extra
 	s.mu.Unlock()
+	for _, src := range extra {
+		n, err := src(ctx, u.ID)
+		if err != nil {
+			s.logger.WarnContext(ctx, "reservation source failed", slog.String("error", err.Error()))
+			continue
+		}
+		out.Reserved += n
+	}
 	eff := out.Effective() + out.Reserved
 	if out.Limit > 0 {
 		out.Free = max(0, out.Limit-eff)

@@ -11,6 +11,7 @@ import { useClipboardStore } from '@/stores/clipboard'
 import { getPref } from '@/stores/prefs'
 import { QUOTA_QUERY_KEY } from '@/features/quota/api'
 import { taskLabel } from '@/features/tasks/taskLabel'
+import { uploadFromDataTransfer } from '@/features/upload/useUploader'
 import { useTasksStore } from '@/stores/tasks'
 import {
   batchRenameApply,
@@ -122,7 +123,7 @@ export interface FileOps {
   symlink: (linkPath: string, target: string) => Promise<OpResponse | null>
   applyBatchRename: (paths: string[], rule: RenameRule) => Promise<OpResponse | null>
   undo: () => Promise<void>
-  /** Files dropped from the OS (upload arrives in Step 12a). */
+  /** Files dropped from the OS go to the upload queue (Step 12a). */
   osDrop: (files: DataTransfer, toDir: string) => void
 }
 
@@ -444,9 +445,9 @@ export function useFileOps(): FileOps {
     [invalidate, done, fail, t, n],
   )
 
-  const osDrop = useCallback<FileOps['osDrop']>(() => {
-    toast(t('fileops:toast.uploadSoon'))
-  }, [t])
+  const osDrop = useCallback<FileOps['osDrop']>((files, toDir) => {
+    void uploadFromDataTransfer(files, toDir)
+  }, [])
 
   return useMemo(
     () => ({

@@ -6,6 +6,7 @@ import { DeleteConfirmDialog, DeletePermanentDialog } from './DeleteDialog'
 import { MoveCopyDialog } from './MoveCopyDialog'
 import { NewItemDialog } from './NewItemDialog'
 import { PermissionDialog } from './PermissionDialog'
+import { PrecheckDialog } from '@/features/upload/PrecheckDialog'
 import { focusGrid, useFileOpsDialogs } from './store'
 import type { FileOps } from './useFileOps'
 
@@ -89,6 +90,14 @@ export function FileOpsDialogs({ ops }: { ops: FileOps }) {
       return (
         <DeletePermanentDialog
           paths={dialog.paths}
+          onResolve={dialog.resolve}
+          onCloseAutoFocus={returnFocus}
+        />
+      )
+    case 'uploadPrecheck':
+      return (
+        <PrecheckDialog
+          info={dialog.info}
           onResolve={dialog.resolve}
           onCloseAutoFocus={returnFocus}
         />

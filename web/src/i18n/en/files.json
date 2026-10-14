@@ -174,7 +174,9 @@
     "label": "Toolbar",
     "preview": "Preview panel",
     "newFromTemplate": "From template",
-    "newSymlink": "Symlink…"
+    "newSymlink": "Symlink…",
+    "uploadFile": "Upload files",
+    "uploadFolder": "Upload folder"
   },
   "columns": {
     "name": "Name",

@@ -64,7 +64,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'palette', keys: 'Ctrl+K', scope: 'global', labelKey: 'palette', allowInInput: true },
   { id: 'newFolder', keys: 'Alt+N', scope: 'browser', labelKey: 'newFolder' },
   { id: 'newFile', keys: 'Alt+Shift+N', scope: 'browser', labelKey: 'newFile' },
-  { id: 'upload', keys: 'Ctrl+U', scope: 'browser', labelKey: 'upload', planned: true },
+  { id: 'upload', keys: 'Ctrl+U', scope: 'browser', labelKey: 'upload' },
   { id: 'viewDetails', keys: 'Ctrl+1', scope: 'browser', labelKey: 'viewDetails' },
   { id: 'viewList', keys: 'Ctrl+2', scope: 'browser', labelKey: 'viewList' },
   { id: 'viewTiles', keys: 'Ctrl+3', scope: 'browser', labelKey: 'viewTiles' },

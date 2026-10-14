@@ -12,6 +12,7 @@ type Querier interface {
 	ApplyQuotaDelta(ctx context.Context, arg ApplyQuotaDeltaParams) error
 	CountActiveAdmins(ctx context.Context) (int64, error)
 	CountActiveSessions(ctx context.Context, now string) (int64, error)
+	CountActiveUploadSessions(ctx context.Context, userID string) (int64, error)
 	CountActivity(ctx context.Context, userID string) (int64, error)
 	CountAllUsers(ctx context.Context) (int64, error)
 	CountAuditSince(ctx context.Context, arg CountAuditSinceParams) (int64, error)
@@ -53,6 +54,7 @@ type Querier interface {
 	DeletePurgedTrashRowsBefore(ctx context.Context, purgedAt *string) (int64, error)
 	DeleteSetting(ctx context.Context, key string) error
 	DeleteTrashItemRow(ctx context.Context, arg DeleteTrashItemRowParams) error
+	DeleteUploadSessionsBefore(ctx context.Context, before string) (int64, error)
 	DeleteUserTask(ctx context.Context, arg DeleteUserTaskParams) (int64, error)
 	GetFavorite(ctx context.Context, arg GetFavoriteParams) (Favorite, error)
 	GetFileNote(ctx context.Context, arg GetFileNoteParams) (FileNote, error)
@@ -68,9 +70,11 @@ type Querier interface {
 	GetSetting(ctx context.Context, key string) (Setting, error)
 	GetTask(ctx context.Context, id string) (Task, error)
 	GetTrashItem(ctx context.Context, arg GetTrashItemParams) (TrashItem, error)
+	GetUploadSession(ctx context.Context, id string) (UploadSession, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
 	GetUserTask(ctx context.Context, arg GetUserTaskParams) (Task, error)
+	GetUserUploadSession(ctx context.Context, arg GetUserUploadSessionParams) (UploadSession, error)
 	HardDeleteUser(ctx context.Context, id string) error
 	InsertActivity(ctx context.Context, arg InsertActivityParams) (int64, error)
 	InsertAudit(ctx context.Context, arg InsertAuditParams) (int64, error)
@@ -84,11 +88,17 @@ type Querier interface {
 	InsertTask(ctx context.Context, arg InsertTaskParams) error
 	InsertTaskLog(ctx context.Context, arg InsertTaskLogParams) error
 	InsertTrashItem(ctx context.Context, arg InsertTrashItemParams) error
+	// Resumable upload sessions (SPEC 4.2 upload_sessions, 6.5). Comments are
+	// ASCII only (sqlc 1.31 offset bug). Per-user queries filter on user_id so
+	// another user's upload id answers "not found".
+	InsertUploadSession(ctx context.Context, arg InsertUploadSessionParams) error
+	ListActiveUploadIDs(ctx context.Context) ([]string, error)
 	ListActivity(ctx context.Context, arg ListActivityParams) ([]ActivityLog, error)
 	ListActivityFiltered(ctx context.Context, arg ListActivityFilteredParams) ([]ActivityLog, error)
 	ListAudit(ctx context.Context, arg ListAuditParams) ([]AuditLog, error)
 	ListDirtyQuotaUsers(ctx context.Context) ([]string, error)
 	ListExpiredTrash(ctx context.Context, arg ListExpiredTrashParams) ([]TrashItem, error)
+	ListExpiredUploadSessions(ctx context.Context, arg ListExpiredUploadSessionsParams) ([]UploadSession, error)
 	ListFavorites(ctx context.Context, userID string) ([]Favorite, error)
 	// Step 10b: favorites, pins, notes and tags read per folder (listing
 	// enrichment) and per item. Folder scans use the same substr prefix trick as
@@ -142,11 +152,14 @@ type Querier interface {
 	SetTaskRunning(ctx context.Context, arg SetTaskRunningParams) error
 	SetTrashPurged(ctx context.Context, arg SetTrashPurgedParams) (int64, error)
 	SetTrashRestored(ctx context.Context, arg SetTrashRestoredParams) (int64, error)
+	SetUploadSessionState(ctx context.Context, arg SetUploadSessionStateParams) (int64, error)
 	SetUserTOTP(ctx context.Context, arg SetUserTOTPParams) error
 	SoftDeleteUser(ctx context.Context, arg SoftDeleteUserParams) error
+	SumActiveUploadSizes(ctx context.Context, userID string) (interface{}, error)
 	SumQuotaUsed(ctx context.Context) (interface{}, error)
 	SumTrashBytes(ctx context.Context, userID string) (interface{}, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
+	TouchUploadSession(ctx context.Context, arg TouchUploadSessionParams) error
 	UpdateTaskProgress(ctx context.Context, arg UpdateTaskProgressParams) error
 	UpdateTrashItemSize(ctx context.Context, arg UpdateTrashItemSizeParams) error
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error

@@ -174,7 +174,9 @@
     "label": "Toolbar",
     "preview": "Panel preview",
     "newFromTemplate": "Dari template",
-    "newSymlink": "Symlink…"
+    "newSymlink": "Symlink…",
+    "uploadFile": "Upload file",
+    "uploadFolder": "Upload folder"
   },
   "columns": {
     "name": "Nama",

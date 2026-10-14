@@ -1,0 +1,77 @@
+{
+  "dropzone": "Lepaskan untuk upload ke {{path}}",
+  "status": {
+    "queued": "Menunggu",
+    "uploading": "Mengunggah",
+    "paused": "Dijeda",
+    "error": "Gagal",
+    "done": "Selesai",
+    "skipped": "Dilewati",
+    "cancelled": "Dibatalkan"
+  },
+  "panel": {
+    "title": "Transfer",
+    "to": "ke {{dir}}",
+    "progress": "Progres upload {{percent}}%",
+    "speed": "{{speed}}/s",
+    "eta": "{{eta}} tersisa",
+    "resumed": "dilanjutkan dari {{from}}",
+    "renamedTo": "Disimpan sebagai {{name}}",
+    "overwritten": "Menimpa file lama",
+    "detached": "Pilih file lagi untuk melanjutkan",
+    "idle": "{{n}} transfer",
+    "hidden": "{{n}} transfer lainnya tidak ditampilkan"
+  },
+  "actions": {
+    "pause": "Jeda",
+    "resume": "Lanjutkan",
+    "cancel": "Batalkan",
+    "retry": "Coba lagi",
+    "remove": "Hapus dari daftar",
+    "openFolder": "Buka folder",
+    "pauseAll": "Jeda semua",
+    "resumeAll": "Lanjutkan semua",
+    "cancelAll": "Batalkan semua",
+    "clearFinished": "Bersihkan selesai",
+    "collapse": "Ciutkan",
+    "expand": "Perluas",
+    "pickAgain": "Pilih file…",
+    "pickAgainAll": "Pilih {{n}} file untuk melanjutkan"
+  },
+  "precheck": {
+    "title": "Sebagian file tidak bisa diunggah",
+    "quotaTitle": "Kuota tidak cukup",
+    "rejectedSummary_one": "{{n}} file ditolak; {{accepted}} file lainnya bisa diunggah.",
+    "rejectedSummary_other": "{{n}} file ditolak; {{accepted}} file lainnya bisa diunggah.",
+    "quotaShort": "Upload ini butuh {{needed}}, sisa kuota Anda {{free}}.",
+    "diskShort": "Upload ini butuh {{needed}}, ruang disk server yang tersedia hanya {{free}}.",
+    "partialHint": "{{n}} file pertama masih muat dan bisa diunggah sekarang.",
+    "continue": "Lanjutkan {{n}} file",
+    "continueFits": "Unggah {{n}} file yang muat",
+    "more": "… dan {{n}} lainnya",
+    "reason": {
+      "blocked": "ekstensi .{{ext}} diblokir",
+      "tooLarge": "lebih besar dari {{max}}",
+      "invalid": "nama tidak valid"
+    }
+  },
+  "toast": {
+    "done_one": "{{n}} file diunggah",
+    "done_other": "{{n}} file diunggah",
+    "skipped": "{{n}} dilewati.",
+    "errors": "{{n}} gagal.",
+    "allSkipped": "{{n}} file dilewati karena sudah ada.",
+    "truncated": "Hanya {{max}} file pertama yang diproses per batch.",
+    "precheckFailed": "Pemeriksaan sebelum upload gagal.",
+    "resumePrompt_one": "{{n}} upload belum selesai dari sesi sebelumnya.",
+    "resumePrompt_other": "{{n}} upload belum selesai dari sesi sebelumnya."
+  },
+  "error": {
+    "QUOTA_EXCEEDED": "Kuota penyimpanan tidak cukup.",
+    "UNSUPPORTED_TYPE": "Tipe file diblokir oleh administrator.",
+    "PAYLOAD_TOO_LARGE": "File melebihi ukuran upload maksimum.",
+    "NOT_FOUND": "Folder tujuan sudah tidak ada.",
+    "NETWORK": "Koneksi terputus; upload akan dicoba lagi.",
+    "OPERATION_IN_PROGRESS": "Path sedang dipakai operasi lain."
+  }
+}

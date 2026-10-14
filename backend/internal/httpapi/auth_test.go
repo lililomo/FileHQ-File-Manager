@@ -31,6 +31,7 @@ import (
 	"kppbwi.app/filemanager/internal/sse"
 	"kppbwi.app/filemanager/internal/tasks"
 	"kppbwi.app/filemanager/internal/trash"
+	"kppbwi.app/filemanager/internal/upload"
 )
 
 const initialAdminPassword = "IB+35t3U5+I_p5ZJcHLodfcr"
@@ -75,6 +76,7 @@ type authEnv struct {
 	tasks   *tasks.Engine
 	events  *sse.Broker
 	notify  *notify.Service
+	upload  *upload.Service
 }
 
 type notifyFunc func(ctx context.Context, userID, typ, title, body, link string) error
@@ -177,8 +179,15 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { stopEngine(); env.tasks.Shutdown(2 * time.Second); env.events.Close() })
+	env.upload, err = upload.New(upload.Options{DataDir: cfg.DataDir, MaxUploadSize: cfg.MaxUploadSize, ChunkSize: cfg.UploadChunkSize, BaseURL: cfg.AppBaseURL,
+		Repo: store, Quota: env.quota, Files: env.files, Locks: env.locks, OpenJail: upload.OpenJailFunc(env.trash.OpenJail),
+		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) },
+		Publish:    env.events.Publish, RequestID: RequestIDFrom, Logger: logger, Now: clock.Now})
+	if err != nil {
+		t.Fatal(err)
+	}
 	env.handler = New(Options{Cfg: cfg, Logger: logger, Version: "test", Store: store, Auth: svc, Listing: env.listing, Locks: env.locks, Files: env.files, Quota: env.quota, Meta: env.meta,
-		Tasks: env.tasks, Events: env.events, Notify: env.notify,
+		Tasks: env.tasks, Events: env.events, Notify: env.notify, Upload: env.upload,
 		Assets: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("spa")) })})
 	return env
 }

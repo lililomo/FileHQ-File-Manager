@@ -28,12 +28,14 @@ func (s *Server) mountEvents(api chi.Router) {
 	})
 }
 
-// TimeoutExcept is middleware.Timeout for every path but the streaming ones.
+// TimeoutExcept is middleware.Timeout for every path but the streaming ones
+// (exact paths, or prefixes when the entry ends in "/").
 func TimeoutExcept(d time.Duration, except ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			for _, p := range except {
-				if r.URL.Path == p {
+				// an entry ending in "/" is a prefix (tus: /api/v1/upload/tus/…)
+				if r.URL.Path == p || (strings.HasSuffix(p, "/") && strings.HasPrefix(r.URL.Path, p)) {
 					next.ServeHTTP(w, r)
 					return
 				}

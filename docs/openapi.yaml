@@ -25,6 +25,8 @@ tags:
     description: Favorit, pin, catatan, tag warna (SPEC §8.7)
   - name: tasks
     description: Task engine, SSE, notifikasi in-app (SPEC §7, §6.4, §8.16)
+  - name: upload
+    description: Upload resumable tus + precheck (SPEC §6.5, §8.8, ADR-03)
 
 paths:
   /healthz:
@@ -1427,6 +1429,152 @@ paths:
       responses:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/Error" }
+  /api/v1/upload/precheck:
+    post:
+      tags: [upload]
+      summary: Validate planned uploads before the tus session starts (SPEC §8.8 step 2)
+      operationId: uploadPrecheck
+      description: |
+        Per file: `ok`, `conflict` (with the existing item's `size`/`mtime`/`isDir`; `reason: type_mismatch` when a folder is in the way),
+        `blocked_ext` (`BLOCKED_EXTENSIONS`), `too_large` (`MAX_UPLOAD_SIZE`) or `name_invalid` (`reason` from `fsjail.ValidateName`).
+        `relativePath` is the folder path below `path` for folder uploads ("a/b/c", no file name). `needed` sums the `ok` + `conflict`
+        files; `quotaOk` is false when `needed > free` (`quotaReason: quota`) or when the storage disk would drop below its reserve
+        (`quotaReason: disk`). `free` already subtracts the reservations of active uploads. Nothing is reserved by this call.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UploadPrecheckRequest" }
+      responses:
+        "200":
+          description: Verdict per file plus the quota summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UploadPrecheckResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/upload/tus:
+    post:
+      tags: [upload]
+      summary: Create a resumable upload (tus 1.0.0 creation extension)
+      operationId: tusCreate
+      description: |
+        The tus endpoint is `/api/v1/upload/tus/` (trailing slash; both spellings are accepted). Protocol headers: `Tus-Resumable: 1.0.0`,
+        `Upload-Length` (bytes; `Upload-Defer-Length` is rejected), `Upload-Metadata` (base64 pairs): `filename` (required), `path` (destination
+        folder, required), `relativePath` (folder path below `path` for folder uploads), `onConflict` (`overwrite|skip|rename`, default `rename`),
+        `lastModified` (epoch ms → mtime of the final file). Aliases `name`, `dest`, `relPath`, `policy` are accepted.
+        Session cookie and `X-CSRF-Token` are required on POST/PATCH/DELETE; `HEAD`/`OPTIONS` need the cookie only.
+        Creating reserves `Upload-Length` bytes against the quota (durable: the sum of active sessions survives restarts) and answers
+        `201` with an absolute `Location` built from `APP_BASE_URL`. Rejections use the JSON error envelope: `400 NAME_INVALID|PATH_INVALID|VALIDATION_FAILED`,
+        `404 NOT_FOUND` (destination folder), `413 PAYLOAD_TOO_LARGE` (above `MAX_UPLOAD_SIZE`) / `413 QUOTA_EXCEEDED`, `415 UNSUPPORTED_TYPE`.
+        An empty file (`Upload-Length: 0`) is finalised inside the POST (see the PATCH response headers).
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+        - { name: Tus-Resumable, in: header, required: true, schema: { type: string, enum: ["1.0.0"] } }
+        - { name: Upload-Length, in: header, required: true, schema: { type: integer, minimum: 0 } }
+        - { name: Upload-Metadata, in: header, required: true, schema: { type: string } }
+      responses:
+        "201":
+          description: Upload created
+          headers:
+            Location: { schema: { type: string }, description: "Absolute upload URL (APP_BASE_URL + /api/v1/upload/tus/ + id)" }
+            Upload-Warnings: { schema: { type: string }, description: "Comma-separated name warnings (e.g. windows_incompatible)" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+    options:
+      tags: [upload]
+      summary: tus capability discovery (`Tus-Version`, `Tus-Extension`, `Tus-Max-Size`)
+      operationId: tusOptions
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: Protocol headers }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/upload/tus/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string }, description: "Upload id (UUIDv7) from Location" }
+    head:
+      tags: [upload]
+      summary: Current offset of an upload (resume)
+      operationId: tusHead
+      description: Only the owner of an **active** session sees it; any other id answers `404 NOT_FOUND` (finished, aborted, expired or foreign uploads).
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: Tus-Resumable, in: header, required: true, schema: { type: string, enum: ["1.0.0"] } }
+      responses:
+        "200":
+          description: Offset known
+          headers:
+            Upload-Offset: { schema: { type: integer } }
+            Upload-Length: { schema: { type: integer } }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [upload]
+      summary: Append one chunk (`application/offset+octet-stream`, at most `UPLOAD_CHUNK_SIZE` bytes)
+      operationId: tusPatch
+      description: |
+        `Upload-Offset` must equal the server offset (`409` otherwise). A body larger than `UPLOAD_CHUNK_SIZE` is refused with
+        `413 PAYLOAD_TOO_LARGE` (`reason: chunk_too_large`) before it is read. The PATCH that completes the upload also finalises it:
+        the stored size is verified, the file is moved atomically into `path/relativePath/filename` (folders created as needed) under
+        `onConflict`, quota is committed, `activity_logs` gets `upload`, listings/thumbnails are invalidated and `file.changed` is sent.
+        Finalisation answers with `Upload-Result: created|renamed|overwritten|skipped` and `Upload-Path` (percent-encoded virtual path,
+        empty when skipped). If the destination folder disappeared the upload is dropped (`404 NOT_FOUND`); a folder in the way of an
+        `overwrite` is `400 VALIDATION_FAILED type_mismatch` (upload dropped); a path lock answers `423 OPERATION_IN_PROGRESS` so tus
+        clients retry. Excluded from the API timeout and the JSON body limit.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+        - { name: Tus-Resumable, in: header, required: true, schema: { type: string, enum: ["1.0.0"] } }
+        - { name: Upload-Offset, in: header, required: true, schema: { type: integer, minimum: 0 } }
+      requestBody:
+        required: true
+        content:
+          application/offset+octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "204":
+          description: Chunk stored (and, on the last one, the file finalised)
+          headers:
+            Upload-Offset: { schema: { type: integer } }
+            Upload-Result: { schema: { type: string, enum: [created, renamed, overwritten, skipped] } }
+            Upload-Path: { schema: { type: string } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { description: Mismatched offset (tus `ERR_MISMATCHED_OFFSET`) }
+        "413": { $ref: "#/components/responses/Error" }
+        "423": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [upload]
+      summary: Abort an upload (tus termination extension); its quota reservation is released
+      operationId: tusDelete
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+        - { name: Tus-Resumable, in: header, required: true, schema: { type: string, enum: ["1.0.0"] } }
+      responses:
+        "204": { description: Upload removed }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    options:
+      tags: [upload]
+      summary: tus capability discovery
+      operationId: tusOptionsID
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: Protocol headers }
 components:
   securitySchemes:
     cookieAuth:
@@ -1439,6 +1587,51 @@ components:
       in: header
       name: X-CSRF-Token
   schemas:
+    UploadPrecheckRequest:
+      type: object
+      required: [path, files]
+      properties:
+        path: { type: string, description: Destination folder (virtual path) }
+        files:
+          type: array
+          maxItems: 1000
+          items:
+            type: object
+            required: [name, size]
+            properties:
+              name: { type: string }
+              size: { type: integer, minimum: 0 }
+              relativePath: { type: string, description: Folder path below `path` for folder uploads ("a/b/c") }
+    UploadPrecheckItem:
+      type: object
+      required: [name, path, status]
+      properties:
+        name: { type: string }
+        relativePath: { type: string }
+        path: { type: string, description: Virtual path the file would get (empty when the name is invalid) }
+        status: { type: string, enum: [ok, conflict, blocked_ext, too_large, name_invalid] }
+        reason: { type: string, description: "`type_mismatch` for a folder in the way, the blocked extension, `max_upload_size`, or the `ValidateName` reason" }
+        existing:
+          type: object
+          nullable: true
+          properties:
+            size: { type: integer }
+            mtime: { type: string, format: date-time }
+            isDir: { type: boolean }
+    UploadPrecheckResponse:
+      type: object
+      required: [items, quotaOk, needed, free, limit, maxUploadSize, chunkSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/UploadPrecheckItem" }
+        quotaOk: { type: boolean }
+        quotaReason: { type: string, enum: [quota, disk] }
+        needed: { type: integer, description: Bytes of the files that would be uploaded (ok + conflict) }
+        free: { type: integer, description: Quota left after used, trash, versions and active upload reservations (0 = unlimited quota) }
+        limit: { type: integer }
+        maxUploadSize: { type: integer }
+        chunkSize: { type: integer }
     Item:
       type: object
       description: One directory entry (SPEC §6.3 Item). Metadata slots are null/false until later steps fill them.

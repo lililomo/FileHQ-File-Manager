@@ -1,0 +1,77 @@
+{
+  "dropzone": "Drop to upload to {{path}}",
+  "status": {
+    "queued": "Queued",
+    "uploading": "Uploading",
+    "paused": "Paused",
+    "error": "Failed",
+    "done": "Done",
+    "skipped": "Skipped",
+    "cancelled": "Cancelled"
+  },
+  "panel": {
+    "title": "Transfers",
+    "to": "to {{dir}}",
+    "progress": "Upload progress {{percent}}%",
+    "speed": "{{speed}}/s",
+    "eta": "{{eta}} left",
+    "resumed": "resumed from {{from}}",
+    "renamedTo": "Saved as {{name}}",
+    "overwritten": "Replaced the existing file",
+    "detached": "Pick the file again to resume",
+    "idle": "{{n}} transfers",
+    "hidden": "{{n}} more transfers not shown"
+  },
+  "actions": {
+    "pause": "Pause",
+    "resume": "Resume",
+    "cancel": "Cancel",
+    "retry": "Retry",
+    "remove": "Remove from list",
+    "openFolder": "Open folder",
+    "pauseAll": "Pause all",
+    "resumeAll": "Resume all",
+    "cancelAll": "Cancel all",
+    "clearFinished": "Clear finished",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "pickAgain": "Pick files…",
+    "pickAgainAll": "Pick {{n}} files to resume"
+  },
+  "precheck": {
+    "title": "Some files cannot be uploaded",
+    "quotaTitle": "Not enough quota",
+    "rejectedSummary_one": "{{n}} file was rejected; {{accepted}} other files can be uploaded.",
+    "rejectedSummary_other": "{{n}} files were rejected; {{accepted}} other files can be uploaded.",
+    "quotaShort": "This upload needs {{needed}}; your remaining quota is {{free}}.",
+    "diskShort": "This upload needs {{needed}}; the server disk only has {{free}} available.",
+    "partialHint": "The first {{n}} files still fit and can be uploaded now.",
+    "continue": "Continue with {{n}} files",
+    "continueFits": "Upload the {{n}} files that fit",
+    "more": "… and {{n}} more",
+    "reason": {
+      "blocked": ".{{ext}} extension is blocked",
+      "tooLarge": "larger than {{max}}",
+      "invalid": "invalid name"
+    }
+  },
+  "toast": {
+    "done_one": "{{n}} file uploaded",
+    "done_other": "{{n}} files uploaded",
+    "skipped": "{{n}} skipped.",
+    "errors": "{{n}} failed.",
+    "allSkipped": "{{n}} files skipped because they already exist.",
+    "truncated": "Only the first {{max}} files are processed per batch.",
+    "precheckFailed": "The pre-upload check failed.",
+    "resumePrompt_one": "{{n}} upload from the previous session is unfinished.",
+    "resumePrompt_other": "{{n}} uploads from the previous session are unfinished."
+  },
+  "error": {
+    "QUOTA_EXCEEDED": "Not enough storage quota.",
+    "UNSUPPORTED_TYPE": "The file type is blocked by the administrator.",
+    "PAYLOAD_TOO_LARGE": "The file exceeds the maximum upload size.",
+    "NOT_FOUND": "The destination folder no longer exists.",
+    "NETWORK": "Connection lost; the upload will be retried.",
+    "OPERATION_IN_PROGRESS": "The path is in use by another operation."
+  }
+}

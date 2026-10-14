@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Item } from '@/features/browser/api'
+import type { PrecheckItem } from '@/features/upload/api'
 import type { Conflict, ConflictPolicy, TransferOp } from './api'
 
 /** The file-operation dialogs are opened imperatively (from the menu,
@@ -20,6 +21,21 @@ export type FileOpsDialog =
   | { kind: 'permissions'; items: Item[] }
   | { kind: 'deleteConfirm'; paths: string[]; resolve: (ok: boolean) => void }
   | { kind: 'deletePermanent'; paths: string[]; resolve: (ok: boolean) => void }
+  | { kind: 'uploadPrecheck'; info: UploadPrecheckInfo; resolve: (proceed: boolean) => void }
+
+/** What the precheck dialog shows before an upload starts (SPEC §8.8 step 2). */
+export interface UploadPrecheckInfo {
+  rejected: PrecheckItem[]
+  /** files that passed (ok + conflict) */
+  accepted: number
+  /** files that still fit when the quota is short */
+  fits: number
+  needed: number
+  free: number
+  limit: number
+  maxUploadSize: number
+  quotaReason?: 'quota' | 'disk'
+}
 
 export interface FileOpsDialogState {
   dialog: FileOpsDialog | null
@@ -101,4 +117,19 @@ export function focusGrid(): void {
   if (typeof document === 'undefined') return
   const grid = document.querySelector<HTMLElement>('[data-testid="browser"] [role="grid"]')
   grid?.focus()
+}
+
+/** Rejections / quota shortfall before an upload; resolves true to continue
+ *  with the files that passed (or fit). */
+export function askUploadPrecheck(info: UploadPrecheckInfo): Promise<boolean> {
+  return new Promise((resolve) => {
+    useFileOpsDialogs.getState().open({
+      kind: 'uploadPrecheck',
+      info,
+      resolve: (v) => {
+        useFileOpsDialogs.getState().close()
+        resolve(!!v)
+      },
+    })
+  })
 }

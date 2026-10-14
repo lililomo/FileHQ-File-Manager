@@ -21,7 +21,6 @@
     "batchRenamed_one": "{{n}} item renamed",
     "batchRenamed_other": "{{n}} items renamed",
     "undone": "Undone: {{what}}",
-    "uploadSoon": "Upload is not available yet (Step 12a).",
     "deletedPermanent_one": "{{n}} item permanently deleted",
     "deletedPermanent_other": "{{n}} items permanently deleted",
     "dirSize": "{{name}}: {{size}} ({{files}} files, {{dirs}} folders)",

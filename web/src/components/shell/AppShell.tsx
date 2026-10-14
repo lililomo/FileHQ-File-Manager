@@ -1,8 +1,12 @@
-import type { ReactNode } from 'react'
+import { useCallback, useRef, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuotaSync } from '@/features/quota/useQuota'
 import { TaskPanel } from '@/features/tasks/TaskPanel'
 import { useTaskEvents } from '@/features/tasks/useTaskEvents'
+import { TransferPanel } from '@/features/upload/TransferPanel'
+import { UploadInputs, type UploadInputsHandle } from '@/features/upload/UploadInputs'
+import { uploader } from '@/features/upload/useUploader'
+import { useUploaderEffects } from '@/features/upload/useUploaderEffects'
 import { GlobalOverlays } from './GlobalOverlays'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
@@ -11,6 +15,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { t } = useTranslation()
   useQuotaSync()
   useTaskEvents()
+  // re-picking files for transfers left over from a previous page load
+  const pickRef = useRef<UploadInputsHandle>(null)
+  const pickAgain = useCallback(() => pickRef.current?.pickFiles(), [])
+  useUploaderEffects(pickAgain)
   return (
     <div className="flex h-dvh flex-col bg-bg text-text">
       <a
@@ -27,7 +35,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         </main>
       </div>
       <GlobalOverlays />
-      <TaskPanel />
+      {/* SPEC §7.4 / §8.8: transfers above tasks, bottom-right; toasts stay bottom-left */}
+      <div className="pointer-events-none fixed right-3 bottom-3 z-40 flex flex-col items-end gap-2 [&>*]:pointer-events-auto">
+        <TransferPanel onPickAgain={pickAgain} />
+        <TaskPanel />
+      </div>
+      <UploadInputs
+        ref={pickRef}
+        testId="upload-resume"
+        onFiles={(files) => uploader.attach(Array.from(files))}
+      />
     </div>
   )
 }

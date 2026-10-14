@@ -24,6 +24,7 @@ import (
 	"kppbwi.app/filemanager/internal/sse"
 	"kppbwi.app/filemanager/internal/tasks"
 	"kppbwi.app/filemanager/internal/thumbs"
+	"kppbwi.app/filemanager/internal/upload"
 )
 
 // JSONBodyLimit is the maximum JSON request body on /api/v1 (SPEC §6.2
@@ -55,6 +56,7 @@ type Options struct {
 	Tasks       *tasks.Engine       // task engine (Step 11); nil keeps the synchronous 413 answers
 	Events      *sse.Broker         // SSE broker (Step 11); nil disables GET /events
 	Notify      *notify.Service     // in-app notifications (Step 11); nil disables /notifications
+	Upload      *upload.Service     // tus uploads + precheck (Step 12a); nil disables /upload
 }
 
 // Server holds dependencies shared by handlers.
@@ -81,6 +83,7 @@ type Server struct {
 	tasks       *tasks.Engine
 	events      *sse.Broker
 	notify      *notify.Service
+	upload      *upload.Service
 }
 
 // New builds the router. The returned handler is safe for http.Server.
@@ -105,6 +108,7 @@ func New(o Options) http.Handler {
 		tasks:   o.Tasks,
 		events:  o.Events,
 		notify:  o.Notify,
+		upload:  o.Upload,
 	}
 	s.warnings = o.Warnings
 	if s.audit == nil && o.Store != nil {
@@ -134,8 +138,8 @@ func New(o Options) http.Handler {
 	r.Get("/readyz", s.handleReadyz)
 
 	r.Route("/api/v1", func(api chi.Router) {
-		api.Use(TimeoutExcept(APITimeout, EventsPath))
-		api.Use(MaxBytes(JSONBodyLimit))
+		api.Use(TimeoutExcept(APITimeout, EventsPath, TusPrefix))
+		api.Use(MaxBytes(JSONBodyLimit, TusPrefix))
 		api.NotFound(func(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, r, CodeNotFound, 0, "endpoint not found", nil)
 		})
@@ -164,6 +168,7 @@ func (s *Server) mountAPI(api chi.Router) {
 		s.mountMeActivity(api)
 		s.mountTasks(api)
 		s.mountEvents(api)
+		s.mountUpload(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": s.cfg.AppName})

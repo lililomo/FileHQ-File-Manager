@@ -3,6 +3,7 @@ import {
   Copy,
   FilePlus2,
   FolderPlus,
+  FolderUp,
   Globe,
   Link as LinkIcon,
   PanelRight,
@@ -30,6 +31,8 @@ export type ToolbarNewKind = 'folder' | 'file' | 'template' | 'symlink'
 
 export interface ToolbarProps {
   onNew: (kind: ToolbarNewKind, opts?: { template?: string }) => void
+  /** "Upload ▾" (SPEC §8.8): files or a folder into the open directory. */
+  onUpload?: (kind: 'file' | 'folder') => void
   /** Template names for "Baru → Dari template" (GET /files/templates). */
   templates?: string[]
   /** Contextual file-operation buttons (`ToolbarActions`). */
@@ -42,10 +45,11 @@ export interface ToolbarProps {
   viewSwitcher?: ReactNode
 }
 
-/** Toolbar (SPEC §9.3): "Baru", file operations (9b), preview, sort and
- *  columns work; upload (12a) and remote download (13) are placeholders. */
+/** Toolbar (SPEC §9.3): "Baru", file operations (9b), upload (12a), preview,
+ *  sort and columns work; remote download (13) is a placeholder. */
 export function Toolbar({
   onNew,
+  onUpload,
   templates = [],
   actions,
   compact = false,
@@ -131,19 +135,34 @@ export function Toolbar({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span tabIndex={-1} className="inline-flex">
-            <Button variant="outline" size="sm" className="h-8 gap-1" disabled>
-              <Upload aria-hidden="true" />
-              {!compact ? <span>{t('toolbar.upload')}</span> : null}
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          {t('toolbar.upload')} · {soon}
-        </TooltipContent>
-      </Tooltip>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1"
+            data-testid="toolbar-upload"
+            aria-label={compact ? t('toolbar.upload') : undefined}
+          >
+            <Upload aria-hidden="true" />
+            {!compact ? <span>{t('toolbar.upload')}</span> : null}
+            <ChevronDown className="size-3 opacity-70" aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuItem onSelect={() => onUpload?.('file')} data-testid="toolbar-upload-file">
+            <Upload aria-hidden="true" />
+            {t('toolbar.uploadFile')}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => onUpload?.('folder')}
+            data-testid="toolbar-upload-folder"
+          >
+            <FolderUp aria-hidden="true" />
+            {t('toolbar.uploadFolder')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       {!compact ? (
         <>
           {disabledIcon(t('toolbar.remote'), Globe)}

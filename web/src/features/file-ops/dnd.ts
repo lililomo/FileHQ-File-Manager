@@ -1,8 +1,8 @@
 /** HTML5 drag & drop helpers (SPEC §8.5 "Drag & drop"): rows carry their
  *  paths in a custom MIME type; folder rows, breadcrumb segments and the
  *  sidebar accept them (Ctrl = copy). Drops from the OS are forwarded to the
- *  upload hook (Step 12a; a toast until then). Native DnD was chosen over
- *  dnd-kit because it is the only API that receives OS files. */
+ *  upload queue (Step 12a). Native DnD was chosen over dnd-kit because it is
+ *  the only API that receives OS files. */
 import type { TransferOp } from './api'
 
 export const DND_MIME = 'application/x-fm-paths'
@@ -181,6 +181,7 @@ export function dropTargetProps(opts: DropTargetOptions) {
       opts.onOver?.(null)
       if (hasOsFiles(e.dataTransfer)) {
         e.preventDefault()
+        e.stopPropagation() // the grid container is a target too: one upload, to the innermost folder
         osDropHandler?.(e.dataTransfer, opts.dir)
         return
       }

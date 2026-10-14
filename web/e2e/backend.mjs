@@ -35,6 +35,8 @@ const env = {
   LOG_LEVEL: 'warn',
   // Step 11 tasks.spec: slow each copied file by 2 ms so a 5 000-file copy can be cancelled mid-way
   DEV_TASK_ITEM_DELAY_MS: '2',
+  // Step 12a upload.spec: 1 MB chunks so pause/resume/abort can happen mid-file
+  UPLOAD_CHUNK_SIZE: '1MB',
 }
 
 const child = spawn(bin, ['serve'], { env, stdio: 'inherit' })

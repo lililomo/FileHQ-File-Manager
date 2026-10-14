@@ -241,15 +241,26 @@ func AccessLog(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// MaxBytes limits request bodies (JSON API routes). Streaming routes (tus,
-// upload) are mounted outside this middleware.
-func MaxBytes(n int64) func(http.Handler) http.Handler {
+// MaxBytes limits request bodies (JSON API routes). Paths below one of the
+// exceptPrefixes (streaming routes such as tus) are left alone; they apply
+// their own limits.
+func MaxBytes(n int64, exceptPrefixes ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Body != nil && r.Body != http.NoBody {
+			if r.Body != nil && r.Body != http.NoBody && !hasAnyPrefix(r.URL.Path, exceptPrefixes) {
 				r.Body = http.MaxBytesReader(w, r.Body, n)
 			}
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// hasAnyPrefix reports whether p starts with one of prefixes.
+func hasAnyPrefix(p string, prefixes []string) bool {
+	for _, pre := range prefixes {
+		if strings.HasPrefix(p, pre) {
+			return true
+		}
+	}
+	return false
 }

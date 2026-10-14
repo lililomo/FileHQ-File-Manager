@@ -147,8 +147,9 @@ describe('context-menu matrix (SPEC §9.5)', () => {
 
   it('background: Baru submenu, paste only with a clipboard, view/sort/columns, folder properties', () => {
     const empty = ids(menuItems('background', ctxWith([])))
+    // Step 12a: upload actions are live; remote download (Step 13) stays hidden
     expect(empty).toEqual([
-      ['new'],
+      ['new', 'uploadFile', 'uploadFolder'],
       ['refresh', 'selectAll'],
       ['view', 'sort', 'columns'],
       ['folderProperties'],

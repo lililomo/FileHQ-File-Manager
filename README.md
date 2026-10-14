@@ -78,3 +78,18 @@ mudah dipindah ke GitLab CI/Gitea Actions; sampai remote tersedia, `make ci` men
 - `pnpm -C web test` — Vitest; `pnpm -C web e2e` — Playwright against `bin/filemanager` (run `make build` first; browsers via `pnpm -C web e2e:install`).
 - `pnpm -C web gen:api` — regenerate `src/lib/api.gen.ts` from `docs/openapi.yaml`.
 - `/dev/design` shows every token and component (dev builds only, or `VITE_DESIGN_PAGE=1 pnpm build`).
+
+## Upload (tus) di belakang Nginx
+
+Upload memakai protokol tus (`/api/v1/upload/tus/`, chunk `UPLOAD_CHUNK_SIZE`, default 16 MB). Di depan aplikasi, Nginx aaPanel harus mengalirkan badan request dan meneruskan header tus (final di `deploy/nginx-aapanel.conf`, Step 22):
+
+```nginx
+proxy_request_buffering off;      # chunk dialirkan langsung, tidak ditampung di disk Nginx
+client_max_body_size      64m;    # >= UPLOAD_CHUNK_SIZE + overhead
+client_body_timeout       300s;
+proxy_read_timeout        3600s;
+proxy_send_timeout        3600s;
+proxy_set_header X-Forwarded-Proto $scheme;   # Location tus dibangun dari APP_BASE_URL (https)
+```
+
+Header `Upload-Offset`, `Upload-Length`, `Upload-Metadata`, `Tus-Resumable`, `Location`, `Upload-Result` dan `Upload-Path` diteruskan apa adanya oleh `proxy_pass`. Saat dev (`pnpm dev`), proxy Vite menulis ulang `Location` ke origin dev server.

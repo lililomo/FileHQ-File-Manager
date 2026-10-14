@@ -21,7 +21,6 @@
     "batchRenamed_one": "{{n}} item diganti nama",
     "batchRenamed_other": "{{n}} item diganti nama",
     "undone": "Diurungkan: {{what}}",
-    "uploadSoon": "Upload belum tersedia (Step 12a).",
     "deletedPermanent_one": "{{n}} item dihapus permanen",
     "deletedPermanent_other": "{{n}} item dihapus permanen",
     "dirSize": "{{name}}: {{size}} ({{files}} file, {{dirs}} folder)",

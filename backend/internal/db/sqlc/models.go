@@ -199,6 +199,23 @@ type TrashItem struct {
 	PurgedAt     *string `json:"purged_at"`
 }
 
+type UploadSession struct {
+	ID             string  `json:"id"`
+	UserID         string  `json:"user_id"`
+	ShareID        *string `json:"share_id"`
+	DestDir        string  `json:"dest_dir"`
+	Filename       string  `json:"filename"`
+	RelativePath   string  `json:"relative_path"`
+	Size           int64   `json:"size"`
+	ConflictPolicy string  `json:"conflict_policy"`
+	State          string  `json:"state"`
+	FinalizedPath  *string `json:"finalized_path"`
+	LastModified   *int64  `json:"last_modified"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
+	ExpiresAt      string  `json:"expires_at"`
+}
+
 type User struct {
 	ID                 string  `json:"id"`
 	Username           string  `json:"username"`

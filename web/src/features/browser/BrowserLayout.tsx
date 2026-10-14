@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { listTemplates } from '@/features/file-ops/api'
 import {
   setDropHandlers,
+  dropTargetProps,
   setFavoriteDropHandler,
   type DragPayload,
   parentOf,
@@ -26,6 +27,10 @@ import { NoteDialog } from '@/features/meta/NoteDialog'
 import { FileOpsDialogs } from '@/features/file-ops/FileOpsDialogs'
 import { canUndoNow, focusGrid, useFileOpsDialogs, useUndoStore } from '@/features/file-ops/store'
 import { useFileOps } from '@/features/file-ops/useFileOps'
+import { DropZone } from '@/features/upload/DropZone'
+import { installPasteUpload } from '@/features/upload/paste'
+import { UploadInputs, type UploadInputsHandle } from '@/features/upload/UploadInputs'
+import { uploadFromClipboard, uploadFromFileList } from '@/features/upload/useUploader'
 import {
   menuContextFor,
   setActionContext,
@@ -138,6 +143,10 @@ export function BrowserLayout({
   const filterRef = useRef<HTMLInputElement>(null)
   const openHelp = useOverlaysStore((s) => s.setHelp)
   const ops = useFileOps()
+  // uploads (Step 12a): hidden inputs + the folder the next pick targets
+  const uploadInputs = useRef<UploadInputsHandle>(null)
+  const uploadDest = useRef<string>(path)
+  const contentRef = useRef<HTMLDivElement>(null)
   const openDialog = useFileOpsDialogs((s) => s.open)
   const dialogOpen = useFileOpsDialogs((s) => s.dialog !== null)
   const clipboard = useClipboardStore((s) => s.data)
@@ -479,6 +488,19 @@ export function BrowserLayout({
         )
       },
       undo: () => void ops.undo(),
+      uploadFile: () => {
+        uploadDest.current = path
+        uploadInputs.current?.pickFiles()
+      },
+      uploadFolder: () => {
+        uploadDest.current = path
+        uploadInputs.current?.pickFolder()
+      },
+      uploadHere: () => {
+        if (!focusItem?.isDir) return
+        uploadDest.current = focusItem.path
+        uploadInputs.current?.pickFiles()
+      },
       openFolderProperties: () => {
         statItem(path)
           .then((stat) => setProperties({ items: [stat] }))
@@ -509,6 +531,15 @@ export function BrowserLayout({
       />
     ),
     [siblingNames, commitRename, cancelRename],
+  )
+  // Ctrl+V with OS files/images on the clipboard uploads into the open folder (SPEC §8.8)
+  useEffect(
+    () =>
+      installPasteUpload(
+        () => path,
+        (dt, dest) => void uploadFromClipboard(dt, dest),
+      ),
+    [path],
   )
   // drop targets outside this screen (sidebar, breadcrumb) call the published handler
   useEffect(() => {
@@ -575,6 +606,7 @@ export function BrowserLayout({
       registerShortcut('deletePermanent', fileOps.deletePermanent),
       registerShortcut('rename', fileOps.rename),
       registerShortcut('undo', fileOps.undo),
+      registerShortcut('upload', fileOps.uploadFile),
     ]
     return () => offs.forEach((off) => off())
   }, [
@@ -809,7 +841,11 @@ export function BrowserLayout({
         className="h-full"
         action={
           <>
-            <Button variant="outline" disabled>
+            <Button
+              variant="outline"
+              onClick={() => fileOps.uploadFile()}
+              data-testid="empty-upload"
+            >
               <Upload aria-hidden="true" />
               {t('files:empty.upload')}
             </Button>
@@ -980,6 +1016,7 @@ export function BrowserLayout({
       />
       <Toolbar
         onNew={openNew}
+        onUpload={(kind) => (kind === 'folder' ? fileOps.uploadFolder() : fileOps.uploadFile())}
         templates={templates.data ?? []}
         actions={<ToolbarActions ctx={actionCtx} compact={isMobile} />}
         compact={isMobile}
@@ -1010,7 +1047,8 @@ export function BrowserLayout({
           />
         }
       />
-      <div className="relative flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1" ref={contentRef}>
+        <DropZone container={contentRef} path={path} />
         <BrowserContextMenu
           ctx={menuOpen || !dialogOpen ? actionCtx : null}
           context={menuContext}
@@ -1024,6 +1062,8 @@ export function BrowserLayout({
             className="flex min-h-0 min-w-0 flex-1 flex-col"
             data-columns={visibleCount}
             onContextMenuCapture={onContextMenuCapture}
+            // OS drops on an empty folder (no grid underneath) still upload here
+            {...(!isMobile ? dropTargetProps({ dir: path }) : {})}
           >
             {body}
           </div>
@@ -1043,6 +1083,10 @@ export function BrowserLayout({
         selectedBytes={selBytes}
       />
       <FileOpsDialogs ops={ops} />
+      <UploadInputs
+        ref={uploadInputs}
+        onFiles={(files) => void uploadFromFileList(files, uploadDest.current)}
+      />
       <NoteDialog item={noteTarget} onClose={() => setNoteTarget(null)} onSave={saveNote} />
       <QuickLookDialog
         item={quickLook}

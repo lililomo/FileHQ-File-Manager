@@ -11,9 +11,9 @@ import { TaskRow } from './TaskRow'
 
 type LooseT = (key: string, options?: Record<string, unknown>) => string
 
-/** Bottom-right task panel (SPEC §7.4): stays mounted across routes, sits
- *  below the transfer panel (Step 12a) and never covers the toasts
- *  (bottom-left). */
+/** Task panel (SPEC §7.4): stays mounted across routes inside the
+ *  bottom-right stack of AppShell, below the transfer panel (Step 12a), and
+ *  never covers the toasts (bottom-left). */
 export function TaskPanel() {
   const { t } = useTranslation(['tasks', 'common'])
   const lt = t as unknown as LooseT
@@ -64,7 +64,7 @@ export function TaskPanel() {
     <section
       aria-label={lt('tasks:panel.title')}
       data-testid="task-panel"
-      className="fixed right-3 bottom-3 z-40 flex max-h-[60vh] w-[min(26rem,calc(100vw-1.5rem))] flex-col rounded-lg border border-border bg-surface shadow-lg"
+      className="flex max-h-[50vh] w-[min(26rem,calc(100vw-1.5rem))] flex-col rounded-lg border border-border bg-surface shadow-lg"
     >
       <header className="flex items-center gap-2 border-b border-border px-3 py-2">
         <ListChecks className="size-4 text-text-muted" aria-hidden="true" />

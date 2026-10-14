@@ -32,7 +32,20 @@ export default defineConfig(({ mode }) => ({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': backend,
+      '/api': {
+        target: backend,
+        // tus answers with an absolute Location built from APP_BASE_URL
+        // (the backend, :8080); point it back at the dev server so the
+        // browser keeps using the proxy (and its cookies) for PATCH/HEAD.
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes, req) => {
+            const loc = proxyRes.headers.location
+            if (typeof loc === 'string' && loc.startsWith(backend) && req.headers.host) {
+              proxyRes.headers.location = loc.replace(backend, `http://${req.headers.host}`)
+            }
+          })
+        },
+      },
       '/healthz': backend,
       '/readyz': backend,
     },
