@@ -133,13 +133,6 @@ export function DeletePermanentDialog({
               />
             </div>
           ) : null}
-          <p
-            className="mt-3 text-xs text-text-muted"
-            role="note"
-            data-testid="delete-permanent-note"
-          >
-            {t('permanent.fallbackNote')}
-          </p>
           <DialogFooter className="mt-4">
             <Button type="button" variant="outline" onClick={() => onResolve(false)}>
               {t('cancel')}

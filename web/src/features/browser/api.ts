@@ -178,6 +178,10 @@ export interface StatResponse extends Item {
   warnings: string[]
   versionsCount: number
   shares: unknown[]
+  /** Digests cached by a previous checksum call (Step 10a). */
+  checksums?: Record<string, string>
+  /** Cached folder size (Step 10a). */
+  dirSize?: import('@/features/file-ops/api').DirSizeResult
 }
 
 export function statItem(path: string, signal?: AbortSignal): Promise<StatResponse> {

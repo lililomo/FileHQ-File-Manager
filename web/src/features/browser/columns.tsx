@@ -194,6 +194,8 @@ export function buildColumns(t: TFunction<'files'>, lang: string): ColumnDef[] {
       meta: COLUMN_META.size,
       cell: (it) => {
         if (it.isDir) {
+          // a computed folder size ("Hitung ukuran", Step 10a) wins over the item count
+          if (it.size > 0) return formatBytes(it.size, lang)
           return it.itemCount === null || it.itemCount === undefined
             ? DASH
             : t('grid.folderItems', { count: it.itemCount, n: formatNumber(it.itemCount, lang) })

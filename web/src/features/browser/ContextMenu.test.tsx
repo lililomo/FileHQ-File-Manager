@@ -99,28 +99,41 @@ describe('context-menu matrix (SPEC §9.5)', () => {
     }
   })
 
-  it('1 file: shows the 9b actions, hides unavailable ones, Delete last', () => {
+  it('1 file: shows the 9b/10a actions, hides unavailable ones, Delete last', () => {
     const groups = ids(menuItems('file', ctxWith([item('/a.txt')])))
     expect(groups).toEqual([
       ['open', 'quickLook'],
       ['copy', 'cut', 'duplicate', 'rename', 'moveTo', 'copyTo'],
-      ['permissions', 'symlink'],
+      ['permissions', 'symlink', 'checksum'],
       ['copyPath', 'properties'],
       ['delete'],
     ])
     const flat = groups.flat()
-    for (const hidden of ['download', 'share', 'favorite', 'compress', 'checksum', 'versions'])
+    for (const hidden of ['download', 'share', 'favorite', 'compress', 'versions'])
       expect(flat).not.toContain(hidden)
     expect(flat[flat.length - 1]).toBe('delete')
     expect(actionById('delete')!.destructive).toBe(true)
   })
 
-  it('1 folder: open in new tab instead of Quick Look', () => {
+  it('1 folder: open in new tab instead of Quick Look, folder size available (10a)', () => {
     const groups = ids(menuItems('folder', ctxWith([item('/dir', true)])))
     expect(groups[0]).toEqual(['open', 'openInNewTab'])
     expect(groups.flat()).not.toContain('quickLook')
     expect(groups.flat()).toContain('rename')
+    expect(groups.flat()).toContain('folderSize')
+    expect(groups.flat()).not.toContain('checksum')
     expect(groups.flat().at(-1)).toBe('delete')
+  })
+
+  it('Recycle Bin items (10a): restore, restore to, purge last and destructive', () => {
+    const fn = vi.fn()
+    const groups = ids(
+      menuItems('trash', ctxWith([], { selectionCount: 2, restore: fn, restoreTo: fn, purge: fn })),
+    )
+    expect(groups).toEqual([['restore', 'restoreTo'], ['purge']])
+    expect(actionById('purge')!.destructive).toBe(true)
+    actionById('restore')!.run(ctxWith([], { selectionCount: 1, restore: fn }))
+    expect(fn).toHaveBeenCalledTimes(1)
   })
 
   it('many items: batch rename, no rename/duplicate/properties', () => {
@@ -154,7 +167,7 @@ describe('context-menu matrix (SPEC §9.5)', () => {
   it('unavailable actions never reach the flat surfaces either', () => {
     const unavailable = ACTIONS.filter((a) => a.available === false).map((a) => a.id)
     expect(unavailable).toContain('share')
-    for (const context of ['file', 'folder', 'multi', 'background'] as const) {
+    for (const context of ['file', 'folder', 'multi', 'background', 'trash'] as const) {
       const flat = ids(
         menuItems(context, ctxWith([item('/a.txt'), item('/b', true)], { selectionCount: 2 })),
       ).flat()

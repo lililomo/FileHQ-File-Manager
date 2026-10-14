@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { FolderOpen, FolderPlus, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -43,6 +43,7 @@ import {
   statItem,
   VIEW_MODES,
   type Item,
+  type ListResponse,
   type SortField,
   type ViewMode,
 } from './api'
@@ -51,7 +52,8 @@ import { MOBILE_COLUMNS, normalizeColumns, orderedVisible, type ColumnsPref } fr
 import { BrowserContextMenu } from './ContextMenu'
 import { DetailsView } from './DetailsView'
 import { InlineRename } from './InlineRename'
-import { PropertiesDialog, QuickLookDialog } from './ItemDialogs'
+import { QuickLookDialog } from './ItemDialogs'
+import { PropertiesDialog, type PropertiesTarget } from '@/features/properties/PropertiesDialog'
 import { PreviewPanel } from './PreviewPanel'
 import { QuickFilter } from './QuickFilter'
 import {
@@ -108,7 +110,7 @@ export function BrowserLayout({ path }: { path: string }) {
   const previewOverlay = useMediaQuery('(max-width: 1279px)')
   const [editing, setEditing] = useState(false)
   const [quickLook, setQuickLook] = useState<Item | null>(null)
-  const [properties, setProperties] = useState<Item | null>(null)
+  const [properties, setProperties] = useState<PropertiesTarget | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -405,6 +407,12 @@ export function BrowserLayout({ path }: { path: string }) {
       },
       deleteItems: () => void ops.remove(selPaths),
       deletePermanent: () => void ops.removePermanent(selPaths),
+      folderSize: () => {
+        if (focusItem?.isDir) void ops.dirSize(focusItem.path)
+      },
+      checksum: () => {
+        if (focusItem && !focusItem.isDir) setProperties({ items: [focusItem], tab: 'checksum' })
+      },
       batchRename: () => {
         if (selPaths.length) openDialog({ kind: 'batchRename', paths: selPaths, dir: path })
       },
@@ -426,7 +434,7 @@ export function BrowserLayout({ path }: { path: string }) {
       undo: () => void ops.undo(),
       openFolderProperties: () => {
         statItem(path)
-          .then((stat) => setProperties(stat))
+          .then((stat) => setProperties({ items: [stat] }))
           .catch((e: unknown) => toast.error(e instanceof ApiError ? e.message : String(e)))
       },
     }),
@@ -492,7 +500,8 @@ export function BrowserLayout({ path }: { path: string }) {
       registerShortcut('viewLarge', () => changeView('large')),
       registerShortcut('viewXLarge', () => changeView('xlarge')),
       registerShortcut('properties', () => {
-        if (focusItem) setProperties(focusItem)
+        if (selItems.length > 1) setProperties({ items: selItems })
+        else if (focusItem) setProperties({ items: [focusItem] })
       }),
       registerShortcut('previewPanel', togglePreview),
       registerShortcut('newTab', () => openTab(path)),
@@ -538,6 +547,7 @@ export function BrowserLayout({ path }: { path: string }) {
     changeView,
     openNew,
     fileOps,
+    selItems,
   ])
   useDialogScope(!!quickLook || !!properties)
 
@@ -566,7 +576,8 @@ export function BrowserLayout({ path }: { path: string }) {
       openHelp: () => openHelp(true),
       openColumns: () => setColumnsOpen(true),
       openProperties: () => {
-        if (focusItem) setProperties(focusItem)
+        if (selItems.length > 1) setProperties({ items: selItems })
+        else if (focusItem) setProperties({ items: [focusItem] })
       },
       quickLook: () => {
         if (focusItem) setQuickLook(focusItem)
@@ -946,7 +957,25 @@ export function BrowserLayout({ path }: { path: string }) {
       />
       <FileOpsDialogs ops={ops} />
       <QuickLookDialog item={quickLook} onClose={() => setQuickLook(null)} />
-      <PropertiesDialog item={properties} onClose={() => setProperties(null)} />
+      <PropertiesDialog
+        target={properties}
+        onClose={() => setProperties(null)}
+        onDirSize={(p, res) => {
+          qc.setQueriesData<InfiniteData<ListResponse, string | null>>(
+            { queryKey: ['list', parentOf(p)] },
+            (old) =>
+              old && Array.isArray(old.pages)
+                ? {
+                    ...old,
+                    pages: old.pages.map((pg) => ({
+                      ...pg,
+                      items: pg.items.map((it) => (it.path === p ? { ...it, size: res.size } : it)),
+                    })),
+                  }
+                : old,
+          )
+        }}
+      />
     </div>
   )
 }

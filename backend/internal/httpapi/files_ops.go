@@ -9,6 +9,7 @@ import (
 
 	"kppbwi.app/filemanager/internal/files"
 	"kppbwi.app/filemanager/internal/fsjail"
+	"kppbwi.app/filemanager/internal/quota"
 	"kppbwi.app/filemanager/internal/trash"
 )
 
@@ -33,18 +34,40 @@ func (s *Server) mountFileOps(api chi.Router) {
 		g.Post("/files/batch-rename/preview", s.handleBatchRenamePreview)
 		g.Post("/files/batch-rename", s.handleBatchRename)
 		g.Post("/files/undo", s.handleFilesUndo)
+		g.Post("/files/delete-permanent", s.handleFilesDeletePermanent)
+		g.Post("/files/dir-size", s.handleFilesDirSize)
+		g.Post("/files/checksum", s.handleFilesChecksum)
+		g.Post("/files/checksum/verify", s.handleFilesChecksumVerify)
 	})
 }
 
 // writeOpsError maps files/trash errors to the envelope (SPEC §6.2).
 func (s *Server) writeOpsError(w http.ResponseWriter, r *http.Request, err error) {
 	var (
-		ce *files.ConflictError
-		te *files.TooLargeError
-		ve *files.ValidationError
-		be *files.BatchRenameError
+		ce  *files.ConflictError
+		te  *files.TooLargeError
+		ve  *files.ValidationError
+		be  *files.BatchRenameError
+		qe  *quota.ExceededError
+		fe  *files.FileTooLargeError
+		rce *files.RestoreConflictError
+		tce *trash.ConflictError
 	)
 	switch {
+	case errors.As(err, &qe):
+		WriteError(w, r, CodeQuotaExceeded, 0, quotaMessage(qe), map[string]any{"reason": qe.Reason, "used": qe.Used, "quota": qe.Limit, "needed": qe.Needed, "free": qe.Free})
+	case errors.As(err, &fe):
+		WriteError(w, r, CodeFileTooLarge, 0, "file too large to hash synchronously; it needs the task engine", map[string]any{"reason": "task_required", "size": fe.Size, "max": fe.Max})
+	case errors.As(err, &rce):
+		details := map[string]any{"conflicts": rce.Conflicts}
+		if len(rce.Conflicts) > 0 {
+			details["path"] = rce.Conflicts[0].Path
+			details["existing"] = rce.Conflicts[0].Existing
+			details["incoming"] = rce.Conflicts[0].Incoming
+		}
+		WriteError(w, r, CodeAlreadyExists, 0, fsMessages[CodeAlreadyExists], details)
+	case errors.As(err, &tce):
+		WriteError(w, r, CodeAlreadyExists, 0, fsMessages[CodeAlreadyExists], map[string]any{"conflicts": []trash.ConflictError{*tce}, "path": tce.Path, "existing": tce.Existing, "incoming": tce.Incoming})
 	case errors.As(err, &ce):
 		details := map[string]any{"conflicts": ce.Conflicts}
 		if len(ce.Conflicts) > 0 {
@@ -125,6 +148,13 @@ func (s *Server) opView(r *http.Request, j *fsjail.Jail, userID string, res *fil
 		}
 	}
 	return out
+}
+
+func quotaMessage(e *quota.ExceededError) string {
+	if e.Reason == "disk" {
+		return "not enough free disk space on the server"
+	}
+	return "storage quota exceeded"
 }
 
 func firstNonEmpty(vals ...string) string {

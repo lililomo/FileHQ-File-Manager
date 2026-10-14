@@ -24,6 +24,9 @@ const (
 	ActionHomeProvisioned = "user.home_provisioned"
 	ActionHomeReused      = "user.home_reused"
 	ActionRevokeSessions  = "user.revoke_sessions"
+	ActionDeletePermanent = "file.delete_permanent"
+	ActionTrashEmpty      = "trash.empty"
+	ActionQuotaDrift      = "quota.drift"
 )
 
 // Entry is one audit event. Details must never contain secrets; keys that

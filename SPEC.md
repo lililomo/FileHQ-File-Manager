@@ -272,12 +272,13 @@ Monorepo satu repo git di `/www/wwwroot/file.kppbwi.app` (APP_DIR). Go module tu
 │   │   ├── search/               # nama (walk), isi (rg/fallback), replace
 │   │   ├── share/                # token, slug, password, cookie, recipients, public handlers
 │   │   ├── admin/                # dashboard, users, settings, maintenance
-│   │   ├── tasks/                # engine, registry tipe task, scheduler, cleanup jobs
+│   │   ├── tasks/                # engine, registry tipe task, cleanup jobs
+│   │   ├── scheduler/            # cron in-process (job harian jam TZ_DEFAULT / interval), RunNow untuk admin (Step 10a)
 │   │   ├── audit/                # audit_logs + activity_logs + retensi
 │   │   ├── notify/               # notifications
 │   │   ├── trash/                # recycle bin
 │   │   ├── versions/             # file_versions pre-image
-│   │   ├── quota/                # quota_usage inkremental + rekalkulasi
+│   │   ├── quota/                # quota_usage inkremental, reservasi, enforcement, rekalkulasi (Step 10a)
 │   │   ├── meta/                 # favorites, pins, notes, tags, folder_view_prefs, referensi path
 │   │   ├── sse/                  # broker
 │   │   ├── httpapi/              # router chi, middleware, handler per grup, error mapping, logredact
@@ -918,13 +919,14 @@ Kolom "Auth" memakai kode §6.1. Request/response ditulis ringkas; skema lengkap
 | `GET /me/recent?limit=100` | S+P | — | `200 {items:[Info + location]}` (hanya yang masih ada) |
 | `GET /me/storage-analysis` | S+P | — | `202 {task}` pertama kali / `200 {tree (treemap depth 3), largest:[50], computedAt}` jika cache < 1 jam |
 | `POST /me/totp/setup` · `POST /me/totp/enable` · `POST /me/totp/disable` | S+P | fase akhir (Step 23) | |
+| `GET /me/quota` | S+P | `200 {quota, limit (alias), used, trash, versions, reserved, free, percent, fileCount, dirCount, dirty, calculatedAt}` — angka inkremental `quota_usage` (+ reservasi operasi yang sedang berjalan); `dirty:true` sebelum rekalkulasi pertama atau setelah operasi sebagian gagal (Step 10a). Objek yang sama ada di `GET /auth/me` `user.quota` | |
 
 **Files (`/api/v1/files`)** — semua **S+P**, menerima `share=` dan `as_user=` sesuai §6.1.
 
 | Method & path | Request | Response | Error utama |
 | --- | --- | --- | --- |
 | `GET /files/list?path&sort&dir&sort2&dir2&cursor&limit&foldersFirst&filter&hidden` | `sort ∈ name|size|type|ext|mtime|btime|atime|mode|note|dimensions|duration` | `200 {items:[Item], nextCursor, total, dir:{path, etag, mtime, itemCount}, parentPath}` | `NOT_FOUND`, `PATH_INVALID` |
-| `GET /files/stat?path` | — | `200 {Item + stat:{mode,modeOctal,atime,mtime,ctime,btime,nlink}, counts? (folder: dihitung terpisah), checksums? (cache), versionsCount, shares:[…], note, tag, favorite, pinned}` | |
+| `GET /files/stat?path` | — | `200 {Item + stat:{mode,modeOctal,atime,mtime,ctime,btime,nlink}, counts? (folder: dihitung terpisah), checksums? (cache 10 menit, Step 10a), dirSize? (cache `files/dir-size`), versionsCount, shares:[…], note, tag, favorite, pinned}` | |
 | `POST /files/mkdir` | `{path}` (path lengkap folder baru) **atau** `{path: folder induk, name}`, `parents?:bool` | `201 {item, warnings:[]}` (`warnings` dari §5.2, mis. `windows_incompatible`) | `ALREADY_EXISTS` (`details.existing`), `NAME_INVALID`, `OPERATION_IN_PROGRESS` |
 | `POST /files/create` | `{path}` atau `{path, name}`, `template?: "txt|md|html|css|js|ts|json|php|py|sh|yaml"`, `content?` (≤ 512 KB; menang atas template) | `201 {item, warnings:[]}` | idem, `PAYLOAD_TOO_LARGE`, `UNSUPPORTED_TYPE` (`details.ext`, ekstensi di `BLOCKED_EXTENSIONS`) |
 | `GET /files/templates` | — | `200 {templates:["css","html",…]}` (nama = ekstensi; daftar statis dari `files.TemplateNames()`, dipakai dialog "Baru → Dari template", Step 9b) | |
@@ -937,7 +939,7 @@ Kolom "Auth" memakai kode §6.1. Request/response ditulis ringkas; skema lengkap
 | `POST /files/symlink` | `{path (link), target (relatif)}` | `201 {item, results, undoToken, undo:{kind:"delete_created"}}` (undo menghapus link) | `SYMLINK_ESCAPE`, `VALIDATION_FAILED target_absolute`, `ALREADY_EXISTS` |
 | `POST /files/chmod` | `{paths, mode:"0644", recursive?:bool, dirMode?:"0755"}` | `200 {results, undo:null}`; rekursif sinkron ≤ 2.000 entri, lebih → `413 task_required` (task di Step 11); symlink dilewati (`status:"skipped"`) | |
 | `POST /files/delete` | `{paths}` → Recycle Bin | `200 {results:[{path,status,isDir,trashId}], batchId, undoToken, undo:{kind:"restore", batchId, trash:[{id,path}]}}` / `202` (Step 11) | `OPERATION_IN_PROGRESS` |
-| `POST /files/delete-permanent` | `{paths, confirm:"HAPUS" jika > 50}` | `202 {task}` | `VALIDATION_FAILED` |
+| `POST /files/delete-permanent` | `{paths, confirm:"HAPUS" jika > 50}` | `200 {results, batchId, deleted, bytesFreed, undo:null}` sinkron (Step 10a; `202 {task}` untuk batch besar menyusul Step 11). `RemoveAll` + semua referensi/versi, kuota −size, audit `file.delete_permanent` | `VALIDATION_FAILED` (`fields.confirm=required`, `details.word`) |
 | `POST /files/undo` | `{token}` (alias `undoToken`/`undo_token`; token acak sekali pakai dari response sebelumnya, umur 60 s, in-memory per user) | `200 {results, undo:null}` | `NOT_FOUND` (`undo_expired`: token tidak dikenal/kedaluwarsa/milik user lain), `CONFLICT` (`undo_conflict`) jika state berubah |
 | `GET /files/content?path&encoding?&tail?` | — | `200 {content, encoding, detectedEncoding, bom, eol:"lf|crlf|mixed", language, size, etag, truncated?:bool, totalLines?}`; file > `EDITOR_MAX_FILE_SIZE` tanpa `tail` → `FILE_TOO_LARGE`; `tail=N` → N baris terakhir read-only | `BINARY_FILE` |
 | `PUT /files/content` | header `If-Match`; `{path, content, encoding, eol, force?:bool}` | `200 {etag, size, version:{no,id}|null}` | `CONFLICT` (`details.serverEtag, serverMtime`), `FILE_TOO_LARGE`, `QUOTA_EXCEEDED` |
@@ -947,8 +949,9 @@ Kolom "Auth" memakai kode §6.1. Request/response ditulis ringkas; skema lengkap
 | `POST /files/zip` | `{paths, name?, method:"store|deflate"}` | `200 {url, expiresAt}` | |
 | `GET /files/zip?token` | **Sig** | `application/zip` streaming, `Accept-Ranges: none` | |
 | `GET /files/thumb?path&size=128|256|512&exp&sig&scope` | **Sig** | `image/webp` + `ETag` + `Cache-Control: private, max-age=86400`; `202` kosong + `Retry-After: 2` jika belum siap (client retry maks 3×); `404` jika unsupported | |
-| `POST /files/dir-size` | `{path}` | `202 {task}` (hasil di `task.result: {files, dirs, bytes}` dan di-cache 10 menit untuk kolom Ukuran) | |
-| `POST /files/checksum` | `{path, algos:["md5","sha1","sha256"], verify?:{algo, expected}}` | `202 {task}`; result `{md5, sha1, sha256, verified?}`; file ≤ 100 MB dihitung sinkron `200` | |
+| `POST /files/dir-size` | `{path}` | `200 {path, size, bytes, files, dirs, partial, calculatedAt, cached}` sinkron dengan budget walk 60 s (`partial:true` bila terpotong; Step 11 mengubah walk panjang menjadi task). Hasil di-cache 10 menit per path, dibatalkan oleh mutasi di bawahnya, dipakai kolom Ukuran dan `files/stat.dirSize` | `VALIDATION_FAILED not_a_directory` |
+| `POST /files/checksum` | `{path, algos?:["md5","sha1","sha256"], verify?:{algo, expected}}` | `200 {path, md5?, sha1?, sha256?, verified?, actual?}` untuk file ≤ 100 MB (digest di-cache 10 menit per size+mtime dan muncul sebagai `files/stat.checksums`); lebih besar → `413 FILE_TOO_LARGE details.reason=task_required` sampai Step 11 | `VALIDATION_FAILED not_a_file|bad_algo` |
+| `POST /files/checksum/verify` | `{path, algo, expected}` (hex, tidak peka huruf besar/kecil) | `200 {path, algo, match, actual}` | idem |
 | `GET /files/archive-entries` → lihat Archives | | | |
 
 `Item` = `{name, path, isDir, isSymlink, symlinkTarget?, broken?, size, itemCount? (folder, jika < 10k atau sudah dihitung), mime, typeLabel, ext, mtime, btime?, atime, mode:"rwxr-xr-x", modeOctal:"755", note?, tag?, favorite, pinned, shared:"none|public|users|both", media?:{width,height,durationMs}, thumb:bool, etag}`.
@@ -967,10 +970,10 @@ Kolom "Auth" memakai kode §6.1. Request/response ditulis ringkas; skema lengkap
 
 | Method & path | Request | Response |
 | --- | --- | --- |
-| `GET /trash?cursor&limit&kind&q&sort` | | `200 {items:[{id, name, originalPath, isDir, size, itemCount, kind, deletedAt, expiresAt}], total, totalBytes}` |
-| `POST /trash/restore` | `{ids, dest?: path, policy?}` | `200 {results}` / `202` |
-| `POST /trash/purge` | `{ids}` | `202 {task}` |
-| `POST /trash/empty` | `{confirm:"HAPUS"}` | `202 {task}` |
+| `GET /trash?cursor&limit&kind&q&sort&dir` | `kind ∈ file|folder(dir)|image|document|video|audio|archive|other`, `q` substring nama, `sort ∈ deleted(default, desc)|name|size|expires|path`, `limit ≤ 1000` (default 500) | `200 {items:[{id, name, originalPath, isDir, size, itemCount, kind, deletedAt, expiresAt, batchId?}], total, totalBytes, nextCursor, retentionDays}` — baris aktif user dimuat sekali (maks 20.000) lalu difilter/di-sort (natural sort) dan dipaging di memori; cursor = offset opak (Step 10a) |
+| `POST /trash/restore` | `{ids, to?: folder tujuan (alias dest; kosong = lokasi asal), onConflict?: fail|overwrite|skip|rename (alias on_conflict/policy), perItem?:{<trashId>: policy}}` | `200 {results:[{id, path (asal), to, status: ok|renamed|overwritten|skipped, isDir, size, overwrittenId?}], reactivateShares:[] (18a), undo:null}`; semua konflik dikumpulkan dulu → `409 ALREADY_EXISTS details.conflicts[]` (`source` = trash id) sebelum ada yang dipindah; `overwrite` memindahkan item yang ada ke Recycle Bin lebih dulu (`overwrittenId`); id asing/user lain → `404 NOT_FOUND` |
+| `POST /trash/purge` | `{ids}` | `200 {results:[{id, path, size, isDir, status: ok|gone}], deleted, bytesFreed, undo:null}` sinkron (Step 11: `202` untuk batch besar); id asing → `gone`, bukan error; audit `file.delete_permanent` |
+| `POST /trash/empty` | `{confirm:"HAPUS"}` (wajib) | `200 {results:[], deleted, bytesFreed, undo:null}`; audit `trash.empty` |
 | `GET /trash/{id}/download` | | signed URL ke isi item (untuk melihat sebelum restore) |
 
 **Meta (`/api/v1/meta`)** — S+P
@@ -1177,7 +1180,7 @@ stateDiagram-v2
 - Retry: membuat task **baru** dengan payload yang sama (`result.retryOf`), kecuali yang butuh password (compress/extract ber-password) → UI meminta password ulang.
 - Log: `rt.Log` menulis ke `task_logs`; level `warn` untuk item yang dilewati (zip-slip, symlink, ekstensi diblokir).
 - Pembersihan: task final > 30 hari dihapus bersama log; `tmp/<task_id>` dihapus saat task final; saat start, `tmp/*` yang tidak punya task `running` dihapus.
-- Job terjadwal (cron internal, `robfig/cron` atau ticker sederhana, zona `TZ_DEFAULT`): `purge_trash` 03:00 harian, `recalc_quota` 03:30 harian (semua user, dibatasi 1 jam, `nice`), `backup_db` 02:30 harian (keep 7), `clean_uploads` tiap jam, `prune_logs` 04:00 harian, `integrity_check` tiap 6 jam, sesi kedaluwarsa tiap jam.
+- Job terjadwal: `internal/scheduler` (Step 10a; tanpa dependensi, poll 30 s, job harian `At:"15:04"` di zona `TZ_DEFAULT` atau `Every` interval, satu job tidak pernah tumpang tindih dengan dirinya, `Timeout` per run, `RunNow(name)` untuk maintenance admin 19b): `purge_trash` 03:00 harian, `recalc_quota` 03:30 harian (semua user, maks 10 menit/user, 1 jam total), `backup_db` 02:30 harian (keep 7, 19b), `clean_uploads` tiap jam (12a), `prune_logs` 04:00 harian (10b/19b), `integrity_check` tiap 6 jam (19b); sesi kedaluwarsa tiap jam (sudah ada di `auth.RunMaintenance`).
 
 ### 7.4 Panel task (frontend)
 
@@ -1229,9 +1232,9 @@ Pembuatan terjadi lewat `os.Root` pada `STORAGE_ROOT` (`OpenRoot(STORAGE_ROOT).M
 
 - Limit: `users.quota_bytes`; terpakai efektif = `used_bytes + trash_bytes + versions_bytes` (+ reservasi upload aktif saat precheck).
 - Enforcement di: precheck & create tus (reservasi), finalisasi upload (ukuran nyata), copy/duplicate (hitung ukuran sumber dulu; folder → walk cepat dengan batas 20 detik, jika melebihi → tolak dengan `details.reason:"unknown_size"` → user bisa memaksa sebagai task yang berhenti saat kuota habis), extract (pre-scan total uncompressed ≤ sisa), remote download (`Content-Length` jika ada; tanpa itu → berhenti saat melewati sisa), editor save (delta ukuran), restore dari trash (tidak dicek: file sudah dihitung), file request upload (kuota pemilik).
-- Inkremental: setiap mutasi memanggil `quota.Apply(ctx, userID, deltaUsed, deltaTrash, deltaVersions)` dalam transaksi yang sama dengan metadata; `dirty=1` jika operasi sebagian gagal.
-- Rekalkulasi: walk `Lstat` seluruh root user (symlink = ukuran link) + ukuran folder `trash/<uid>` + `versions/<uid>`; jadwal 03:30, aksi admin, dan otomatis jika `dirty=1` saat idle. Perbedaan > 1 % dicatat `WARN` + audit `quota.drift`.
-- Indikator: sidebar "Kuota 62 %" (warna warning ≥ 80 %, danger ≥ 95 %), tooltip rincian; SSE `quota.updated` setelah task besar.
+- Inkremental (`internal/quota`, Step 10a): setiap mutasi memanggil `quota.Apply(ctx, repo, userID, deltaUsed, deltaTrash, deltaVersions)` lewat repository transaksi yang sama bila ada (`ApplyQuotaDelta` upsert, counter tidak pernah < 0); delete→trash memindahkan `used → trash`, restore sebaliknya, purge/empty mengurangi `trash`, delete-permanent mengurangi `used`; copy/duplicate memakai delta nyata (ukuran tujuan sesudah − sebelum, walk ≤ 2.000 entri). `Reserve(ctx, jail, userID, bytes)` menahan byte di memori (`reserved`) sampai `Commit(actual)`/`Release`; `used + trash + versions + reserved + bytes > quota_bytes` → `QUOTA_EXCEEDED reason:quota details{used, quota, needed, free}`; `Statfs` free − bytes < 512 MB → `reason:disk`. `dirty=1` jika walk ukuran melewati budget 20 s atau bookkeeping gagal setelah FS berubah.
+- Rekalkulasi: walk `Lstat` seluruh root user (symlink = ukuran link) + ukuran folder `trash/<uid>` + `versions/<uid>`; `SetQuotaUsage` absolut + `calculated_at`, `dirty=0`. Jadwal 03:30 (`internal/scheduler`, semua user yang sudah diprovisi, maks 10 menit per user, 1 jam total), aksi admin (19b). Perbedaan > 1 % terhadap angka inkremental yang tidak `dirty` dicatat `WARN` + audit `quota.drift`; rekalkulasi pertama user baru tidak dihitung drift.
+- Indikator: sidebar "Kuota 62 %" (warna warning ≥ 80 %, danger ≥ 95 %, baris "Kuota hampir penuh" ≥ 90 %), tooltip rincian terpakai/Recycle Bin/versi/tersisa; status bar "x dari y". Klien mem-poll `GET /me/quota` tiap 60 s dan menginvalidasinya setelah operasi file (`useQuotaSync`); SSE `quota.updated` setelah task besar (Step 11).
 - Disk penuh: semua writer juga memeriksa `Statfs` free ≥ 512 MB; jika tidak → `QUOTA_EXCEEDED reason:disk`; dashboard warning.
 
 ### 8.3 Listing & sort
@@ -1322,8 +1325,10 @@ Semua CLI: `exec.CommandContext` dengan timeout 30 s (video 60 s), `nice -n 10`,
 
 - Lokasi fisik `DATA_DIR/trash/<user_id>/<trash_item_id>` (nama asli disimpan di DB sehingga dua item bernama sama tidak bentrok).
 - Halaman `/trash`: tabel (Nama, Lokasi asal, Ukuran, Dihapus, Kedaluwarsa), filter `kind` (file/folder/gambar/dokumen/video/audio/arsip), pencarian nama, sort, seleksi batch; aksi Restore, Restore ke…, Hapus permanen, Kosongkan; status bar total ukuran; banner "Item dihapus otomatis setelah N hari".
-- Restore: tujuan default `original_path`; jika folder induk tidak ada → `MkdirAll`; jika nama sudah terisi → dialog konflik (overwrite/rename/skip); `MoveIn`; referensi metadata tetap (tidak diubah saat delete); share yang `disabled_reason=item_trashed` → dialog "aktifkan kembali share?" (client memanggil `PATCH /shares/{id} {disabled:false}`); `quota.Apply(+size, -size)`; `activity restore`.
-- Auto-purge: job 03:00 menghapus `expires_at < now` (RemoveAll + referensi + kuota) dalam batch 100, dicatat `activity purge_auto`.
+- Restore (`files.RestoreFromTrash` → `trash.Restore`): tujuan default `original_path`, atau `to/<name>` untuk "Pulihkan ke…"; jika folder induk tidak ada → `MkdirAll`; semua konflik dikumpulkan dulu (tidak ada yang dipindah) → dialog konflik (overwrite/rename/skip, per item lewat `perItem[trashId]`); `overwrite` memindahkan item yang menempati tujuan ke Recycle Bin lebih dulu (`overwrittenId`, bisa dipulihkan lagi — tidak ada yang hilang tanpa purge eksplisit); `MoveIn` di bawah write lock tujuan; referensi metadata tetap (tidak diubah saat delete); share yang `disabled_reason=item_trashed` → dialog "aktifkan kembali share?" (client memanggil `PATCH /shares/{id} {disabled:false}`; `reactivateShares` kosong sampai 18a); `quota.Apply(+size, -size)`; `activity restore`; hook `OnChange` + invalidasi listing tujuan.
+- Purge/Empty: `RemoveAll` payload, lalu satu transaksi: `purged_at`, hapus referensi `original_path` **kecuali** path itu kini ditempati item baru (metadatanya milik item baru), `quota.Apply(0, −size)`; `activity purge`/`trash_empty`; audit `file.delete_permanent`/`trash.empty`. Baris purged dipertahankan 7 hari lalu di-prune oleh job.
+- Auto-purge: job `purge_trash` 03:00 (`internal/scheduler`, zona `TZ_DEFAULT`) menghapus `expires_at < now` dalam batch 100 untuk semua user (jail dibuka per user untuk cek referensi), lalu prune baris purged > 7 hari; `TRASH_RETENTION_DAYS=0` → `expires_at` NULL dan job tidak melakukan apa-apa. Admin bisa menjalankan job manual lewat `Scheduler.RunNow` (19b).
+- Ukuran: `size_bytes` dihitung saat delete (walk dengan budget 20 s; bila terpotong angka parsial disimpan dan kuota ditandai `dirty`).
 - Preview sebelum restore: `GET /trash/{id}/download` (file) atau listing read-only isi folder (`GET /trash/{id}/list` — fase akhir, opsional).
 - Retensi 0 = tidak auto-purge; admin bisa memaksa purge semua user lewat maintenance.
 
@@ -1334,7 +1339,7 @@ Semua CLI: `exec.CommandContext` dengan timeout 30 s (video 60 s), `nice -n 10`,
 - **Catatan** (remark/"PS" aaPanel): kolom "Catatan" editable inline (klik dua kali sel), ≤ 1000 karakter, Markdown tidak dirender (plain text, escape).
 - **Tag warna**: 7 warna; badge titik warna sebelum nama; filter cepat "Tag: merah" di toolbar; halaman pencarian mendukung `tag=`; batch set/hapus.
 - **Recent**: derivasi `activity_logs` (open/edit/upload/create/restore) 30 hari, dedup per path, maks 100, hanya yang masih ada; kolom Lokasi; aksi "Buka lokasi file" (navigasi ke folder + seleksi item).
-- **Properties** (dialog/panel): Nama (editable), Tipe (label + MIME), Lokasi (path virtual, tombol copy), Ukuran (file: byte & manusiawi; folder: tombol "Hitung" → task `dir_size` → files/dirs/bytes), Diubah/Dibuat/Diakses (absolut + relatif), Permission (rwx grid + octal, tombol Ubah), Symlink target, Checksum (MD5/SHA-1/SHA-256: file ≤ 100 MB sinkron, lebih besar task; tombol salin; input "Verifikasi hash" → cocok/tidak), Riwayat versi (jumlah, buka panel versi), Share (daftar + buka dialog), Catatan, Tag, Favorit, Pin. Multi-seleksi → ringkasan jumlah & total ukuran (task jika folder).
+- **Properties** (dialog `features/properties/PropertiesDialog`, Alt+Enter; tab Umum / Checksum (file) / Riwayat versi): Nama, Tipe (label + MIME), Lokasi (path virtual), Ukuran (file: byte & manusiawi; folder: tombol "Hitung" → `POST /files/dir-size` sinkron ≤ 60 s, hasil `files/dirs/bytes` juga mengisi kolom Ukuran; Step 11 mengubah walk panjang menjadi task), Diubah/Dibuat/Diakses/Perubahan status, Permission (rwx + octal, tombol Ubah… membuka dialog Permission), Symlink target, Checksum (MD5/SHA-1/SHA-256 per algoritma atau semua: file ≤ 100 MB sinkron, lebih besar pesan "butuh task engine" (Step 11); tombol salin; "Verifikasi hash" → cocok/tidak + hash sebenarnya), Riwayat versi (placeholder sampai 16b), Share/Catatan/Tag/Favorit/Pin (10b/18b). Multi-seleksi → ringkasan jumlah file/folder & total ukuran file (folder tidak dihitung; "Hitung ukuran" per folder). Aksi menu "Hitung ukuran" (folder) dan "Checksum…" (file) aktif sejak Step 10a.
 - **Copy path**: menyalin path virtual (`/Proyek/a.txt`); menu "Salin link share" hanya jika ada share publik aktif.
 - **Analisis penyimpanan** (`/storage`): task `dir_size` pada `/` dengan agregasi per folder (depth ≤ 3 untuk treemap, node < 0,5 % digabung "Lainnya"), 50 file terbesar (heap), ringkasan per tipe (gambar/video/audio/dokumen/arsip/lainnya), ukuran Recycle Bin dan versi; cache 1 jam; treemap SVG (d3-hierarchy, pakai skill dataviz saat implementasi), klik node → navigasi; tombol "Hitung ulang".
 

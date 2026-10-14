@@ -32,6 +32,8 @@ import (
 	"kppbwi.app/filemanager/internal/httpapi"
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/media"
+	"kppbwi.app/filemanager/internal/quota"
+	"kppbwi.app/filemanager/internal/scheduler"
 	"kppbwi.app/filemanager/internal/thumbs"
 	"kppbwi.app/filemanager/internal/trash"
 	"kppbwi.app/filemanager/internal/webassets"
@@ -265,7 +267,8 @@ func runServe(envFile string, noMigrate bool) int {
 	logger.Info("database ready", slog.String("path", database.Path()))
 
 	store := db.NewStore(database)
-	authSvc := auth.NewService(cfg, store, audit.New(store, logger, nil), logger, nil)
+	auditRec := audit.New(store, logger, nil)
+	authSvc := auth.NewService(cfg, store, auditRec, logger, nil)
 	if err := authSvc.Seed(context.Background()); err != nil {
 		logger.Error("admin seed failed", slog.String("error", err.Error()))
 		return exitConfig
@@ -293,10 +296,27 @@ func runServe(envFile string, noMigrate bool) int {
 	listingSvc := listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize, Meta: mediaSvc})
 	locks := fsjail.NewLockManager()
 	signer := download.NewSigner(cfg.AppSecret, nil)
+	quotaSvc := quota.New(store, logger, nil)
 	trashStore := trash.New(cfg.DataDir, cfg.CrossFSTrash, cfg.TrashRetentionDays, store, logger, nil)
 	defer trashStore.Close()
+	trashStore.Quota = quotaSvc
+	trashStore.Unique = files.UniqueName
+	trashStore.OnPurge = files.PurgeReferences
+	trashStore.OpenJail = func(ctx context.Context, userID string) (*fsjail.Jail, func(), error) {
+		u, err := store.GetUserByID(ctx, userID)
+		if err != nil {
+			return nil, nil, err
+		}
+		j, err := fsjail.OpenUser(cfg.StorageRoot, u.Username, u.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		return j, func() { _ = j.Close() }, nil
+	}
+	collator := listing.NewCollator(cfg.DefaultLanguage)
+	trashStore.Less = func(a, b string) bool { return listing.NaturalLess(a, b, collator) }
 	filesSvc := files.New(files.Options{
-		Repo: store, Locks: locks, Trash: trashStore, Logger: logger,
+		Repo: store, Locks: locks, Trash: trashStore, Logger: logger, Quota: quotaSvc,
 		OnChange: func(ctx context.Context, userID string, p fsjail.VPath, isDir bool) {
 			if err := thumbsSvc.Invalidate(ctx, userID, p, isDir); err != nil {
 				logger.Warn("thumbnail invalidation failed", slog.String("path", string(p)), slog.String("error", err.Error()))
@@ -319,6 +339,8 @@ func runServe(envFile string, noMigrate bool) int {
 		Thumbs:      thumbsSvc,
 		Signer:      signer,
 		Files:       filesSvc,
+		Quota:       quotaSvc,
+		Audit:       auditRec,
 		Warnings: func() []string {
 			var out []string
 			for _, tool := range thumbsSvc.MissingTools() {
@@ -338,6 +360,12 @@ func runServe(envFile string, noMigrate bool) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go authSvc.RunMaintenance(ctx)
+	jobs := scheduler.New(cfg.TZDefault, logger, nil)
+	if err := registerJobs(jobs, cfg, trashStore, quotaSvc, auditRec, logger); err != nil {
+		logger.Error("scheduler setup failed", slog.String("error", err.Error()))
+		return exitConfig
+	}
+	go jobs.Start(ctx)
 	thumbsSvc.Start(ctx)
 	logger.Info("thumbnail workers started", slog.Int("workers", thumbsSvc.Workers()))
 
@@ -365,4 +393,30 @@ func runServe(envFile string, noMigrate bool) int {
 	}
 	logger.Info("stopped")
 	return 0
+}
+
+// registerJobs wires the background jobs of SPEC §7.3 that exist so far:
+// purge_trash 03:00 (expired Recycle Bin items) and recalc_quota 03:30
+// (every account, bounded to one hour). Step 19b exposes RunNow for admins.
+func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *trash.Store, quotaSvc *quota.Service, auditRec *audit.Recorder, logger *slog.Logger) error {
+	if err := jobs.Add(scheduler.Job{Name: "purge_trash", At: "03:00", Timeout: time.Hour, Run: func(ctx context.Context) error {
+		if cfg.TrashRetentionDays == 0 {
+			return nil
+		}
+		n, freed, err := trashStore.PurgeExpired(ctx, 100)
+		if n > 0 {
+			logger.Info("expired trash purged", slog.Int("items", n), slog.Int64("bytes", freed))
+		}
+		return err
+	}}); err != nil {
+		return err
+	}
+	return jobs.Add(scheduler.Job{Name: "recalc_quota", At: "03:30", Timeout: time.Hour, Run: func(ctx context.Context) error {
+		done, failed := quotaSvc.RecalculateAll(ctx, cfg.StorageRoot, cfg.DataDir, 10*time.Minute, func(ctx context.Context, userID string, before, after int64) {
+			auditRec.Record(ctx, audit.Entry{Action: audit.ActionQuotaDrift, TargetType: "user", TargetID: userID,
+				Details: map[string]any{"before": before, "after": after}})
+		})
+		logger.Info("quota recalculated", slog.Int("users", done), slog.Int("failed", failed))
+		return nil
+	}})
 }

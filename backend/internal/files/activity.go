@@ -21,6 +21,12 @@ const (
 	ActBatchRename = "batch_rename"
 	ActUndo        = "undo"
 	ActRestore     = "restore"
+	ActPurge       = "purge"
+	ActPurgeAuto   = "purge_auto"
+	ActEmpty       = "trash_empty"
+	ActPermanent   = "delete_permanent"
+	ActDirSize     = "dir_size"
+	ActChecksum    = "checksum"
 )
 
 // logActivity writes one activity row through repo (which may be a

@@ -101,6 +101,7 @@ test('context menu shows exactly the SPEC §9.5 actions per context', async ({ p
     'copyTo',
     'permissions',
     'symlink',
+    'checksum',
     'copyPath',
     'properties',
     'delete',
@@ -110,11 +111,11 @@ test('context menu shows exactly the SPEC §9.5 actions per context', async ({ p
     'share',
     'download',
     'compress',
-    'checksum',
     'versions',
     'batchRename',
     'openInNewTab',
     'new',
+    'folderSize',
   ])
     await expect(page.getByTestId(`cm-${id}`), id).toHaveCount(0)
   const items = await menu
@@ -130,6 +131,8 @@ test('context menu shows exactly the SPEC §9.5 actions per context', async ({ p
   await expect(page.getByTestId('cm-openInNewTab')).toBeVisible()
   await expect(page.getByTestId('cm-quickLook')).toHaveCount(0)
   await expect(page.getByTestId('cm-rename')).toBeVisible()
+  await expect(page.getByTestId('cm-folderSize')).toBeVisible()
+  await expect(page.getByTestId('cm-checksum')).toHaveCount(0)
   await page.keyboard.press('Escape')
 
   // many items (right-click inside the selection keeps it)
@@ -290,7 +293,10 @@ test('Shift+Delete on 51 items requires typing HAPUS', async ({ page }) => {
   await ok.click()
   await expect(dialog).toHaveCount(0)
   await expect(page.getByText('Folder ini kosong')).toBeVisible()
-  await expect(toast(page, /Hapus permanen tersedia/)).toBeVisible()
+  await expect(toast(page, '51 item dihapus permanen')).toBeVisible()
+  // Step 10a: really gone, not in the Recycle Bin
+  const trash = await page.request.get('/api/v1/trash?q=f01')
+  expect(((await trash.json()) as { total: number }).total).toBe(0)
 })
 
 test('inline rename (F2) validates live; dialogs work keyboard-only and return focus to the grid', async ({

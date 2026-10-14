@@ -24,6 +24,13 @@
     "label": "Kuota",
     "usage": "{{used}} dari {{limit}}",
     "percent": "{{percent}}% terpakai",
-    "unlimited": "Tanpa batas"
+    "unlimited": "Tanpa batas",
+    "used": "Terpakai",
+    "trash": "Recycle Bin",
+    "versions": "Versi",
+    "free": "Tersisa",
+    "nearFull": "Kuota hampir penuh",
+    "full": "Kuota penuh",
+    "dirty": "Angka diperbarui malam ini"
   }
 }

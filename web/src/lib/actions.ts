@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   Archive,
+  ArchiveRestore,
   ArrowDownUp,
   ClipboardPaste,
   Columns3,
@@ -12,6 +13,7 @@ import {
   FilePlus2,
   FileSearch,
   FolderInput,
+  FolderOutput,
   FolderOpen,
   FolderPlus,
   FolderSearch,
@@ -109,6 +111,13 @@ export interface ActionContext {
   symlinkTo: () => void
   copyPath: () => void
   undo: () => void
+  /** Step 10a: folder size (Ukuran column + Properties) and checksum tab. */
+  folderSize?: () => void
+  checksum?: () => void
+  /** Recycle Bin page only (context "trash"). */
+  restore?: () => void
+  restoreTo?: () => void
+  purge?: () => void
 }
 
 export interface ActionDef {
@@ -361,9 +370,8 @@ export const ACTIONS: ActionDef[] = [
     labelKey: 'folderSize',
     group: 'meta',
     icon: Ruler,
-    available: false,
     isApplicable: oneFolder,
-    run: noop,
+    run: (c) => c.folderSize?.(),
   },
   {
     id: 'uploadHere',
@@ -405,9 +413,8 @@ export const ACTIONS: ActionDef[] = [
     labelKey: 'checksum',
     group: 'meta',
     icon: Hash,
-    available: false,
     isApplicable: oneFile,
-    run: noop,
+    run: (c) => c.checksum?.(),
   },
   {
     id: 'versions',
@@ -471,6 +478,32 @@ export const ACTIONS: ActionDef[] = [
     destructive: true,
     isApplicable: some,
     run: (c) => c.deletePermanent(),
+  },
+  // --- Recycle Bin (Step 10a) ---
+  {
+    id: 'restore',
+    labelKey: 'restore',
+    group: 'fileops',
+    icon: ArchiveRestore,
+    isApplicable: some,
+    run: (c) => c.restore?.(),
+  },
+  {
+    id: 'restoreTo',
+    labelKey: 'restoreTo',
+    group: 'fileops',
+    icon: FolderOutput,
+    isApplicable: some,
+    run: (c) => c.restoreTo?.(),
+  },
+  {
+    id: 'purge',
+    labelKey: 'purge',
+    group: 'fileops',
+    icon: Trash2,
+    destructive: true,
+    isApplicable: some,
+    run: (c) => c.purge?.(),
   },
   // --- background ---
   {
@@ -689,7 +722,7 @@ export function applicableActions(ctx: ActionContext): ActionDef[] {
 
 /** Context-menu matrix (SPEC §9.5), `|` = separator. Unavailable or inapplicable
  *  actions are dropped; empty groups collapse. */
-export type MenuContext = 'file' | 'folder' | 'multi' | 'background'
+export type MenuContext = 'file' | 'folder' | 'multi' | 'background' | 'trash'
 
 export const MENU_MATRIX: Record<MenuContext, string[]> = {
   file: [
@@ -790,6 +823,8 @@ export const MENU_MATRIX: Record<MenuContext, string[]> = {
     '|',
     'folderProperties',
   ],
+  // Recycle Bin item(s) (SPEC §8.6): restore, restore elsewhere, purge.
+  trash: ['restore', 'restoreTo', '|', 'purge'],
 }
 
 /** Which context a selection belongs to (null = nothing selected → background). */

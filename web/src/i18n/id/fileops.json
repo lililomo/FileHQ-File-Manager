@@ -21,8 +21,11 @@
     "batchRenamed_one": "{{n}} item diganti nama",
     "batchRenamed_other": "{{n}} item diganti nama",
     "undone": "Diurungkan: {{what}}",
-    "permanentFallback": "Hapus permanen tersedia di Recycle Bin (Step 10a); item dipindahkan ke Recycle Bin.",
-    "uploadSoon": "Upload belum tersedia (Step 12a)."
+    "uploadSoon": "Upload belum tersedia (Step 12a).",
+    "deletedPermanent_one": "{{n}} item dihapus permanen",
+    "deletedPermanent_other": "{{n}} item dihapus permanen",
+    "dirSize": "{{name}}: {{size}} ({{files}} file, {{dirs}} folder)",
+    "dirSizePartial": "{{name}}: sekurang-kurangnya {{size}} ({{files}} file, {{dirs}} folder) — perhitungan terpotong setelah 60 detik"
   },
   "announce": {
     "copied_one": "{{n}} item disalin ke clipboard",
@@ -38,7 +41,13 @@
     "undo_expired": "Operasi ini sudah tidak bisa diurungkan.",
     "undo_conflict": "Tidak bisa diurungkan: isi folder sudah berubah.",
     "preview_not_clean": "Masih ada nama yang bentrok atau tidak valid.",
-    "target_absolute": "Target symlink harus relatif."
+    "target_absolute": "Target symlink harus relatif.",
+    "not_a_file": "Checksum hanya untuk file.",
+    "quota": "Kuota penyimpanan tidak cukup: butuh {{needed}}, tersisa {{free}}.",
+    "disk": "Ruang disk server tidak cukup.",
+    "trash_item": "Item Recycle Bin tidak ditemukan.",
+    "trash_gone": "Item sudah dipulihkan atau dihapus permanen.",
+    "fileTooLarge": "File lebih besar dari 100 MB; checksum besar butuh task engine (Step 11)."
   },
   "conflict": {
     "title": "\"{{name}}\" sudah ada",
@@ -177,8 +186,8 @@
     "titleMany_other": "Hapus {{n}} item secara permanen?",
     "description": "Tindakan ini tidak bisa diurungkan.",
     "typeWord": "Ketik {{word}} untuk melanjutkan",
-    "fallbackNote": "Catatan: hapus permanen tiba bersama halaman Recycle Bin (Step 10a). Untuk sekarang item dipindahkan ke Recycle Bin.",
-    "confirm": "Hapus permanen"
+    "confirm": "Hapus permanen",
+    "confirmWord": "Ketik {{word}} untuk menghapus permanen"
   },
   "menu": {
     "empty": "Tidak ada aksi"

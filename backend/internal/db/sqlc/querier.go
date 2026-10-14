@@ -9,6 +9,7 @@ import (
 )
 
 type Querier interface {
+	ApplyQuotaDelta(ctx context.Context, arg ApplyQuotaDeltaParams) error
 	CountActiveAdmins(ctx context.Context) (int64, error)
 	CountActiveSessions(ctx context.Context, now string) (int64, error)
 	CountAllUsers(ctx context.Context) (int64, error)
@@ -18,6 +19,7 @@ type Querier interface {
 	CountFolderViewPrefs(ctx context.Context, userID string) (int64, error)
 	CountLoginAttemptsByIPSince(ctx context.Context, arg CountLoginAttemptsByIPSinceParams) (int64, error)
 	CountMediaMetadata(ctx context.Context, userID string) (int64, error)
+	CountTrashActive(ctx context.Context, userID string) (int64, error)
 	CountUsers(ctx context.Context, arg CountUsersParams) (int64, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
@@ -34,11 +36,15 @@ type Querier interface {
 	DeleteMediaMetadataPrefix(ctx context.Context, arg DeleteMediaMetadataPrefixParams) (int64, error)
 	DeletePinsPrefix(ctx context.Context, arg DeletePinsPrefixParams) (int64, error)
 	DeletePreferences(ctx context.Context, userID string) error
+	DeletePurgedTrashRowsBefore(ctx context.Context, purgedAt *string) (int64, error)
 	DeleteSetting(ctx context.Context, key string) error
 	DeleteTrashItemRow(ctx context.Context, arg DeleteTrashItemRowParams) error
 	GetFolderViewPref(ctx context.Context, arg GetFolderViewPrefParams) (FolderViewPref, error)
 	GetMediaMetadata(ctx context.Context, arg GetMediaMetadataParams) (MediaMetadatum, error)
 	GetPreferences(ctx context.Context, userID string) (UserPreference, error)
+	// Quota accounting (SPEC 4.2 quota_usage, 8.2, ADR-23). Deltas are applied
+	// in the same transaction as the metadata change; counters never go below 0.
+	GetQuotaUsage(ctx context.Context, userID string) (QuotaUsage, error)
 	GetSession(ctx context.Context, id string) (Session, error)
 	GetSetting(ctx context.Context, key string) (Setting, error)
 	GetTrashItem(ctx context.Context, arg GetTrashItemParams) (TrashItem, error)
@@ -52,6 +58,8 @@ type Querier interface {
 	InsertTrashItem(ctx context.Context, arg InsertTrashItemParams) error
 	ListActivity(ctx context.Context, arg ListActivityParams) ([]ActivityLog, error)
 	ListAudit(ctx context.Context, arg ListAuditParams) ([]AuditLog, error)
+	ListDirtyQuotaUsers(ctx context.Context) ([]string, error)
+	ListExpiredTrash(ctx context.Context, arg ListExpiredTrashParams) ([]TrashItem, error)
 	ListFavorites(ctx context.Context, userID string) ([]Favorite, error)
 	ListFileNotes(ctx context.Context, userID string) ([]FileNote, error)
 	ListFileTags(ctx context.Context, userID string) ([]FileTag, error)
@@ -65,6 +73,7 @@ type Querier interface {
 	ListSettings(ctx context.Context) ([]Setting, error)
 	ListTrashByBatch(ctx context.Context, arg ListTrashByBatchParams) ([]TrashItem, error)
 	ListTrashItems(ctx context.Context, userID string) ([]TrashItem, error)
+	ListTrashItemsByIDs(ctx context.Context, arg ListTrashItemsByIDsParams) ([]TrashItem, error)
 	ListUserSessions(ctx context.Context, arg ListUserSessionsParams) ([]Session, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
 	RecordLoginFailure(ctx context.Context, arg RecordLoginFailureParams) error
@@ -79,12 +88,16 @@ type Querier interface {
 	SetHomeProvisioned(ctx context.Context, arg SetHomeProvisionedParams) error
 	SetMediaThumbState(ctx context.Context, arg SetMediaThumbStateParams) error
 	SetMustChangePassword(ctx context.Context, arg SetMustChangePasswordParams) error
+	SetQuotaDirty(ctx context.Context, arg SetQuotaDirtyParams) error
+	SetQuotaUsage(ctx context.Context, arg SetQuotaUsageParams) error
 	SetTrashPurged(ctx context.Context, arg SetTrashPurgedParams) (int64, error)
 	SetTrashRestored(ctx context.Context, arg SetTrashRestoredParams) (int64, error)
 	SetUserTOTP(ctx context.Context, arg SetUserTOTPParams) error
 	SoftDeleteUser(ctx context.Context, arg SoftDeleteUserParams) error
+	SumQuotaUsed(ctx context.Context) (interface{}, error)
 	SumTrashBytes(ctx context.Context, userID string) (interface{}, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
+	UpdateTrashItemSize(ctx context.Context, arg UpdateTrashItemSizeParams) error
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error
 	UpdateUserQuota(ctx context.Context, arg UpdateUserQuotaParams) error

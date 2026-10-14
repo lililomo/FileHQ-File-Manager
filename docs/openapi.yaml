@@ -19,6 +19,8 @@ tags:
     description: Login, sesi, CSRF, ganti password (SPEC §8.1)
   - name: me
     description: Profil dan preferensi user (SPEC §8.18)
+  - name: trash
+    description: Recycle Bin per user (SPEC §8.6)
 
 paths:
   /healthz:
@@ -650,6 +652,201 @@ paths:
               schema: { $ref: "#/components/schemas/OpResponse" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /api/v1/me/quota:
+    get:
+      tags: [me]
+      summary: Kuota penyimpanan user (limit, terpakai, trash, versi)
+      operationId: meQuota
+      description: "`used` = berkas di root user, `trash` dan `versions` ikut dihitung terhadap `quota` (SPEC §8.2, ADR-23). `dirty` true berarti angka belum pernah direkalkulasi atau ada operasi yang sebagian gagal; job 03:30 memperbaikinya."
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuotaUsage" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/files/delete-permanent:
+    post:
+      summary: Delete items for good (Shift+Delete), bypassing the Recycle Bin
+      description: RemoveAll + every metadata reference and version row; quota decreases; audit `file.delete_permanent`. More than 50 items require `confirm:"HAPUS"`. Not undoable (SPEC §8.5 "Hapus permanen").
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeletePermanentRequest" }
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PermanentResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/files/dir-size:
+    post:
+      summary: Folder size (files, dirs, bytes) with a 60 s walk budget
+      description: Synchronous until Step 11 turns long walks into a task; `partial` is true when the budget ran out. Results are cached 10 minutes per path and reused by the Ukuran column and Properties (SPEC §8.7).
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PathRequest" }
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DirSizeResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/files/checksum:
+    post:
+      summary: MD5 / SHA-1 / SHA-256 of a file (≤ 100 MB synchronously)
+      description: Larger files answer `413 FILE_TOO_LARGE details.reason=task_required` until Step 11. Digests are cached 10 minutes per size+mtime and also appear as `checksums` in `GET /files/stat` (SPEC §8.7).
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChecksumRequest" }
+      responses:
+        "200":
+          description: Digests (hex, lowercase)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChecksumResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+  /api/v1/files/checksum/verify:
+    post:
+      summary: Compare a file with an expected digest
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChecksumVerifyRequest" }
+      responses:
+        "200":
+          description: Result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChecksumVerifyResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+  /api/v1/trash:
+    get:
+      tags: [trash]
+      summary: Recycle Bin items of the user (filter, search, sort, page)
+      operationId: trashList
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: kind, in: query, schema: { type: string, enum: [file, folder, dir, image, document, video, audio, archive, other] } }
+        - { name: q, in: query, schema: { type: string }, description: Case-insensitive substring of the name }
+        - { name: sort, in: query, schema: { type: string, enum: [deleted, name, size, expires, path], default: deleted } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc] }, description: "Default: deleted desc, otherwise asc" }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 500 } }
+      responses:
+        "200":
+          description: Page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrashListResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/trash/restore:
+    post:
+      tags: [trash]
+      summary: Restore items to their original location or into `to`
+      operationId: trashRestore
+      description: Missing parent folders are recreated. An occupied destination follows `onConflict`/`perItem[id]`; with the default `fail` every conflict is listed in `409 ALREADY_EXISTS details.conflicts[]` (keyed by trash id) before anything moves. `overwrite` sends the existing item to the Recycle Bin first. `reactivateShares` is always empty until Step 18a (SPEC §8.6).
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TrashRestoreRequest" }
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrashRestoreResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { description: "NOT_FOUND — unknown id or another user's item", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/trash/purge:
+    post:
+      tags: [trash]
+      summary: Delete Recycle Bin items for good
+      operationId: trashPurge
+      description: Unknown or foreign ids are reported with `status:"gone"`. Audit `file.delete_permanent` (SPEC §8.6).
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids: { type: array, items: { type: string }, maxItems: 2000 }
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrashPurgeResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/v1/trash/empty:
+    post:
+      tags: [trash]
+      summary: Empty the Recycle Bin (requires `confirm:"HAPUS"`)
+      operationId: trashEmpty
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirm]
+              properties:
+                confirm: { type: string, enum: [HAPUS] }
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrashPurgeResponse" }
+        "400": { $ref: "#/components/responses/Error" }
   /api/v1/files/sign:
     post:
       summary: Sign URLs for thumbnails (download/media/inline/zip from Step 12b)
@@ -808,6 +1005,11 @@ components:
             shares:
               type: array
               items: { type: object }
+            checksums:
+              type: object
+              description: Digests computed earlier for this size+mtime (cache, Step 10a)
+              additionalProperties: { type: string }
+            dirSize: { $ref: "#/components/schemas/DirSizeResponse" }
     MkdirRequest:
       type: object
       required: [path]
@@ -1015,6 +1217,151 @@ components:
           type: object
           additionalProperties: true
           description: "Key terdaftar di SPEC §8.18 (mis. ui.language, ui.theme, view.columns, view.sort, tabs.open); key tak dikenal → 400 VALIDATION_FAILED details.fields.<key>=unknown_key, nilai salah bentuk → invalid_value"
+    QuotaUsage:
+      type: object
+      required: [quota, limit, used, trash, versions, free, percent, dirty]
+      properties:
+        quota: { type: integer, format: int64, description: Limit in bytes (users.quota_bytes) }
+        limit: { type: integer, format: int64, description: Alias of quota }
+        used: { type: integer, format: int64 }
+        trash: { type: integer, format: int64 }
+        versions: { type: integer, format: int64 }
+        reserved: { type: integer, format: int64, description: Bytes held by operations in flight }
+        free: { type: integer, format: int64 }
+        percent: { type: number, description: "(used+trash+versions+reserved)/quota × 100, one decimal" }
+        fileCount: { type: integer, format: int64 }
+        dirCount: { type: integer, format: int64 }
+        dirty: { type: boolean }
+        calculatedAt: { type: string, nullable: true }
+    DeletePermanentRequest:
+      type: object
+      required: [paths]
+      properties:
+        paths: { type: array, items: { type: string }, maxItems: 2000 }
+        confirm: { type: string, description: "`HAPUS` when more than 50 paths" }
+    PermanentResponse:
+      allOf:
+        - { $ref: "#/components/schemas/OpResponse" }
+        - type: object
+          required: [deleted, bytesFreed]
+          properties:
+            deleted: { type: integer }
+            bytesFreed: { type: integer, format: int64 }
+    DirSizeResponse:
+      type: object
+      required: [path, size, bytes, files, dirs, partial, calculatedAt]
+      properties:
+        path: { type: string }
+        size: { type: integer, format: int64 }
+        bytes: { type: integer, format: int64, description: Alias of size }
+        files: { type: integer, format: int64 }
+        dirs: { type: integer, format: int64 }
+        partial: { type: boolean, description: True when the 60 s budget ran out }
+        calculatedAt: { type: string }
+        cached: { type: boolean }
+    ChecksumRequest:
+      type: object
+      required: [path]
+      properties:
+        path: { type: string }
+        algos: { type: array, items: { type: string, enum: [md5, sha1, sha256] }, description: Default all three }
+        verify:
+          type: object
+          required: [algo, expected]
+          properties:
+            algo: { type: string, enum: [md5, sha1, sha256] }
+            expected: { type: string }
+    ChecksumResponse:
+      type: object
+      required: [path]
+      properties:
+        path: { type: string }
+        md5: { type: string }
+        sha1: { type: string }
+        sha256: { type: string }
+        verified: { type: boolean }
+        actual: { type: string }
+    ChecksumVerifyRequest:
+      type: object
+      required: [path, algo, expected]
+      properties:
+        path: { type: string }
+        algo: { type: string, enum: [md5, sha1, sha256] }
+        expected: { type: string }
+    ChecksumVerifyResponse:
+      type: object
+      required: [path, algo, match, actual]
+      properties:
+        path: { type: string }
+        algo: { type: string }
+        match: { type: boolean }
+        actual: { type: string }
+    TrashItem:
+      type: object
+      required: [id, name, originalPath, isDir, size, itemCount, kind, deletedAt, expiresAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        originalPath: { type: string }
+        isDir: { type: boolean }
+        size: { type: integer, format: int64 }
+        itemCount: { type: integer, format: int64 }
+        kind: { type: string, enum: [file, folder, image, document, video, audio, archive, other] }
+        deletedAt: { type: string }
+        expiresAt: { type: string, nullable: true, description: null when retention is 0 }
+        batchId: { type: string }
+    TrashListResponse:
+      type: object
+      required: [items, total, totalBytes, nextCursor, retentionDays]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/TrashItem" } }
+        total: { type: integer, description: Items matching the filter }
+        totalBytes: { type: integer, format: int64 }
+        nextCursor: { type: string, nullable: true }
+        retentionDays: { type: integer, description: 0 = no auto purge }
+    TrashRestoreRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids: { type: array, items: { type: string }, maxItems: 2000 }
+        to: { type: string, description: Destination folder; omitted = original location }
+        onConflict: { $ref: "#/components/schemas/ConflictPolicy" }
+        perItem: { type: object, additionalProperties: { $ref: "#/components/schemas/ConflictPolicy" }, description: Keyed by trash id }
+    TrashRestoreResult:
+      type: object
+      required: [id, path, to, status, isDir, size]
+      properties:
+        id: { type: string }
+        path: { type: string, description: Original path }
+        to: { type: string, description: Where the item lives now (empty when skipped) }
+        status: { type: string, enum: [ok, renamed, overwritten, skipped] }
+        isDir: { type: boolean }
+        size: { type: integer, format: int64 }
+        overwrittenId: { type: string, description: Trash id of the displaced item }
+    TrashRestoreResponse:
+      type: object
+      required: [results, reactivateShares, undo]
+      properties:
+        results: { type: array, items: { $ref: "#/components/schemas/TrashRestoreResult" } }
+        reactivateShares: { type: array, items: { type: string } }
+        undo: { type: "null" }
+    TrashPurgeResult:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: string }
+        path: { type: string }
+        size: { type: integer, format: int64 }
+        isDir: { type: boolean }
+        status: { type: string, enum: [ok, gone] }
+    TrashPurgeResponse:
+      type: object
+      required: [results, deleted, bytesFreed, undo]
+      properties:
+        results: { type: array, items: { $ref: "#/components/schemas/TrashPurgeResult" } }
+        deleted: { type: integer }
+        bytesFreed: { type: integer, format: int64 }
+        undo: { type: "null" }
     SignRequest:
       type: object
       required: [purpose]

@@ -180,3 +180,83 @@ export function listTemplates(signal?: AbortSignal): Promise<string[]> {
     (r) => r.templates,
   )
 }
+
+/** Shift+Delete (Step 10a): bypasses the Recycle Bin; > 50 paths need `confirm:"HAPUS"`. */
+export interface PermanentResponse extends OpResponse {
+  deleted: number
+  bytesFreed: number
+}
+
+export const PERMANENT_CONFIRM_WORD = 'HAPUS'
+export const PERMANENT_CONFIRM_THRESHOLD = 50
+
+export function deletePermanentItems(paths: string[]): Promise<PermanentResponse> {
+  const body: Record<string, unknown> = { paths }
+  if (paths.length > PERMANENT_CONFIRM_THRESHOLD) body.confirm = PERMANENT_CONFIRM_WORD
+  return api<PermanentResponse>('/files/delete-permanent', { method: 'POST', body })
+}
+
+export interface DirSizeResult {
+  path: string
+  size: number
+  bytes: number
+  files: number
+  dirs: number
+  partial: boolean
+  calculatedAt: string
+  cached?: boolean
+}
+
+export function dirSize(path: string, signal?: AbortSignal): Promise<DirSizeResult> {
+  return api<DirSizeResult>(
+    '/files/dir-size',
+    signal ? { method: 'POST', body: { path }, signal } : { method: 'POST', body: { path } },
+  )
+}
+
+export type ChecksumAlgo = 'md5' | 'sha1' | 'sha256'
+export const CHECKSUM_ALGOS: ChecksumAlgo[] = ['md5', 'sha1', 'sha256']
+
+export interface ChecksumResult {
+  path: string
+  md5?: string
+  sha1?: string
+  sha256?: string
+  verified?: boolean
+  actual?: string
+}
+
+export function checksum(
+  path: string,
+  algos: ChecksumAlgo[],
+  signal?: AbortSignal,
+): Promise<ChecksumResult> {
+  const body = { path, algos }
+  return api<ChecksumResult>(
+    '/files/checksum',
+    signal ? { method: 'POST', body, signal } : { method: 'POST', body },
+  )
+}
+
+export interface ChecksumVerifyResult {
+  path: string
+  algo: string
+  match: boolean
+  actual: string
+}
+
+export function verifyChecksum(
+  path: string,
+  algo: ChecksumAlgo,
+  expected: string,
+): Promise<ChecksumVerifyResult> {
+  return api<ChecksumVerifyResult>('/files/checksum/verify', {
+    method: 'POST',
+    body: { path, algo, expected },
+  })
+}
+
+/** True for `413 FILE_TOO_LARGE details.reason=task_required` (checksum > 100 MB). */
+export function isFileTooLarge(e: unknown): boolean {
+  return e instanceof ApiError && e.code === 'FILE_TOO_LARGE'
+}

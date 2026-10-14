@@ -21,8 +21,11 @@
     "batchRenamed_one": "{{n}} item renamed",
     "batchRenamed_other": "{{n}} items renamed",
     "undone": "Undone: {{what}}",
-    "permanentFallback": "Permanent deletion arrives with the Recycle Bin (Step 10a); the items were moved to the Recycle Bin.",
-    "uploadSoon": "Upload is not available yet (Step 12a)."
+    "uploadSoon": "Upload is not available yet (Step 12a).",
+    "deletedPermanent_one": "{{n}} item permanently deleted",
+    "deletedPermanent_other": "{{n}} items permanently deleted",
+    "dirSize": "{{name}}: {{size}} ({{files}} files, {{dirs}} folders)",
+    "dirSizePartial": "{{name}}: at least {{size}} ({{files}} files, {{dirs}} folders) — the walk stopped after 60 seconds"
   },
   "announce": {
     "copied_one": "{{n}} item copied to the clipboard",
@@ -38,7 +41,13 @@
     "undo_expired": "This operation can no longer be undone.",
     "undo_conflict": "Cannot undo: the folder contents have changed.",
     "preview_not_clean": "Some names still collide or are invalid.",
-    "target_absolute": "The symlink target must be relative."
+    "target_absolute": "The symlink target must be relative.",
+    "not_a_file": "Checksums are only available for files.",
+    "quota": "Not enough storage quota: {{needed}} needed, {{free}} left.",
+    "disk": "The server is out of disk space.",
+    "trash_item": "Recycle Bin item not found.",
+    "trash_gone": "The item was already restored or purged.",
+    "fileTooLarge": "The file is larger than 100 MB; large checksums need the task engine (Step 11)."
   },
   "conflict": {
     "title": "\"{{name}}\" already exists",
@@ -177,8 +186,8 @@
     "titleMany_other": "Delete {{n}} items permanently?",
     "description": "This cannot be undone.",
     "typeWord": "Type {{word}} to continue",
-    "fallbackNote": "Note: permanent deletion arrives with the Recycle Bin page (Step 10a). For now the items are moved to the Recycle Bin.",
-    "confirm": "Delete permanently"
+    "confirm": "Delete permanently",
+    "confirmWord": "Type {{word}} to delete permanently"
   },
   "menu": {
     "empty": "No actions"

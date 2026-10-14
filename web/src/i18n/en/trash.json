@@ -1,0 +1,77 @@
+{
+  "title": "Recycle Bin",
+  "retention_one": "Items are deleted automatically after {{n}} day.",
+  "retention_other": "Items are deleted automatically after {{n}} days.",
+  "retentionNone": "Items are never deleted automatically.",
+  "search": "Search the Recycle Bin",
+  "kind": {
+    "label": "Kind",
+    "all": "All kinds",
+    "file": "File",
+    "folder": "Folder",
+    "image": "Image",
+    "document": "Document",
+    "video": "Video",
+    "audio": "Audio",
+    "archive": "Archive",
+    "other": "Other"
+  },
+  "columns": {
+    "name": "Name",
+    "location": "Original location",
+    "size": "Size",
+    "deleted": "Deleted",
+    "expires": "Expires"
+  },
+  "never": "Never",
+  "grid": "Recycle Bin items",
+  "selectAll": "Select all",
+  "selectRow": "Select {{name}}",
+  "actions": {
+    "restore": "Restore",
+    "restoreTo": "Restore to…",
+    "purge": "Delete permanently",
+    "empty": "Empty",
+    "loadMore": "Load more"
+  },
+  "status": {
+    "items_one": "{{n}} item · {{size}}",
+    "items_other": "{{n}} items · {{size}}",
+    "selected_one": "{{n}} selected",
+    "selected_other": "{{n}} selected"
+  },
+  "empty": {
+    "title": "The Recycle Bin is empty",
+    "description": "Deleted items appear here and can be restored.",
+    "noMatch": "No matching items"
+  },
+  "error": {
+    "title": "Could not load the Recycle Bin",
+    "retry": "Retry"
+  },
+  "restoreTo": {
+    "title": "Restore to…",
+    "description_one": "{{n}} item",
+    "description_other": "{{n}} items",
+    "destination": "Destination folder",
+    "submit": "Restore"
+  },
+  "emptyDialog": {
+    "title": "Empty the Recycle Bin?",
+    "description_one": "{{n}} item ({{size}}) will be deleted permanently. This cannot be undone.",
+    "description_other": "{{n}} items ({{size}}) will be deleted permanently. This cannot be undone.",
+    "typeWord": "Type {{word}} to continue",
+    "confirm": "Empty",
+    "cancel": "Cancel"
+  },
+  "toast": {
+    "restored_one": "{{n}} item restored",
+    "restored_other": "{{n}} items restored",
+    "skipped_one": "{{n}} skipped.",
+    "skipped_other": "{{n}} skipped.",
+    "purged_one": "{{n}} item permanently deleted",
+    "purged_other": "{{n}} items permanently deleted",
+    "emptied": "Recycle Bin emptied ({{size}} freed)",
+    "openLocation": "Open location"
+  }
+}

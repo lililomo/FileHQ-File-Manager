@@ -13,6 +13,7 @@ import (
 	"kppbwi.app/filemanager/internal/db"
 	"kppbwi.app/filemanager/internal/db/sqlc"
 	"kppbwi.app/filemanager/internal/fsjail"
+	"kppbwi.app/filemanager/internal/quota"
 	"kppbwi.app/filemanager/internal/trash"
 )
 
@@ -43,6 +44,7 @@ type env struct {
 	uid     string
 	clock   *fakeClock
 	trash   *trash.Store
+	quota   *quota.Service
 	changes []string
 }
 
@@ -52,6 +54,7 @@ type envOpts struct {
 	syncMaxEntries int
 	syncMaxBytes   int64
 	retentionDays  int
+	quotaBytes     int64 // 0 = 1 GiB; quota service always wired
 }
 
 func newEnv(t *testing.T, o envOpts) *env {
@@ -78,8 +81,12 @@ func newEnv(t *testing.T, o envOpts) *env {
 	store := db.NewStore(database)
 	uid := db.NewID()
 	now := db.Now()
+	qb := o.quotaBytes
+	if qb == 0 {
+		qb = 1 << 30
+	}
 	if _, err := store.CreateUser(context.Background(), sqlc.CreateUserParams{ID: uid, Username: "alice", DisplayName: "Alice", Role: "user", Status: "active",
-		PasswordHash: "x", QuotaBytes: 1 << 30, CreatedAt: now, UpdatedAt: now}); err != nil {
+		PasswordHash: "x", QuotaBytes: qb, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	j, err := fsjail.Open(home)
@@ -89,9 +96,14 @@ func newEnv(t *testing.T, o envOpts) *env {
 	t.Cleanup(func() { _ = j.Close() })
 	clock := &fakeClock{t: time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)}
 	e := &env{t: t, j: j, store: store, home: home, dataDir: dataDir, uid: uid, clock: clock}
+	e.quota = quota.New(store, nil, clock.Now)
+	e.quota.MinDiskFree = 0
 	e.trash = trash.New(dataDir, o.crossFS, o.retentionDays, store, nil, clock.Now)
+	e.trash.Quota = e.quota
+	e.trash.Unique = UniqueName
+	e.trash.OnPurge = PurgeReferences
 	t.Cleanup(e.trash.Close)
-	e.svc = New(Options{Repo: store, Trash: e.trash, Now: clock.Now, SyncMaxEntries: o.syncMaxEntries, SyncMaxBytes: o.syncMaxBytes,
+	e.svc = New(Options{Repo: store, Trash: e.trash, Now: clock.Now, SyncMaxEntries: o.syncMaxEntries, SyncMaxBytes: o.syncMaxBytes, Quota: e.quota,
 		OnChange: func(_ context.Context, _ string, p fsjail.VPath, _ bool) { e.changes = append(e.changes, string(p)) }})
 	return e
 }

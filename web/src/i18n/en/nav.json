@@ -24,6 +24,13 @@
     "label": "Quota",
     "usage": "{{used}} of {{limit}}",
     "percent": "{{percent}}% used",
-    "unlimited": "Unlimited"
+    "unlimited": "Unlimited",
+    "used": "Used",
+    "trash": "Recycle Bin",
+    "versions": "Versions",
+    "free": "Free",
+    "nearFull": "Quota almost full",
+    "full": "Quota full",
+    "dirty": "Numbers refresh tonight"
   }
 }

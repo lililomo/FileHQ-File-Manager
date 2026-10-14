@@ -271,12 +271,27 @@ func (s *Server) handleFilesStat(w http.ResponseWriter, r *http.Request) {
 		s.writeListingError(w, r, err, string(p))
 		return
 	}
-	WriteJSON(w, http.StatusOK, itemView(it, map[string]any{
+	extra := map[string]any{
 		"stat":          it.StatView(),
 		"warnings":      nameWarnings(p),
 		"versionsCount": 0,
 		"shares":        []any{},
-	}))
+	}
+	if s.files != nil && !it.IsDir {
+		if info, lerr := j.Lstat(p); lerr == nil {
+			if sums := s.files.CachedChecksums(u.ID, p, info); len(sums) > 0 {
+				extra["checksums"] = sums
+			}
+		}
+		if ds, ok := s.files.CachedDirSize(u.ID, p); ok {
+			extra["dirSize"] = ds
+		}
+	} else if s.files != nil {
+		if ds, ok := s.files.CachedDirSize(u.ID, p); ok {
+			extra["dirSize"] = ds
+		}
+	}
+	WriteJSON(w, http.StatusOK, itemView(it, extra))
 }
 
 type targetRequest struct {

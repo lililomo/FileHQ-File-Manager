@@ -106,6 +106,18 @@ type Pin struct {
 	CreatedAt string `json:"created_at"`
 }
 
+type QuotaUsage struct {
+	UserID        string  `json:"user_id"`
+	UsedBytes     int64   `json:"used_bytes"`
+	TrashBytes    int64   `json:"trash_bytes"`
+	VersionsBytes int64   `json:"versions_bytes"`
+	FileCount     int64   `json:"file_count"`
+	DirCount      int64   `json:"dir_count"`
+	CalculatedAt  *string `json:"calculated_at"`
+	Dirty         int64   `json:"dirty"`
+	UpdatedAt     string  `json:"updated_at"`
+}
+
 type Session struct {
 	ID                string  `json:"id"`
 	UserID            string  `json:"user_id"`

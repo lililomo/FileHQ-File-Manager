@@ -1,0 +1,77 @@
+{
+  "title": "Recycle Bin",
+  "retention_one": "Item dihapus otomatis setelah {{n}} hari.",
+  "retention_other": "Item dihapus otomatis setelah {{n}} hari.",
+  "retentionNone": "Item tidak dihapus otomatis.",
+  "search": "Cari di Recycle Bin",
+  "kind": {
+    "label": "Jenis",
+    "all": "Semua jenis",
+    "file": "File",
+    "folder": "Folder",
+    "image": "Gambar",
+    "document": "Dokumen",
+    "video": "Video",
+    "audio": "Audio",
+    "archive": "Arsip",
+    "other": "Lainnya"
+  },
+  "columns": {
+    "name": "Nama",
+    "location": "Lokasi asal",
+    "size": "Ukuran",
+    "deleted": "Dihapus",
+    "expires": "Kedaluwarsa"
+  },
+  "never": "Tidak pernah",
+  "grid": "Daftar item di Recycle Bin",
+  "selectAll": "Pilih semua",
+  "selectRow": "Pilih {{name}}",
+  "actions": {
+    "restore": "Pulihkan",
+    "restoreTo": "Pulihkan ke…",
+    "purge": "Hapus permanen",
+    "empty": "Kosongkan",
+    "loadMore": "Muat lebih banyak"
+  },
+  "status": {
+    "items_one": "{{n}} item · {{size}}",
+    "items_other": "{{n}} item · {{size}}",
+    "selected_one": "{{n}} dipilih",
+    "selected_other": "{{n}} dipilih"
+  },
+  "empty": {
+    "title": "Recycle Bin kosong",
+    "description": "Item yang dihapus muncul di sini dan bisa dipulihkan.",
+    "noMatch": "Tidak ada item yang cocok"
+  },
+  "error": {
+    "title": "Tidak bisa memuat Recycle Bin",
+    "retry": "Coba lagi"
+  },
+  "restoreTo": {
+    "title": "Pulihkan ke…",
+    "description_one": "{{n}} item",
+    "description_other": "{{n}} item",
+    "destination": "Folder tujuan",
+    "submit": "Pulihkan"
+  },
+  "emptyDialog": {
+    "title": "Kosongkan Recycle Bin?",
+    "description_one": "{{n}} item ({{size}}) akan dihapus permanen. Tindakan ini tidak bisa diurungkan.",
+    "description_other": "{{n}} item ({{size}}) akan dihapus permanen. Tindakan ini tidak bisa diurungkan.",
+    "typeWord": "Ketik {{word}} untuk melanjutkan",
+    "confirm": "Kosongkan",
+    "cancel": "Batal"
+  },
+  "toast": {
+    "restored_one": "{{n}} item dipulihkan",
+    "restored_other": "{{n}} item dipulihkan",
+    "skipped_one": "{{n}} dilewati.",
+    "skipped_other": "{{n}} dilewati.",
+    "purged_one": "{{n}} item dihapus permanen",
+    "purged_other": "{{n}} item dihapus permanen",
+    "emptied": "Recycle Bin dikosongkan ({{size}} dibebaskan)",
+    "openLocation": "Buka lokasi"
+  }
+}

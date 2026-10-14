@@ -178,6 +178,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/folder-prefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preferensi tampilan satu folder (view, sort, kolom) */
+        get: operations["meFolderPrefGet"];
+        /** Simpan preferensi tampilan satu folder (maks 500 folder per user, LRU) */
+        put: operations["meFolderPrefPut"];
+        post?: never;
+        /** Hapus preferensi tampilan satu folder */
+        delete: operations["meFolderPrefDelete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/files/list": {
         parameters: {
             query?: never;
@@ -208,6 +227,8 @@ export interface paths {
                     types?: string;
                     /** @description Fill itemCount for folders on the page (max 2000 per request) */
                     counts?: boolean;
+                    /** @description Probe up to 50 media files of the page synchronously (Dimensi/Durasi columns); the rest is queued */
+                    media?: boolean;
                 };
                 header?: never;
                 path?: never;
@@ -269,6 +290,45 @@ export interface paths {
                 400: components["responses"]["Error"];
                 401: components["responses"]["Error"];
                 404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the templates accepted by POST /files/create */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Template identifiers (= file extension) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            templates: string[];
+                        };
+                    };
+                };
+                401: components["responses"]["Error"];
             };
         };
         put?: never;
@@ -370,6 +430,881 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/files/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rename a file or folder (undoable)
+         * @description Metadata references (favorites, pins, notes, tags, versions) follow the item in one transaction (SPEC §5.7). The response carries a one-time `undoToken` valid for 60 s (SPEC §8.5).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RenameRequest"];
+                };
+            };
+            responses: {
+                /** @description Renamed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OpResponse"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+                415: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copy items into a folder
+         * @description Synchronous up to 2000 entries / 200 MB (`413 PAYLOAD_TOO_LARGE` with `details.reason=task_required` beyond that until the
+         *     task engine of Step 11). Without `onConflict` an occupied destination answers `409 ALREADY_EXISTS` with
+         *     `details.existing`, `details.incoming` and `details.conflicts[]`. Folder onto folder merges with the policy applied per file.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TransferRequest"];
+                };
+            };
+            responses: {
+                /** @description Done */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OpResponse"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+                413: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move items into a folder (undoable)
+         * @description Same request and conflict handling as copy. Moving a folder into itself or a descendant answers `400 VALIDATION_FAILED` (`details.reason=cannot_move_into_self`).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TransferRequest"];
+                };
+            };
+            responses: {
+                /** @description Done */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OpResponse"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+                413: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Duplicate an item next to itself as "name (n).ext" */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PathRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OpResponse"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                413: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/symlink": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a symbolic link (relative target inside the root) */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SymlinkRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OpResponse"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/chmod": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change permission bits (rwx only; setuid/setgid/sticky are dropped)
+         * @description Recursive requests are bounded by the synchronous entry limit (`413` beyond it). Not undoable (`undo` is null).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ChmodRequest"];
+                };
+            };
+            responses: {
+                /** @description Done */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OpResponse"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                413: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move items to the Recycle Bin (undoable)
+         * @description Each item becomes a `trash_items` row and is renamed into `DATA_DIR/trash/<user>/<id>`; one request = one `batchId`. Metadata rows stay so a restore brings favorites/notes/tags back (SPEC §8.5, §8.6).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PathsRequest"];
+                };
+            };
+            responses: {
+                /** @description Done */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OpResponse"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/batch-rename/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview a batch rename rule */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["BatchRenameRequest"];
+                };
+            };
+            responses: {
+                /** @description Preview rows */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BatchRenamePreviewResponse"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                413: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/batch-rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply a batch rename rule (undoable)
+         * @description The server recomputes the preview; any collision or invalid name answers `409 CONFLICT` with `details.items`. Renames run in two phases through temporary names and roll back on failure.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["BatchRenameRequest"];
+                };
+            };
+            responses: {
+                /** @description Applied */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OpResponse"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+                413: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo the operation identified by a one-time token
+         * @description Tokens live 60 s in memory and belong to the user who received them (`404` otherwise). A changed state answers `409 CONFLICT` (`details.reason=undo_conflict`).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UndoRequest"];
+                };
+            };
+            responses: {
+                /** @description Undone */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OpResponse"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Kuota penyimpanan user (limit, terpakai, trash, versi)
+         * @description `used` = berkas di root user, `trash` dan `versions` ikut dihitung terhadap `quota` (SPEC §8.2, ADR-23). `dirty` true berarti angka belum pernah direkalkulasi atau ada operasi yang sebagian gagal; job 03:30 memperbaikinya.
+         */
+        get: operations["meQuota"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/delete-permanent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete items for good (Shift+Delete), bypassing the Recycle Bin
+         * @description RemoveAll + every metadata reference and version row; quota decreases; audit `file.delete_permanent`. More than 50 items require `confirm:"HAPUS"`. Not undoable (SPEC §8.5 "Hapus permanen").
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["DeletePermanentRequest"];
+                };
+            };
+            responses: {
+                /** @description Done */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PermanentResponse"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/dir-size": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Folder size (files, dirs, bytes) with a 60 s walk budget
+         * @description Synchronous until Step 11 turns long walks into a task; `partial` is true when the budget ran out. Results are cached 10 minutes per path and reused by the Ukuran column and Properties (SPEC §8.7).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PathRequest"];
+                };
+            };
+            responses: {
+                /** @description Done */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DirSizeResponse"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/checksum": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * MD5 / SHA-1 / SHA-256 of a file (≤ 100 MB synchronously)
+         * @description Larger files answer `413 FILE_TOO_LARGE details.reason=task_required` until Step 11. Digests are cached 10 minutes per size+mtime and also appear as `checksums` in `GET /files/stat` (SPEC §8.7).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ChecksumRequest"];
+                };
+            };
+            responses: {
+                /** @description Digests (hex, lowercase) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChecksumResponse"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                413: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/checksum/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Compare a file with an expected digest */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ChecksumVerifyRequest"];
+                };
+            };
+            responses: {
+                /** @description Result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChecksumVerifyResponse"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                413: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recycle Bin items of the user (filter, search, sort, page) */
+        get: operations["trashList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trash/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore items to their original location or into `to`
+         * @description Missing parent folders are recreated. An occupied destination follows `onConflict`/`perItem[id]`; with the default `fail` every conflict is listed in `409 ALREADY_EXISTS details.conflicts[]` (keyed by trash id) before anything moves. `overwrite` sends the existing item to the Recycle Bin first. `reactivateShares` is always empty until Step 18a (SPEC §8.6).
+         */
+        post: operations["trashRestore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trash/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Recycle Bin items for good
+         * @description Unknown or foreign ids are reported with `status:"gone"`. Audit `file.delete_permanent` (SPEC §8.6).
+         */
+        post: operations["trashPurge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trash/empty": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Empty the Recycle Bin (requires `confirm:"HAPUS"`) */
+        post: operations["trashEmpty"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign URLs for thumbnails (download/media/inline/zip from Step 12b)
+         * @description Returns short-lived signed URLs (SPEC §8.9, ADR-15). One `path` or a batch `paths` (≤ 500). TTL for `thumb` is MEDIA_URL_TTL.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "X-CSRF-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SignRequest"];
+                };
+            };
+            responses: {
+                /** @description Signed URL(s) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SignResponse"] | components["schemas"]["SignBatchResponse"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                401: components["responses"]["Error"];
+                403: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/thumb": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve a thumbnail (signed URL, no cookie)
+         * @description Authenticated by the signature only (`<img>` tags, new tabs). `200 image/webp` with `ETag` and
+         *     `Cache-Control: private, max-age=86400` (`304` on `If-None-Match`); `202` + `Retry-After: 2` while
+         *     the thumbnail is being rendered (client retries at most 3×); `404` when the type is unsupported or
+         *     rendering failed (client shows the type icon); `403 SIGNATURE_*`; `429` above 20 parallel requests per user.
+         */
+        get: {
+            parameters: {
+                query: {
+                    path: string;
+                    size: 128 | 256 | 512;
+                    purpose: "thumb";
+                    /** @description u:<user_id> (share scopes from Step 18a) */
+                    scope: string;
+                    /** @description Unix seconds */
+                    exp: number;
+                    /** @description base64url HMAC-SHA256 */
+                    sig: string;
+                };
+                header?: {
+                    "If-None-Match"?: string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description WebP thumbnail */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "image/webp": string;
+                    };
+                };
+                /** @description Rendering in progress; retry after `Retry-After` seconds */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not modified */
+                304: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["Error"];
+                403: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                429: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -419,13 +1354,23 @@ export interface components {
             pinned: boolean;
             /** @enum {string} */
             shared: "none" | "public" | "users" | "both";
+            /** @description Cached media metadata (media_metadata), null until probed */
             media?: {
+                /** @description From magic bytes */
+                mime?: string;
                 width?: number;
                 height?: number;
                 /** Format: int64 */
                 durationMs?: number;
+                codecVideo?: string;
+                codecAudio?: string;
+                hasCover?: boolean;
+                /** @description title, artist, album, year, track */
+                tags?: {
+                    [key: string]: string;
+                };
             } | null;
-            /** @description Server can render a thumbnail */
+            /** @description Server can render a thumbnail (false once the pipeline marked the file failed/unsupported) */
             thumb: boolean;
             etag: string;
         };
@@ -463,6 +1408,11 @@ export interface components {
             warnings: "windows_incompatible"[];
             versionsCount: number;
             shares: Record<string, never>[];
+            /** @description Digests computed earlier for this size+mtime (cache, Step 10a) */
+            checksums?: {
+                [key: string]: string;
+            };
+            dirSize?: components["schemas"]["DirSizeResponse"];
         };
         MkdirRequest: {
             /** @description Full path of the new folder */
@@ -479,6 +1429,141 @@ export interface components {
             template?: "txt" | "md" | "html" | "css" | "js" | "ts" | "json" | "php" | "py" | "sh" | "yaml";
             /** @description Inline content (wins over template) */
             content?: string;
+        };
+        RenameRequest: {
+            path: string;
+            /** @description Alias: new_name */
+            newName: string;
+        };
+        PathRequest: {
+            path: string;
+        };
+        PathsRequest: {
+            paths: string[];
+        };
+        /**
+         * @description fail (default, alias ask) answers 409 ALREADY_EXISTS; overwrite merges folders per file; rename picks name (n).ext
+         * @enum {string}
+         */
+        ConflictPolicy: "fail" | "overwrite" | "skip" | "rename";
+        TransferRequest: {
+            /** @description Alias: items */
+            paths: string[];
+            /** @description Destination folder. Alias: dest */
+            to: string;
+            onConflict?: components["schemas"]["ConflictPolicy"];
+            /** @description Policy per source path (wins over onConflict) */
+            perItem?: {
+                [key: string]: components["schemas"]["ConflictPolicy"];
+            };
+        };
+        SymlinkRequest: {
+            /** @description Path of the link */
+            path: string;
+            /** @description Relative target resolved inside the root */
+            target: string;
+        };
+        ChmodRequest: {
+            paths: string[];
+            /** @example 0644 */
+            mode: string;
+            /** @default false */
+            recursive: boolean;
+            /**
+             * @description Folder mode when recursive (default adds x where r is set)
+             * @example 0755
+             */
+            dirMode?: string;
+        };
+        Numbering: {
+            /**
+             * @description Tokens: {n} counter, {name} current stem, {ext} extension
+             * @example foto-{n}
+             */
+            pattern: string;
+            /** @default 1 */
+            start: number;
+            /** @default 1 */
+            step: number;
+            /** @default 0 */
+            pad: number;
+        };
+        RenameRule: {
+            find?: string;
+            /** @description $1 refers to regex groups when regex=true */
+            replace?: string;
+            /**
+             * @description RE2 syntax (Go regexp)
+             * @default false
+             */
+            regex: boolean;
+            /** @default false */
+            case_insensitive: boolean;
+            numbering?: components["schemas"]["Numbering"];
+            /** @enum {string} */
+            case?: "upper" | "lower" | "title" | "none";
+            /**
+             * @description keep transforms the stem only; include transforms the whole name
+             * @default keep
+             * @enum {string}
+             */
+            ext_mode: "keep" | "include";
+        };
+        BatchRenameRequest: {
+            /** @description Order defines the numbering */
+            paths: string[];
+            rule: components["schemas"]["RenameRule"];
+        };
+        PreviewItem: {
+            from: string;
+            to: string;
+            /** @enum {string} */
+            status: "ok" | "collision" | "invalid";
+            reason?: string;
+        };
+        BatchRenamePreviewResponse: {
+            items: components["schemas"]["PreviewItem"][];
+            clean: boolean;
+        };
+        UndoRequest: {
+            /** @description Aliases: undoToken, undo_token */
+            token: string;
+        };
+        ItemResult: {
+            path: string;
+            to?: string;
+            /** @enum {string} */
+            status: "ok" | "skipped" | "overwritten" | "renamed" | "merged";
+            isDir?: boolean;
+            trashId?: string;
+            warnings?: string[];
+        };
+        UndoInfo: {
+            /** @enum {string} */
+            kind: "rename" | "move" | "restore" | "delete_created" | "batch_rename";
+            path?: string;
+            newName?: string;
+            items?: {
+                from?: string;
+                to?: string;
+            }[];
+            trash?: {
+                id?: string;
+                path?: string;
+            }[];
+            batchId?: string;
+            created?: string[];
+        };
+        OpResponse: {
+            results: components["schemas"]["ItemResult"][];
+            item?: components["schemas"]["Item"];
+            batchId?: string;
+            /** @description One-time token, 60 s; absent when the operation cannot be undone */
+            undoToken?: string;
+            undo: components["schemas"]["UndoInfo"] | null;
+            warnings?: string[];
+            /** @description batch-rename only */
+            items?: components["schemas"]["PreviewItem"][];
         };
         ItemResponse: {
             item: components["schemas"]["Item"];
@@ -525,11 +1610,230 @@ export interface components {
                 [key: string]: boolean;
             };
         };
+        /** @description Kolom Details view (SPEC §8.4): id ∈ name,size,type,mtime,note,btime,atime,ext,mode,itemCount,dimensions,duration,shared,location; `name` wajib ada di visible */
+        ColumnsPref: {
+            visible?: string[];
+            order?: string[];
+            widths?: {
+                [key: string]: number;
+            };
+        };
+        FolderViewPref: {
+            path: string;
+            /** @enum {string} */
+            view: "details" | "list" | "tiles" | "large" | "xlarge";
+            sort: {
+                field: string;
+                /** @enum {string} */
+                dir: "asc" | "desc";
+                field2?: string;
+                /** @enum {string} */
+                dir2?: "asc" | "desc";
+            };
+            columns: components["schemas"]["ColumnsPref"] | null;
+            /** Format: date-time */
+            updatedAt: string;
+        };
         Preferences: {
-            /** @description Key terdaftar di SPEC §8.18 (mis. ui.language, ui.theme) */
+            /** @description Key terdaftar di SPEC §8.18 (mis. ui.language, ui.theme, view.columns, view.sort, tabs.open); key tak dikenal → 400 VALIDATION_FAILED details.fields.<key>=unknown_key, nilai salah bentuk → invalid_value */
             prefs: {
                 [key: string]: unknown;
             };
+        };
+        QuotaUsage: {
+            /**
+             * Format: int64
+             * @description Limit in bytes (users.quota_bytes)
+             */
+            quota: number;
+            /**
+             * Format: int64
+             * @description Alias of quota
+             */
+            limit: number;
+            /** Format: int64 */
+            used: number;
+            /** Format: int64 */
+            trash: number;
+            /** Format: int64 */
+            versions: number;
+            /**
+             * Format: int64
+             * @description Bytes held by operations in flight
+             */
+            reserved?: number;
+            /** Format: int64 */
+            free: number;
+            /** @description (used+trash+versions+reserved)/quota × 100, one decimal */
+            percent: number;
+            /** Format: int64 */
+            fileCount?: number;
+            /** Format: int64 */
+            dirCount?: number;
+            dirty: boolean;
+            calculatedAt?: string | null;
+        };
+        DeletePermanentRequest: {
+            paths: string[];
+            /** @description `HAPUS` when more than 50 paths */
+            confirm?: string;
+        };
+        PermanentResponse: components["schemas"]["OpResponse"] & {
+            deleted: number;
+            /** Format: int64 */
+            bytesFreed: number;
+        };
+        DirSizeResponse: {
+            path: string;
+            /** Format: int64 */
+            size: number;
+            /**
+             * Format: int64
+             * @description Alias of size
+             */
+            bytes: number;
+            /** Format: int64 */
+            files: number;
+            /** Format: int64 */
+            dirs: number;
+            /** @description True when the 60 s budget ran out */
+            partial: boolean;
+            calculatedAt: string;
+            cached?: boolean;
+        };
+        ChecksumRequest: {
+            path: string;
+            /** @description Default all three */
+            algos?: ("md5" | "sha1" | "sha256")[];
+            verify?: {
+                /** @enum {string} */
+                algo: "md5" | "sha1" | "sha256";
+                expected: string;
+            };
+        };
+        ChecksumResponse: {
+            path: string;
+            md5?: string;
+            sha1?: string;
+            sha256?: string;
+            verified?: boolean;
+            actual?: string;
+        };
+        ChecksumVerifyRequest: {
+            path: string;
+            /** @enum {string} */
+            algo: "md5" | "sha1" | "sha256";
+            expected: string;
+        };
+        ChecksumVerifyResponse: {
+            path: string;
+            algo: string;
+            match: boolean;
+            actual: string;
+        };
+        TrashItem: {
+            id: string;
+            name: string;
+            originalPath: string;
+            isDir: boolean;
+            /** Format: int64 */
+            size: number;
+            /** Format: int64 */
+            itemCount: number;
+            /** @enum {string} */
+            kind: "file" | "folder" | "image" | "document" | "video" | "audio" | "archive" | "other";
+            deletedAt: string;
+            /** @description null when retention is 0 */
+            expiresAt: string | null;
+            batchId?: string;
+        };
+        TrashListResponse: {
+            items: components["schemas"]["TrashItem"][];
+            /** @description Items matching the filter */
+            total: number;
+            /** Format: int64 */
+            totalBytes: number;
+            nextCursor: string | null;
+            /** @description 0 = no auto purge */
+            retentionDays: number;
+        };
+        TrashRestoreRequest: {
+            ids: string[];
+            /** @description Destination folder; omitted = original location */
+            to?: string;
+            onConflict?: components["schemas"]["ConflictPolicy"];
+            /** @description Keyed by trash id */
+            perItem?: {
+                [key: string]: components["schemas"]["ConflictPolicy"];
+            };
+        };
+        TrashRestoreResult: {
+            id: string;
+            /** @description Original path */
+            path: string;
+            /** @description Where the item lives now (empty when skipped) */
+            to: string;
+            /** @enum {string} */
+            status: "ok" | "renamed" | "overwritten" | "skipped";
+            isDir: boolean;
+            /** Format: int64 */
+            size: number;
+            /** @description Trash id of the displaced item */
+            overwrittenId?: string;
+        };
+        TrashRestoreResponse: {
+            results: components["schemas"]["TrashRestoreResult"][];
+            reactivateShares: string[];
+            undo: null;
+        };
+        TrashPurgeResult: {
+            id: string;
+            path?: string;
+            /** Format: int64 */
+            size?: number;
+            isDir?: boolean;
+            /** @enum {string} */
+            status: "ok" | "gone";
+        };
+        TrashPurgeResponse: {
+            results: components["schemas"]["TrashPurgeResult"][];
+            deleted: number;
+            /** Format: int64 */
+            bytesFreed: number;
+            undo: null;
+        };
+        SignRequest: {
+            /** @description One path (mutually exclusive with paths) */
+            path?: string;
+            paths?: string[];
+            /**
+             * @description Only thumb in Step 8
+             * @enum {string}
+             */
+            purpose: "thumb" | "download" | "media" | "inline" | "zip";
+            /**
+             * @default 256
+             * @enum {integer}
+             */
+            size: 128 | 256 | 512;
+            /** @description Share scope (Step 18a) */
+            share?: string;
+        };
+        SignResponse: {
+            /** @description Relative URL (/api/v1/files/thumb?...) */
+            url: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        SignBatchResponse: {
+            urls: {
+                path: string;
+                url: string;
+            }[];
+            /** Format: date-time */
+            expiresAt: string;
+            /** @description Paths that failed validation (omitted from urls) */
+            invalid: string[];
         };
         Error: {
             error: {
@@ -942,6 +2246,274 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    meFolderPrefGet: {
+        parameters: {
+            query: {
+                /** @description Path virtual folder */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description `pref` null jika belum ada */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        pref: components["schemas"]["FolderViewPref"] | null;
+                    };
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            /** @description NOT_FOUND — path reserved (.system) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    meFolderPrefPut: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    path: string;
+                    /**
+                     * @default details
+                     * @enum {string}
+                     */
+                    view?: "details" | "list" | "tiles" | "large" | "xlarge";
+                    /**
+                     * @default name
+                     * @enum {string}
+                     */
+                    sort?: "name" | "size" | "type" | "ext" | "mtime" | "btime" | "atime" | "mode" | "note" | "dimensions" | "duration";
+                    /**
+                     * @default asc
+                     * @enum {string}
+                     */
+                    dir?: "asc" | "desc";
+                    sort2?: string;
+                    /** @enum {string} */
+                    dir2?: "asc" | "desc";
+                    columns?: components["schemas"]["ColumnsPref"];
+                };
+            };
+        };
+        responses: {
+            /** @description Preferensi tersimpan */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        pref: components["schemas"]["FolderViewPref"];
+                    };
+                };
+            };
+            /** @description VALIDATION_FAILED — details.fields.{view,sort,dir,sort2,dir2,columns} */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    meFolderPrefDelete: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Dihapus (idempoten) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    meQuota: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuotaUsage"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    trashList: {
+        parameters: {
+            query?: {
+                kind?: "file" | "folder" | "dir" | "image" | "document" | "video" | "audio" | "archive" | "other";
+                /** @description Case-insensitive substring of the name */
+                q?: string;
+                sort?: "deleted" | "name" | "size" | "expires" | "path";
+                /** @description Default: deleted desc, otherwise asc */
+                dir?: "asc" | "desc";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashListResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    trashRestore: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrashRestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Done */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashRestoreResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            /** @description NOT_FOUND — unknown id or another user's item */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            409: components["responses"]["Error"];
+        };
+    };
+    trashPurge: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ids: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Done */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashPurgeResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    trashEmpty: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    confirm: "HAPUS";
+                };
+            };
+        };
+        responses: {
+            /** @description Done */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashPurgeResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
         };
     };
 }

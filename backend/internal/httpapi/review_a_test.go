@@ -232,6 +232,16 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		{http.MethodPost, "/api/v1/files/batch-rename/preview"},
 		{http.MethodPost, "/api/v1/files/batch-rename"},
 		{http.MethodPost, "/api/v1/files/undo"},
+		// Step 10a
+		{http.MethodGet, "/api/v1/me/quota"},
+		{http.MethodPost, "/api/v1/files/delete-permanent"},
+		{http.MethodPost, "/api/v1/files/dir-size"},
+		{http.MethodPost, "/api/v1/files/checksum"},
+		{http.MethodPost, "/api/v1/files/checksum/verify"},
+		{http.MethodGet, "/api/v1/trash"},
+		{http.MethodPost, "/api/v1/trash/restore"},
+		{http.MethodPost, "/api/v1/trash/purge"},
+		{http.MethodPost, "/api/v1/trash/empty"},
 	}
 	for _, b := range blocked {
 		var body any
@@ -272,6 +282,9 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		"POST /api/v1/files/duplicate": true, "POST /api/v1/files/symlink": true, "POST /api/v1/files/chmod": true,
 		"POST /api/v1/files/delete": true, "POST /api/v1/files/batch-rename/preview": true,
 		"POST /api/v1/files/batch-rename": true, "POST /api/v1/files/undo": true,
+		"GET /api/v1/me/quota": true, "POST /api/v1/files/delete-permanent": true, "POST /api/v1/files/dir-size": true,
+		"POST /api/v1/files/checksum": true, "POST /api/v1/files/checksum/verify": true,
+		"GET /api/v1/trash": true, "POST /api/v1/trash/restore": true, "POST /api/v1/trash/purge": true, "POST /api/v1/trash/empty": true,
 		// signed URL only (no cookie): a user who must change the password cannot
 		// obtain one because /files/sign is gated (Step 8).
 		"GET /api/v1/files/thumb": true,

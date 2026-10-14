@@ -9,6 +9,7 @@ import (
 
 	"kppbwi.app/filemanager/internal/db"
 	"kppbwi.app/filemanager/internal/fsjail"
+	"kppbwi.app/filemanager/internal/quota"
 	"kppbwi.app/filemanager/internal/trash"
 )
 
@@ -42,6 +43,8 @@ type Options struct {
 	SyncMaxEntries int
 	OnChange       ChangeFunc
 	Invalidate     InvalidateFunc
+	// Quota enables reservation/accounting (Step 10a); nil = no limits.
+	Quota *quota.Service
 }
 
 // Service implements the file operations of SPEC §8.5 on top of fsjail,
@@ -57,6 +60,9 @@ type Service struct {
 	onChange       ChangeFunc
 	invalidate     InvalidateFunc
 	undo           *UndoStore
+	quota          *quota.Service
+	dirSizes       *dirSizeCache
+	checksums      *checksumCache
 
 	// TestHook, when set, runs after locks are taken and before the
 	// filesystem is touched (concurrency tests).
@@ -82,8 +88,15 @@ func New(o Options) *Service {
 	}
 	return &Service{repo: o.Repo, locks: o.Locks, trash: o.Trash, logger: o.Logger, now: o.Now,
 		syncMaxBytes: o.SyncMaxBytes, syncMaxEntries: o.SyncMaxEntries, onChange: o.OnChange,
-		invalidate: o.Invalidate, undo: NewUndoStore(o.Now)}
+		invalidate: o.Invalidate, undo: NewUndoStore(o.Now), quota: o.Quota,
+		dirSizes: newDirSizeCache(o.Now), checksums: newChecksumCache(o.Now)}
 }
+
+// Quota exposes the accounting service (nil when disabled).
+func (s *Service) Quota() *quota.Service { return s.quota }
+
+// Trash exposes the Recycle Bin store.
+func (s *Service) Trash() *trash.Store { return s.trash }
 
 // Undo exposes the token store (tests, metrics).
 func (s *Service) UndoStore() *UndoStore { return s.undo }
@@ -102,6 +115,57 @@ func (s *Service) changed(ctx context.Context, userID string, p fsjail.VPath, is
 		s.onChange(ctx, userID, p, isDir)
 	}
 	s.invalidateDir(userID, p.Dir())
+	s.dirSizes.invalidate(userID, p)
+	s.checksums.invalidate(userID, p)
+}
+
+// PurgeReferences is the trash.PurgeHook: references of a purged item are
+// removed unless a new item lives at the original path now (its metadata
+// must survive). j is nil in the expiry job when no jail could be opened.
+func PurgeReferences(ctx context.Context, tx db.Repository, j *fsjail.Jail, userID, originalPath string) error {
+	if j != nil {
+		if p, err := fsjail.Clean(originalPath); err == nil {
+			if _, err := j.Lstat(p); err == nil {
+				return nil
+			}
+		}
+	}
+	return DeleteReferences(ctx, tx, userID, originalPath)
+}
+
+// measure walks p with SizeWalkBudget (files only count bytes; symlinks count
+// their link size). complete is false when the budget ran out.
+func (s *Service) measure(ctx context.Context, j *fsjail.Jail, info fsjail.Info) (bytes, count int64, complete bool) {
+	if !info.IsDir {
+		return info.Size, 0, true
+	}
+	wctx, cancel := context.WithTimeout(ctx, trash.SizeWalkBudget)
+	defer cancel()
+	var last fsjail.DirStats
+	st, err := j.DirSize(wctx, info.Path, func(files, dirs, b int64) { last = fsjail.DirStats{Files: files, Dirs: dirs, Bytes: b} })
+	if err != nil {
+		return last.Bytes, last.Files + last.Dirs, false
+	}
+	return st.Bytes, st.Files + st.Dirs, true
+}
+
+// sizeOf returns the byte size of p (0 when missing) with the walk budget.
+func (s *Service) sizeOf(ctx context.Context, j *fsjail.Jail, p fsjail.VPath) (int64, bool) {
+	info, err := j.Lstat(p)
+	if err != nil {
+		return 0, true
+	}
+	b, _, complete := s.measure(ctx, j, info)
+	return b, complete
+}
+
+func (s *Service) markQuotaDirty(ctx context.Context, userID string) {
+	if s.quota == nil {
+		return
+	}
+	if err := s.quota.MarkDirty(ctx, userID); err != nil {
+		s.logger.WarnContext(ctx, "quota dirty flag failed", slog.String("user", userID), slog.String("error", err.Error()))
+	}
 }
 
 func (s *Service) invalidateDir(userID string, dir fsjail.VPath) {

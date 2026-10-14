@@ -31,3 +31,24 @@ DELETE FROM trash_items WHERE user_id = ? AND id = ?;
 -- name: SumTrashBytes :one
 SELECT COALESCE(SUM(size_bytes), 0) FROM trash_items
 WHERE user_id = ? AND restored_at IS NULL AND purged_at IS NULL;
+
+-- name: ListExpiredTrash :many
+SELECT * FROM trash_items
+WHERE expires_at IS NOT NULL AND expires_at < sqlc.arg('now')
+  AND restored_at IS NULL AND purged_at IS NULL
+ORDER BY expires_at, id
+LIMIT sqlc.arg('max_rows');
+
+-- name: ListTrashItemsByIDs :many
+SELECT * FROM trash_items
+WHERE user_id = ? AND id IN (sqlc.slice('ids'));
+
+-- name: CountTrashActive :one
+SELECT COUNT(*) FROM trash_items
+WHERE user_id = ? AND restored_at IS NULL AND purged_at IS NULL;
+
+-- name: DeletePurgedTrashRowsBefore :execrows
+DELETE FROM trash_items WHERE purged_at IS NOT NULL AND purged_at < ?;
+
+-- name: UpdateTrashItemSize :exec
+UPDATE trash_items SET size_bytes = ?, item_count = ? WHERE user_id = ? AND id = ?;

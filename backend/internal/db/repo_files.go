@@ -32,6 +32,11 @@ type TrashRepo interface {
 	SetTrashPurged(ctx context.Context, userID, id, at string) (int64, error)
 	DeleteTrashItemRow(ctx context.Context, userID, id string) error
 	SumTrashBytes(ctx context.Context, userID string) (int64, error)
+	ListExpiredTrash(ctx context.Context, now string, maxRows int64) ([]sqlc.TrashItem, error)
+	ListTrashItemsByIDs(ctx context.Context, userID string, ids []string) ([]sqlc.TrashItem, error)
+	CountTrashActive(ctx context.Context, userID string) (int64, error)
+	DeletePurgedTrashRowsBefore(ctx context.Context, before string) (int64, error)
+	UpdateTrashItemSize(ctx context.Context, userID, id string, sizeBytes, itemCount int64) error
 }
 
 // ActivityRepo is the per-user activity journal (SPEC §4.2 activity_logs).
@@ -101,6 +106,29 @@ func (s *Store) SumTrashBytes(ctx context.Context, userID string) (int64, error)
 		return int64(n), nil
 	}
 	return 0, nil
+}
+
+func (s *Store) ListExpiredTrash(ctx context.Context, now string, maxRows int64) ([]sqlc.TrashItem, error) {
+	return s.r.ListExpiredTrash(ctx, sqlc.ListExpiredTrashParams{Now: &now, MaxRows: maxRows})
+}
+
+func (s *Store) ListTrashItemsByIDs(ctx context.Context, userID string, ids []string) ([]sqlc.TrashItem, error) {
+	if len(ids) == 0 {
+		return []sqlc.TrashItem{}, nil
+	}
+	return s.r.ListTrashItemsByIDs(ctx, sqlc.ListTrashItemsByIDsParams{UserID: userID, Ids: ids})
+}
+
+func (s *Store) CountTrashActive(ctx context.Context, userID string) (int64, error) {
+	return s.r.CountTrashActive(ctx, userID)
+}
+
+func (s *Store) DeletePurgedTrashRowsBefore(ctx context.Context, before string) (int64, error) {
+	return s.w.DeletePurgedTrashRowsBefore(ctx, &before)
+}
+
+func (s *Store) UpdateTrashItemSize(ctx context.Context, userID, id string, sizeBytes, itemCount int64) error {
+	return s.w.UpdateTrashItemSize(ctx, sqlc.UpdateTrashItemSizeParams{SizeBytes: sizeBytes, ItemCount: itemCount, UserID: userID, ID: id})
 }
 
 // --- activity_logs ---

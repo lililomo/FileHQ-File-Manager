@@ -6,15 +6,18 @@ import type { Item, ListResponse } from '@/features/browser/api'
 import { joinPath, splitPath } from '@/features/browser/path'
 import { announce } from '@/lib/announce'
 import { ApiError } from '@/lib/api'
-import { formatNumber } from '@/lib/format'
+import { formatBytes, formatNumber } from '@/lib/format'
 import { useClipboardStore } from '@/stores/clipboard'
 import { getPref } from '@/stores/prefs'
+import { QUOTA_QUERY_KEY } from '@/features/quota/api'
 import {
   batchRenameApply,
   chmodItems,
   conflictsOf,
   createSymlink,
   deleteItems,
+  deletePermanentItems,
+  dirSize,
   duplicateItem,
   isTaskRequired,
   renameItem,
@@ -22,6 +25,7 @@ import {
   undoOperation,
   type ChmodInput,
   type ConflictPolicy,
+  type DirSizeResult,
   type OpResponse,
   type RenameRule,
   type TransferOp,
@@ -107,8 +111,10 @@ export interface FileOps {
   duplicate: (path: string) => Promise<OpResponse | null>
   /** Delete to the Recycle Bin (asks first when `fileops.confirm_delete`). */
   remove: (paths: string[]) => Promise<OpResponse | null>
-  /** Shift+Delete flow (dialog + `HAPUS` for > 50 items). */
+  /** Shift+Delete flow (dialog + `HAPUS` for > 50 items); bypasses the Recycle Bin. */
   removePermanent: (paths: string[]) => Promise<OpResponse | null>
+  /** "Hitung ukuran": walks the folder and patches the Ukuran column (Step 10a). */
+  dirSize: (path: string) => Promise<DirSizeResult | null>
   chmod: (input: ChmodInput) => Promise<OpResponse | null>
   /** `target` is an absolute virtual path; converted to a relative link. */
   symlink: (linkPath: string, target: string) => Promise<OpResponse | null>
@@ -127,6 +133,7 @@ export function useFileOps(): FileOps {
   const invalidate = useCallback(
     (dirs: Iterable<string>) => {
       for (const d of new Set(dirs)) void qc.invalidateQueries({ queryKey: ['list', d] })
+      void qc.invalidateQueries({ queryKey: QUOTA_QUERY_KEY })
     },
     [qc],
   )
@@ -318,13 +325,48 @@ export function useFileOps(): FileOps {
       if (paths.length === 0) return null
       const ok = await askDelete('deletePermanent', paths)
       if (!ok) return null
-      // `files/delete-permanent` arrives with the Recycle Bin page (Step 10a);
-      // until then the confirmed request moves the items to the Recycle Bin.
-      const res = await deleteNow(paths, 'fileops:toast.deleted')
-      if (res) toast.info(t('fileops:toast.permanentFallback'))
-      return res
+      const dirs = paths.map(parentOf)
+      const snap = snapshot(qc, dirs)
+      const set = new Set(paths)
+      for (const d of new Set(dirs))
+        patchLists(qc, d, (items) => items.filter((it) => !set.has(it.path)))
+      try {
+        const res = await deletePermanentItems(paths)
+        invalidate(dirs)
+        const msg = t('fileops:toast.deletedPermanent', { count: res.deleted, n: n(res.deleted) })
+        toast.success(msg)
+        announce(msg)
+        return res
+      } catch (e) {
+        restore(qc, snap)
+        fail(e)
+        return null
+      }
     },
-    [deleteNow, t],
+    [qc, invalidate, fail, t, n],
+  )
+  const dirSizeOf = useCallback<FileOps['dirSize']>(
+    async (path) => {
+      try {
+        const res = await dirSize(path)
+        patchLists(qc, parentOf(path), (items) =>
+          items.map((it) => (it.path === path ? { ...it, size: res.size } : it)),
+        )
+        const msg = t(res.partial ? 'fileops:toast.dirSizePartial' : 'fileops:toast.dirSize', {
+          name: path.split('/').pop() ?? path,
+          size: formatBytes(res.size, lang),
+          files: n(res.files),
+          dirs: n(res.dirs),
+        })
+        toast.success(msg)
+        announce(msg)
+        return res
+      } catch (e) {
+        fail(e)
+        return null
+      }
+    },
+    [qc, fail, t, n, lang],
   )
 
   const chmod = useCallback<FileOps['chmod']>(
@@ -394,6 +436,7 @@ export function useFileOps(): FileOps {
       duplicate,
       remove,
       removePermanent,
+      dirSize: dirSizeOf,
       chmod,
       symlink,
       applyBatchRename,
@@ -409,6 +452,7 @@ export function useFileOps(): FileOps {
       duplicate,
       remove,
       removePermanent,
+      dirSizeOf,
       chmod,
       symlink,
       applyBatchRename,

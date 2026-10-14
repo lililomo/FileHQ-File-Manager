@@ -11,6 +11,7 @@ import (
 
 	"kppbwi.app/filemanager/internal/db"
 	"kppbwi.app/filemanager/internal/fsjail"
+	"kppbwi.app/filemanager/internal/trash"
 )
 
 // Rename changes the name of p inside its folder (SPEC §8.5 "Rename").
@@ -635,7 +636,7 @@ func (s *Service) Undo(ctx context.Context, j *fsjail.Jail, userID, token string
 			if lerr != nil {
 				return res, lerr
 			}
-			_, rerr := s.trash.Restore(ctx, j, userID, t.ID, p)
+			_, rerr := s.trash.Restore(ctx, j, userID, trash.RestoreRequest{ID: t.ID, Dest: p})
 			release()
 			if rerr != nil {
 				err = rerr
@@ -671,7 +672,8 @@ func (s *Service) Undo(ctx context.Context, j *fsjail.Jail, userID, token string
 	}
 	if err != nil {
 		var ce *ConflictError
-		if errors.As(err, &ce) || errors.Is(err, fsjail.ErrExists) || isNotFound(err) {
+		var tce *trash.ConflictError
+		if errors.As(err, &ce) || errors.As(err, &tce) || errors.Is(err, fsjail.ErrExists) || isNotFound(err) || errors.Is(err, trash.ErrGone) {
 			return res, fmt.Errorf("%w: %w", ErrUndoConflict, err)
 		}
 		return res, err

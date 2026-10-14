@@ -7,6 +7,7 @@ import (
 
 	"kppbwi.app/filemanager/internal/db"
 	"kppbwi.app/filemanager/internal/fsjail"
+	"kppbwi.app/filemanager/internal/quota"
 )
 
 // Copy copies paths into folder to (SPEC §8.5 "Copy / Move"). Metadata
@@ -40,9 +41,31 @@ func (s *Service) copy(ctx context.Context, j *fsjail.Jail, userID string, paths
 	}
 	defer releaseW()
 	s.hook("copy")
-	if _, _, err := s.estimate(ctx, j, srcs); err != nil {
+	_, bytes, err := s.estimate(ctx, j, srcs)
+	if err != nil {
 		return nil, err
 	}
+	// Quota: reserve the estimated bytes before writing (SPEC §8.2
+	// "copy/duplicate"); the real delta per item is committed afterwards.
+	var rsv *quota.Reservation
+	if s.quota != nil {
+		rsv, err = s.quota.Reserve(ctx, j, userID, bytes)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var applied int64
+	incomplete := false
+	defer func() {
+		if rsv != nil {
+			if cerr := rsv.Commit(ctx, nil, applied); cerr != nil {
+				s.logger.ErrorContext(ctx, "quota commit failed", slog.String("user", userID), slog.String("error", cerr.Error()))
+			}
+		}
+		if incomplete {
+			s.markQuotaDirty(ctx, userID)
+		}
+	}()
 	res := &Result{Results: []ItemResult{}}
 	var created []string
 	for _, it := range items {
@@ -65,14 +88,24 @@ func (s *Service) copy(ctx context.Context, j *fsjail.Jail, userID string, paths
 			return res, &ValidationError{Reason: "type_mismatch", Path: string(dst), Fields: map[string]string{"on_conflict": "cannot overwrite a folder with a file or vice versa"}}
 		}
 		r.To = string(dst)
+		var before int64
+		if r.Status == "merged" || r.Status == "overwritten" {
+			var ok bool
+			before, ok = s.sizeOf(ctx, j, dst)
+			incomplete = incomplete || !ok
+		}
 		if err := s.copyOne(ctx, j, userID, it, dst, r.Status); err != nil {
 			return res, err
 		}
-		s.logActivity(ctx, s.repo, userID, action, string(it.src), string(dst), map[string]any{"op": action, "status": r.Status, "isDir": it.info.IsDir}, "")
+		after, ok := s.sizeOf(ctx, j, dst)
+		incomplete = incomplete || !ok
+		applied += after - before
+		s.logActivity(ctx, s.repo, userID, action, string(it.src), string(dst), map[string]any{"op": action, "status": r.Status, "isDir": it.info.IsDir, "size": after}, "")
 		if r.Status == "overwritten" || r.Status == "merged" {
 			s.changed(ctx, userID, dst, it.info.IsDir)
 		}
 		s.invalidateDir(userID, to)
+		s.dirSizes.invalidate(userID, dst)
 		res.Results = append(res.Results, r)
 		if r.Status == "ok" || r.Status == "renamed" {
 			created = append(created, string(dst))

@@ -139,7 +139,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	view := userView(u)
-	view["quota"] = map[string]any{"limit": u.QuotaBytes, "used": 0, "trash": 0, "versions": 0} // usage arrives in Step 10a
+	view["quota"] = s.quotaView(r.Context(), u)
 	view["language"] = language
 	view["prefs"] = prefs
 	WriteJSON(w, http.StatusOK, map[string]any{"user": view, "config": s.meConfig()})

@@ -7,7 +7,32 @@ package sqlc
 
 import (
 	"context"
+	"strings"
 )
+
+const countTrashActive = `-- name: CountTrashActive :one
+SELECT COUNT(*) FROM trash_items
+WHERE user_id = ? AND restored_at IS NULL AND purged_at IS NULL
+`
+
+func (q *Queries) CountTrashActive(ctx context.Context, userID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countTrashActive, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const deletePurgedTrashRowsBefore = `-- name: DeletePurgedTrashRowsBefore :execrows
+DELETE FROM trash_items WHERE purged_at IS NOT NULL AND purged_at < ?
+`
+
+func (q *Queries) DeletePurgedTrashRowsBefore(ctx context.Context, purgedAt *string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deletePurgedTrashRowsBefore, purgedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
 
 const deleteTrashItemRow = `-- name: DeleteTrashItemRow :exec
 DELETE FROM trash_items WHERE user_id = ? AND id = ?
@@ -89,6 +114,56 @@ func (q *Queries) InsertTrashItem(ctx context.Context, arg InsertTrashItemParams
 		arg.BatchID,
 	)
 	return err
+}
+
+const listExpiredTrash = `-- name: ListExpiredTrash :many
+SELECT id, user_id, original_path, name, is_dir, size_bytes, item_count, kind, deleted_at, expires_at, batch_id, restored_at, purged_at FROM trash_items
+WHERE expires_at IS NOT NULL AND expires_at < ?1
+  AND restored_at IS NULL AND purged_at IS NULL
+ORDER BY expires_at, id
+LIMIT ?2
+`
+
+type ListExpiredTrashParams struct {
+	Now     *string `json:"now"`
+	MaxRows int64   `json:"max_rows"`
+}
+
+func (q *Queries) ListExpiredTrash(ctx context.Context, arg ListExpiredTrashParams) ([]TrashItem, error) {
+	rows, err := q.db.QueryContext(ctx, listExpiredTrash, arg.Now, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TrashItem{}
+	for rows.Next() {
+		var i TrashItem
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.OriginalPath,
+			&i.Name,
+			&i.IsDir,
+			&i.SizeBytes,
+			&i.ItemCount,
+			&i.Kind,
+			&i.DeletedAt,
+			&i.ExpiresAt,
+			&i.BatchID,
+			&i.RestoredAt,
+			&i.PurgedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listTrashByBatch = `-- name: ListTrashByBatch :many
@@ -182,6 +257,64 @@ func (q *Queries) ListTrashItems(ctx context.Context, userID string) ([]TrashIte
 	return items, nil
 }
 
+const listTrashItemsByIDs = `-- name: ListTrashItemsByIDs :many
+SELECT id, user_id, original_path, name, is_dir, size_bytes, item_count, kind, deleted_at, expires_at, batch_id, restored_at, purged_at FROM trash_items
+WHERE user_id = ? AND id IN (/*SLICE:ids*/?)
+`
+
+type ListTrashItemsByIDsParams struct {
+	UserID string   `json:"user_id"`
+	Ids    []string `json:"ids"`
+}
+
+func (q *Queries) ListTrashItemsByIDs(ctx context.Context, arg ListTrashItemsByIDsParams) ([]TrashItem, error) {
+	query := listTrashItemsByIDs
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.UserID)
+	if len(arg.Ids) > 0 {
+		for _, v := range arg.Ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(arg.Ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TrashItem{}
+	for rows.Next() {
+		var i TrashItem
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.OriginalPath,
+			&i.Name,
+			&i.IsDir,
+			&i.SizeBytes,
+			&i.ItemCount,
+			&i.Kind,
+			&i.DeletedAt,
+			&i.ExpiresAt,
+			&i.BatchID,
+			&i.RestoredAt,
+			&i.PurgedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setTrashPurged = `-- name: SetTrashPurged :execrows
 UPDATE trash_items SET purged_at = ?
 WHERE user_id = ? AND id = ? AND purged_at IS NULL
@@ -230,4 +363,25 @@ func (q *Queries) SumTrashBytes(ctx context.Context, userID string) (interface{}
 	var coalesce interface{}
 	err := row.Scan(&coalesce)
 	return coalesce, err
+}
+
+const updateTrashItemSize = `-- name: UpdateTrashItemSize :exec
+UPDATE trash_items SET size_bytes = ?, item_count = ? WHERE user_id = ? AND id = ?
+`
+
+type UpdateTrashItemSizeParams struct {
+	SizeBytes int64  `json:"size_bytes"`
+	ItemCount int64  `json:"item_count"`
+	UserID    string `json:"user_id"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) UpdateTrashItemSize(ctx context.Context, arg UpdateTrashItemSizeParams) error {
+	_, err := q.db.ExecContext(ctx, updateTrashItemSize,
+		arg.SizeBytes,
+		arg.ItemCount,
+		arg.UserID,
+		arg.ID,
+	)
+	return err
 }

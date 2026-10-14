@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"kppbwi.app/filemanager/internal/audit"
 	"kppbwi.app/filemanager/internal/auth"
 	"kppbwi.app/filemanager/internal/config"
 	"kppbwi.app/filemanager/internal/db"
@@ -17,6 +18,7 @@ import (
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/media"
+	"kppbwi.app/filemanager/internal/quota"
 	"kppbwi.app/filemanager/internal/thumbs"
 )
 
@@ -43,6 +45,8 @@ type Options struct {
 	Signer      *download.Signer    // signed URLs; built from Cfg.AppSecret when nil
 	Warnings    func() []string     // non-fatal readiness warnings (missing optional tools)
 	Files       *files.Service      // file operations (Step 9a); nil disables the mutating routes
+	Quota       *quota.Service      // quota accounting (Step 10a); nil = usage reported as zero
+	Audit       *audit.Recorder     // security audit log for delete-permanent / trash empty; built from Store when nil
 }
 
 // Server holds dependencies shared by handlers.
@@ -63,6 +67,8 @@ type Server struct {
 	warnings    func() []string
 	thumbLimit  thumbLimiter
 	files       *files.Service
+	quota       *quota.Service
+	audit       *audit.Recorder
 }
 
 // New builds the router. The returned handler is safe for http.Server.
@@ -81,8 +87,13 @@ func New(o Options) http.Handler {
 		thumbs:  o.Thumbs,
 		signer:  o.Signer,
 		files:   o.Files,
+		quota:   o.Quota,
+		audit:   o.Audit,
 	}
 	s.warnings = o.Warnings
+	if s.audit == nil && o.Store != nil {
+		s.audit = audit.New(o.Store, o.Logger, nil)
+	}
 	if s.signer == nil && len(o.Cfg.AppSecret) > 0 {
 		s.signer = download.NewSigner(o.Cfg.AppSecret, nil)
 	}
@@ -131,6 +142,8 @@ func (s *Server) mountAPI(api chi.Router) {
 		s.mountFiles(api)
 		s.mountFileOps(api)
 		s.mountThumbs(api)
+		s.mountTrash(api)
+		s.mountQuota(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": s.cfg.AppName})

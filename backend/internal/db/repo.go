@@ -130,6 +130,7 @@ type Repository interface {
 	TrashRepo
 	ActivityRepo
 	RefRepo
+	QuotaRepo
 	// WithTx runs fn with a Repository bound to one write transaction; nested
 	// calls reuse the outer transaction.
 	WithTx(ctx context.Context, fn func(tx Repository) error) error

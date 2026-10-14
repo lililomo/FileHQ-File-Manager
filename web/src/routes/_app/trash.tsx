@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { PlaceholderPage } from '@/components/PlaceholderPage'
+import { TrashPage } from '@/features/trash/TrashPage'
 
 export const Route = createFileRoute('/_app/trash')({
-  component: () => <PlaceholderPage step="10a" titleKey="trash" />,
+  component: TrashPage,
 })
