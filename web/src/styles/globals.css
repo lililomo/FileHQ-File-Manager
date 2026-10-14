@@ -141,3 +141,23 @@
     animation-duration: 1ms;
   }
 }
+
+/* Undo toast progress ring (SPEC §9.7): 10 s countdown, static when motion is reduced. */
+@keyframes undo-ring {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 62.83;
+  }
+}
+.undo-ring {
+  stroke-dasharray: 62.83;
+  stroke-dashoffset: 0;
+  animation: undo-ring 10s linear forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .undo-ring {
+    animation: none;
+  }
+}

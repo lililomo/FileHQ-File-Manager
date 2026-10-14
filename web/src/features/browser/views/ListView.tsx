@@ -4,6 +4,12 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useTranslation } from 'react-i18next'
 import { FileIcon } from '@/components/file-icon/FileIcon'
 import { toIconCategory } from '@/components/file-icon/categories'
+import {
+  autoScrollOnDrag,
+  dropTargetProps,
+  endItemDrag,
+  startItemDrag,
+} from '@/features/file-ops/dnd'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/ui'
 import type { Item } from '../api'
@@ -19,8 +25,10 @@ import {
 import { listCellsInRect, listLayout, moveInList } from './gridMath'
 import { useMarquee } from './useMarquee'
 import { useTypeAhead } from './useTypeAhead'
+import type { ViewOpsProps } from './opsProps'
+import { useSlowClick } from './useSlowClick'
 
-export interface ListViewProps {
+export interface ListViewProps extends ViewOpsProps {
   items: Item[]
   total: number
   path: string
@@ -57,8 +65,16 @@ export function ListView({
   onActiveIndexChange,
   initialScroll = 0,
   onScrollChange,
+  renamingPath = null,
+  renderRename,
+  cutPaths,
+  onSlowClick,
+  dragPaths,
+  dnd = true,
 }: ListViewProps) {
   const { t } = useTranslation('files')
+  const slowClick = useSlowClick(onSlowClick)
+  const [dropOver, setDropOver] = useState<string | null>(null)
   const density = useUIStore((s) => s.density)
   const rowH = density === 'comfortable' ? 28 : 24
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -188,6 +204,13 @@ export function ListView({
       data-testid="list-grid"
       data-columns={layout.columns}
       data-rows={layout.rowsPerColumn}
+      {...(dnd ? dropTargetProps({ dir: path }) : {})}
+      onDragOver={(e) => {
+        if (dnd) {
+          dropTargetProps({ dir: path }).onDragOver(e)
+          autoScrollOnDrag(e.currentTarget, e.clientY)
+        }
+      }}
     >
       <div
         style={{ width: virtualizer.getTotalSize(), height: '100%', position: 'relative' }}
@@ -207,6 +230,14 @@ export function ListView({
                 const index = start + row
                 const selected = isSelected(selection, item.path)
                 const isActive = index === active
+                const wasOnlySelected =
+                  selected && selection.mode === 'explicit' && selection.paths.size === 1
+                const renaming = renamingPath === item.path
+                const isCut = cutPaths?.has(item.path) ?? false
+                const dropProps =
+                  dnd && item.isDir && !renaming
+                    ? dropTargetProps({ dir: item.path, onOver: setDropOver })
+                    : {}
                 return (
                   <div
                     key={item.path}
@@ -217,13 +248,34 @@ export function ListView({
                     data-cell
                     data-index={index}
                     data-path={item.path}
+                    data-cut={isCut || undefined}
+                    data-drop-over={dropOver === item.path || undefined}
                     className={cn(
                       'mx-1 flex cursor-default items-center gap-2 rounded px-2 text-sm text-text hover:bg-surface-2',
                       selected && 'bg-accent-subtle hover:bg-accent-subtle',
                       isActive && 'outline outline-1 -outline-offset-1 outline-accent/60',
+                      isCut && 'opacity-50',
+                      dropOver === item.path &&
+                        'bg-accent/15 outline outline-2 -outline-offset-2 outline-accent',
                     )}
                     style={{ height: rowH }}
+                    draggable={dnd && !renaming}
+                    onDragStart={(e) => {
+                      if (!dnd) return
+                      const paths = dragPaths?.(item) ?? [item.path]
+                      const label = (n: number) => t('grid.dragLabel', { count: n, n: String(n) })
+                      if (!paths.includes(item.path)) {
+                        onSelectionChange(selectOnly(item.path))
+                        startItemDrag(e, { paths: [item.path], from: path }, label(1))
+                        return
+                      }
+                      startItemDrag(e, { paths, from: path }, label(paths.length))
+                    }}
+                    onDragEnd={endItemDrag}
+                    {...dropProps}
                     onClick={(e) => {
+                      if (renaming) return
+                      slowClick.onClick(e, item, wasOnlySelected)
                       onActiveIndexChange(index)
                       onSelectionChange(
                         clickSelect(selection, items, item.path, {
@@ -232,16 +284,27 @@ export function ListView({
                         }),
                       )
                     }}
-                    onDoubleClick={() => onOpen(item)}
+                    onDoubleClick={() => {
+                      slowClick.cancel()
+                      if (!renaming) onOpen(item)
+                    }}
                   >
-                    <span role="gridcell" className="flex min-w-0 items-center gap-2">
+                    <span
+                      role="gridcell"
+                      className="flex min-w-0 flex-1 items-center gap-2"
+                      data-name
+                    >
                       <FileIcon
                         category={item.isDir ? 'folder' : toIconCategory(item.category)}
                         size={16}
                       />
-                      <span className="truncate" title={item.name}>
-                        {item.name}
-                      </span>
+                      {renaming && renderRename ? (
+                        renderRename(item)
+                      ) : (
+                        <span className="truncate" title={item.name}>
+                          {item.name}
+                        </span>
+                      )}
                       {item.broken ? (
                         <Link2Off
                           className="size-3.5 shrink-0 text-danger"

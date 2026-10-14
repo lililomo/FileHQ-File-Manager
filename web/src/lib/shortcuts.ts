@@ -35,18 +35,17 @@ export const FORBIDDEN_SHORTCUTS = [
 
 export const SHORTCUTS: ShortcutDef[] = [
   // --- file browser ---
-  { id: 'copy', keys: 'Ctrl+C', scope: 'browser', labelKey: 'copy', planned: true },
-  { id: 'cut', keys: 'Ctrl+X', scope: 'browser', labelKey: 'cut', planned: true },
-  { id: 'paste', keys: 'Ctrl+V', scope: 'browser', labelKey: 'paste', planned: true },
-  { id: 'delete', keys: 'Delete', scope: 'browser', labelKey: 'delete', planned: true },
+  { id: 'copy', keys: 'Ctrl+C', scope: 'browser', labelKey: 'copy' },
+  { id: 'cut', keys: 'Ctrl+X', scope: 'browser', labelKey: 'cut' },
+  { id: 'paste', keys: 'Ctrl+V', scope: 'browser', labelKey: 'paste' },
+  { id: 'delete', keys: 'Delete', scope: 'browser', labelKey: 'delete' },
   {
     id: 'deletePermanent',
     keys: 'Shift+Delete',
     scope: 'browser',
     labelKey: 'deletePermanent',
-    planned: true,
   },
-  { id: 'rename', keys: 'F2', scope: 'browser', labelKey: 'rename', planned: true },
+  { id: 'rename', keys: 'F2', scope: 'browser', labelKey: 'rename' },
   { id: 'selectAll', keys: 'Ctrl+A', scope: 'browser', labelKey: 'selectAll' },
   { id: 'invertSelection', keys: 'Ctrl+I', scope: 'browser', labelKey: 'invertSelection' },
   { id: 'open', keys: 'Enter', scope: 'browser', labelKey: 'open' },
@@ -71,7 +70,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'viewTiles', keys: 'Ctrl+3', scope: 'browser', labelKey: 'viewTiles' },
   { id: 'viewLarge', keys: 'Ctrl+4', scope: 'browser', labelKey: 'viewLarge' },
   { id: 'viewXLarge', keys: 'Ctrl+5', scope: 'browser', labelKey: 'viewXLarge' },
-  { id: 'undo', keys: 'Ctrl+Z', scope: 'browser', labelKey: 'undo', planned: true },
+  { id: 'undo', keys: 'Ctrl+Z', scope: 'browser', labelKey: 'undo' },
   { id: 'properties', keys: 'Alt+Enter', scope: 'browser', labelKey: 'properties' },
   { id: 'previewPanel', keys: 'Alt+P', scope: 'browser', labelKey: 'previewPanel' },
   { id: 'addressBar', keys: 'Alt+D', scope: 'browser', labelKey: 'addressBar' },

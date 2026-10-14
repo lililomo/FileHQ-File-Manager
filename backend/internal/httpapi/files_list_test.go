@@ -374,3 +374,31 @@ func TestFilesUserIsolationAndGates(t *testing.T) {
 	}
 	_ = hdr
 }
+
+func TestFilesTemplates(t *testing.T) {
+	env := newAuthEnv(t)
+	ck, hdr := readyAdmin(t, env)
+	ip := "203.0.113.5:1"
+	r := env.call(http.MethodGet, "/api/v1/files/templates", ip, nil, hdr, ck)
+	if r.rec.Code != 200 {
+		t.Fatalf("templates: %d %s", r.rec.Code, r.rec.Body.String())
+	}
+	list, _ := r.body["templates"].([]any)
+	if len(list) == 0 {
+		t.Fatalf("templates empty: %v", r.body)
+	}
+	seen := map[string]bool{}
+	for _, v := range list {
+		seen[v.(string)] = true
+	}
+	for _, want := range []string{"txt", "md", "json"} {
+		if !seen[want] {
+			t.Errorf("template %q missing from %v", want, list)
+		}
+	}
+	// Anonymous callers are rejected like every other /files endpoint.
+	r = env.call(http.MethodGet, "/api/v1/files/templates", ip, nil, nil, nil)
+	if r.rec.Code != 401 {
+		t.Fatalf("anonymous: %d", r.rec.Code)
+	}
+}

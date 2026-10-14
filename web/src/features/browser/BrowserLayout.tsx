@@ -6,13 +6,30 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
+import {
+  ContextMenuCheckboxItem,
+  ContextMenuRadioGroup,
+  ContextMenuRadioItem,
+  ContextMenuSeparator,
+} from '@/components/ui/context-menu'
 import { Skeleton } from '@/components/ui/skeleton'
-import { setActionContext, type ActionContext } from '@/lib/actions'
+import { listTemplates } from '@/features/file-ops/api'
+import { setDropHandlers, type DragPayload, parentOf } from '@/features/file-ops/dnd'
+import { FileOpsDialogs } from '@/features/file-ops/FileOpsDialogs'
+import { canUndoNow, focusGrid, useFileOpsDialogs, useUndoStore } from '@/features/file-ops/store'
+import { useFileOps } from '@/features/file-ops/useFileOps'
+import {
+  menuContextFor,
+  setActionContext,
+  type ActionContext,
+  type MenuContext,
+} from '@/lib/actions'
 import { announce } from '@/lib/announce'
 import { ApiError } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
 import { pushScope, registerShortcut } from '@/lib/shortcuts'
 import { useIsMobile, useMediaQuery } from '@/lib/useMediaQuery'
+import { cutPaths, useClipboardStore } from '@/stores/clipboard'
 import { useOverlaysStore } from '@/stores/overlays'
 import { getPref, usePref, usePrefsStore } from '@/stores/prefs'
 import { useSelectionStore } from '@/stores/selection'
@@ -23,22 +40,27 @@ import {
   getFolderPref,
   isViewMode,
   putFolderPref,
+  statItem,
+  VIEW_MODES,
   type Item,
   type SortField,
   type ViewMode,
 } from './api'
 import { ColumnContextMenuItems, ColumnMenu } from './ColumnMenu'
 import { MOBILE_COLUMNS, normalizeColumns, orderedVisible, type ColumnsPref } from './columns'
+import { BrowserContextMenu } from './ContextMenu'
 import { DetailsView } from './DetailsView'
+import { InlineRename } from './InlineRename'
 import { PropertiesDialog, QuickLookDialog } from './ItemDialogs'
-import { NewItemDialog, type NewItemKind } from './NewItemDialog'
 import { PreviewPanel } from './PreviewPanel'
 import { QuickFilter } from './QuickFilter'
 import {
   EMPTY_SELECTION,
   clear as clearSelection,
   invert as invertSelection,
+  isSelected,
   selectAll,
+  selectOnly,
   selectedCount,
   selectedItems,
   type SelectionState,
@@ -47,6 +69,7 @@ import { SortMenu } from './SortMenu'
 import { StatusBar } from './StatusBar'
 import { TabBar } from './TabBar'
 import { Toolbar } from './Toolbar'
+import { ToolbarActions } from './ToolbarActions'
 import { useListing } from './useListing'
 import { ListView } from './views/ListView'
 import { LargeIconsView, TilesView, XLIconsView } from './views/presets'
@@ -55,6 +78,19 @@ import { baseName, parentPath, pathToSplat, ROOT } from './path'
 import { cycleSort, normalizeSort, sameSort, type SortPref } from './sortCycle'
 
 const MOBILE_PREF: ColumnsPref = { visible: MOBILE_COLUMNS, order: MOBILE_COLUMNS, widths: {} }
+const SORT_FIELDS: SortField[] = [
+  'name',
+  'size',
+  'type',
+  'ext',
+  'mtime',
+  'btime',
+  'atime',
+  'mode',
+  'note',
+  'dimensions',
+  'duration',
+]
 
 /** Pushes the "dialog" shortcut scope while an overlay is open. */
 function useDialogScope(open: boolean): void {
@@ -65,20 +101,33 @@ function useDialogScope(open: boolean): void {
 }
 
 export function BrowserLayout({ path }: { path: string }) {
-  const { t, i18n } = useTranslation(['files', 'errors', 'common'])
+  const { t, i18n } = useTranslation(['files', 'fileops', 'errors', 'common'])
   const navigate = useNavigate()
   const qc = useQueryClient()
   const isMobile = useIsMobile()
   const previewOverlay = useMediaQuery('(max-width: 1279px)')
   const [editing, setEditing] = useState(false)
-  const [newKind, setNewKind] = useState<NewItemKind | null>(null)
   const [quickLook, setQuickLook] = useState<Item | null>(null)
   const [properties, setProperties] = useState<Item | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [menuContext, setMenuContext] = useState<MenuContext>('background')
+  const [menuOpen, setMenuOpen] = useState(false)
   const filterRef = useRef<HTMLInputElement>(null)
   const openHelp = useOverlaysStore((s) => s.setHelp)
+  const ops = useFileOps()
+  const openDialog = useFileOpsDialogs((s) => s.open)
+  const dialogOpen = useFileOpsDialogs((s) => s.dialog !== null)
+  const clipboard = useClipboardStore((s) => s.data)
+  const cut = useMemo(() => cutPaths(clipboard), [clipboard])
+  const undoEntry = useUndoStore((s) => s.entry)
+  const templates = useQuery({
+    queryKey: ['templates'],
+    queryFn: ({ signal }) => listTemplates(signal),
+    staleTime: Infinity,
+  })
 
   // --- tabs: URL is the source of truth; the store records history per tab ---
   const tabs = useTabsStore()
@@ -233,15 +282,21 @@ export function BrowserLayout({ path }: { path: string }) {
     setSeenPath(path)
     setActiveIndex(0)
     setFilter('')
+    setRenaming(null)
   }
   useEffect(() => {
     useSelectionStore.getState().clear(tabId)
   }, [path, tabId])
   const selCount = selectedCount(selection, items.length, total)
   const selItems = useMemo(() => selectedItems(selection, items), [selection, items])
+  const selPaths = useMemo(() => selItems.map((it) => it.path), [selItems])
   const selBytes = selItems.reduce((n, it) => n + (it.isDir ? 0 : it.size), 0)
   const activeItem = filtered[Math.min(activeIndex, filtered.length - 1)] ?? null
   const focusItem = selItems.length === 1 ? selItems[0]! : activeItem
+  const dragPaths = useCallback(
+    (item: Item) => (isSelected(selection, item.path) ? selPaths : [item.path]),
+    [selection, selPaths],
+  )
 
   // --- navigation ---
   const go = useCallback(
@@ -302,6 +357,117 @@ export function BrowserLayout({ path }: { path: string }) {
     [setPref],
   )
 
+  const onOpen = useCallback(
+    (item: Item) => {
+      if (item.isDir || (item.isSymlink && !item.broken && item.type === 'dir')) {
+        go(item.path)
+        return
+      }
+      toast(t('files:viewer.notYet', { name: item.name }))
+    },
+    [go, t],
+  )
+
+  // --- file operations (Step 9b) ---
+  const openNew = useCallback(
+    (kind: 'folder' | 'file' | 'template' | 'symlink', opts?: { template?: string }) =>
+      openDialog({
+        kind: 'new',
+        mode: kind,
+        dir: path,
+        ...(opts?.template ? { template: opts.template } : {}),
+      }),
+    [openDialog, path],
+  )
+  const pasteTarget = useCallback(() => {
+    // paste into the single selected folder, else into the current folder
+    if (selItems.length === 1 && selItems[0]!.isDir) return selItems[0]!.path
+    return path
+  }, [selItems, path])
+  const fileOps = useMemo(
+    () => ({
+      copy: () => ops.copy(selPaths, path, tabId),
+      cut: () => ops.cut(selPaths, path, tabId),
+      paste: () => void ops.paste(pasteTarget()),
+      duplicate: () => {
+        if (focusItem) void ops.duplicate(focusItem.path)
+      },
+      rename: () => {
+        if (focusItem) setRenaming(focusItem.path)
+      },
+      moveTo: () => {
+        if (selPaths.length)
+          openDialog({ kind: 'moveCopy', op: 'move', paths: selPaths, from: path })
+      },
+      copyTo: () => {
+        if (selPaths.length)
+          openDialog({ kind: 'moveCopy', op: 'copy', paths: selPaths, from: path })
+      },
+      deleteItems: () => void ops.remove(selPaths),
+      deletePermanent: () => void ops.removePermanent(selPaths),
+      batchRename: () => {
+        if (selPaths.length) openDialog({ kind: 'batchRename', paths: selPaths, dir: path })
+      },
+      permissions: () => {
+        if (selItems.length) openDialog({ kind: 'permissions', items: selItems })
+      },
+      symlinkTo: () => {
+        if (focusItem)
+          openDialog({ kind: 'new', mode: 'symlink', dir: path, target: focusItem.path })
+      },
+      copyPath: () => {
+        if (!focusItem) return
+        const p = focusItem.path
+        void navigator.clipboard?.writeText(p).then(
+          () => toast.success(t('fileops:copyPath.copied', { path: p })),
+          () => toast.error(t('errors:UNKNOWN')),
+        )
+      },
+      undo: () => void ops.undo(),
+      openFolderProperties: () => {
+        statItem(path)
+          .then((stat) => setProperties(stat))
+          .catch((e: unknown) => toast.error(e instanceof ApiError ? e.message : String(e)))
+      },
+    }),
+    [ops, selPaths, selItems, path, tabId, focusItem, pasteTarget, openDialog, t],
+  )
+  const commitRename = useCallback(
+    (item: Item, newName: string) => {
+      setRenaming(null)
+      void ops.rename(item.path, newName).then(() => focusGrid())
+    },
+    [ops],
+  )
+  const cancelRename = useCallback(() => {
+    setRenaming(null)
+    focusGrid()
+  }, [])
+  const siblingNames = useMemo(() => items.map((it) => it.name), [items])
+  const renderRename = useCallback(
+    (item: Item) => (
+      <InlineRename
+        item={item}
+        siblings={siblingNames}
+        onCommit={(n) => commitRename(item, n)}
+        onCancel={cancelRename}
+      />
+    ),
+    [siblingNames, commitRename, cancelRename],
+  )
+  // drop targets outside this screen (sidebar, breadcrumb) call the published handler
+  useEffect(() => {
+    setDropHandlers({
+      items: (payload: DragPayload, targetDir, op) => {
+        const paths = payload.paths.filter((p) => parentOf(p) !== targetDir)
+        if (paths.length === 0) return
+        void ops.transfer(op, paths, targetDir)
+      },
+      os: ops.osDrop,
+    })
+    return () => setDropHandlers(null)
+  }, [ops])
+
   // --- shortcuts (browser scope) ---
   useEffect(() => pushScope('browser'), [])
   useEffect(() => {
@@ -318,8 +484,8 @@ export function BrowserLayout({ path }: { path: string }) {
         if (selCount > 0) setSelection(clearSelection())
       }),
       registerShortcut('filter', () => filterRef.current?.focus()),
-      registerShortcut('newFolder', () => setNewKind('folder')),
-      registerShortcut('newFile', () => setNewKind('file')),
+      registerShortcut('newFolder', () => openNew('folder')),
+      registerShortcut('newFile', () => openNew('file')),
       registerShortcut('viewDetails', () => changeView('details')),
       registerShortcut('viewList', () => changeView('list')),
       registerShortcut('viewTiles', () => changeView('tiles')),
@@ -346,6 +512,13 @@ export function BrowserLayout({ path }: { path: string }) {
         const target = useTabsStore.getState().tabs[n - 1]
         if (target) activateTab(target.id)
       }),
+      registerShortcut('copy', fileOps.copy),
+      registerShortcut('cut', fileOps.cut),
+      registerShortcut('paste', fileOps.paste),
+      registerShortcut('delete', fileOps.deleteItems),
+      registerShortcut('deletePermanent', fileOps.deletePermanent),
+      registerShortcut('rename', fileOps.rename),
+      registerShortcut('undo', fileOps.undo),
     ]
     return () => offs.forEach((off) => off())
   }, [
@@ -363,19 +536,23 @@ export function BrowserLayout({ path }: { path: string }) {
     tabId,
     setPref,
     changeView,
+    openNew,
+    fileOps,
   ])
-  useDialogScope(!!newKind || !!quickLook || !!properties)
+  useDialogScope(!!quickLook || !!properties)
 
-  // --- action registry context (palette, toolbar) ---
-  useEffect(() => {
-    const ctx: ActionContext = {
+  // --- action registry context (palette, toolbar, context menu) ---
+  const actionCtx = useMemo<ActionContext>(
+    () => ({
       path,
       selection: selItems,
       selectionCount: selCount,
       total,
+      clipboardCount: clipboard?.paths.length ?? 0,
+      canUndo: canUndoNow(undoEntry),
       navigate: go,
       refresh: handlers.refresh,
-      openNew: setNewKind,
+      openNew,
       openTab,
       closeTab: () => closeTab(tabId),
       togglePreview,
@@ -395,26 +572,73 @@ export function BrowserLayout({ path }: { path: string }) {
         if (focusItem) setQuickLook(focusItem)
       },
       focusFilter: () => filterRef.current?.focus(),
-    }
-    setActionContext(ctx)
+      open: () => {
+        if (focusItem) onOpen(focusItem)
+      },
+      openInNewTab: () => {
+        if (focusItem?.isDir) openTab(focusItem.path)
+      },
+      ...fileOps,
+    }),
+    [
+      path,
+      selItems,
+      selCount,
+      total,
+      clipboard,
+      undoEntry,
+      go,
+      handlers,
+      openNew,
+      openTab,
+      closeTab,
+      tabId,
+      togglePreview,
+      selection,
+      items,
+      setSelection,
+      openHelp,
+      focusItem,
+      onOpen,
+      fileOps,
+    ],
+  )
+  useEffect(() => {
+    setActionContext(actionCtx)
     return () => setActionContext(null)
-  }, [
-    path,
-    selItems,
-    selCount,
-    total,
-    go,
-    handlers,
-    openTab,
-    closeTab,
-    tabId,
-    togglePreview,
-    selection,
-    items,
-    setSelection,
-    openHelp,
-    focusItem,
-  ])
+  }, [actionCtx])
+
+  // Decide the context-menu variant before Radix opens it: right-clicking an
+  // unselected item selects it; otherwise the current selection is used.
+  const onContextMenuCapture = useCallback(
+    (e: React.MouseEvent) => {
+      if (renaming) return
+      const el =
+        e.target instanceof HTMLElement ? e.target.closest<HTMLElement>('[data-path]') : null
+      const p = el?.dataset.path
+      if (p) {
+        const item = items.find((it) => it.path === p)
+        if (!item) return
+        if (!isSelected(selection, p)) {
+          setSelection(selectOnly(p))
+          const idx = filtered.findIndex((it) => it.path === p)
+          if (idx >= 0) setActiveIndex(idx)
+          setMenuContext(item.isDir ? 'folder' : 'file')
+          return
+        }
+        setMenuContext(menuContextFor({ selection: selItems, selectionCount: selCount }))
+        return
+      }
+      // keyboard (Shift+F10 / Menu) on the grid: act on the selection
+      const keyboard = e.button !== 2
+      setMenuContext(
+        keyboard && selCount > 0
+          ? menuContextFor({ selection: selItems, selectionCount: selCount })
+          : 'background',
+      )
+    },
+    [renaming, items, filtered, selection, selItems, selCount, setSelection],
+  )
 
   // Announce once per successful load of a folder.
   const announced = useRef<string | null>(null)
@@ -443,17 +667,6 @@ export function BrowserLayout({ path }: { path: string }) {
         }),
       )
   }, [selCount, t, i18n.resolvedLanguage])
-
-  const onOpen = useCallback(
-    (item: Item) => {
-      if (item.isDir || (item.isSymlink && !item.broken && item.type === 'dir')) {
-        go(item.path)
-        return
-      }
-      toast(t('files:viewer.notYet', { name: item.name }))
-    },
-    [go, t],
-  )
 
   const apiErr = error instanceof ApiError ? error : null
   const notFound = apiErr?.code === 'NOT_FOUND'
@@ -514,7 +727,7 @@ export function BrowserLayout({ path }: { path: string }) {
               <Upload aria-hidden="true" />
               {t('files:empty.upload')}
             </Button>
-            <Button variant="primary" onClick={() => setNewKind('folder')}>
+            <Button variant="primary" onClick={() => openNew('folder')}>
               <FolderPlus aria-hidden="true" />
               {t('files:empty.newFolder')}
             </Button>
@@ -552,6 +765,12 @@ export function BrowserLayout({ path }: { path: string }) {
       onActiveIndexChange: setActiveIndex,
       initialScroll: tab.scroll[path] ?? 0,
       onScrollChange: (off: number) => useTabsStore.getState().setScroll(path, off),
+      renamingPath: renaming,
+      renderRename,
+      cutPaths: cut,
+      onSlowClick: (item: Item) => setRenaming(item.path),
+      dragPaths,
+      dnd: !isMobile,
     }
     switch (view) {
       case 'list':
@@ -586,6 +805,44 @@ export function BrowserLayout({ path }: { path: string }) {
   }
 
   const visibleCount = orderedVisible(columns).length
+  const viewMenu = (
+    <ContextMenuRadioGroup value={view} onValueChange={(v) => changeView(v as ViewMode)}>
+      {VIEW_MODES.map((m) => (
+        <ContextMenuRadioItem key={m} value={m} data-testid={`cm-view-${m}`}>
+          {t(`files:view.${m}`)}
+        </ContextMenuRadioItem>
+      ))}
+    </ContextMenuRadioGroup>
+  )
+  const sortMenu = (
+    <>
+      <ContextMenuRadioGroup
+        value={sort.field}
+        onValueChange={(f) => changeSort({ field: f as SortField, dir: sort.dir })}
+      >
+        {SORT_FIELDS.map((f) => (
+          <ContextMenuRadioItem key={f} value={f} data-testid={`cm-sort-${f}`}>
+            {t(`files:sort.field.${f}`)}
+          </ContextMenuRadioItem>
+        ))}
+      </ContextMenuRadioGroup>
+      <ContextMenuSeparator />
+      <ContextMenuRadioGroup
+        value={sort.dir}
+        onValueChange={(d) => changeSort({ ...sort, dir: d as SortPref['dir'] })}
+      >
+        <ContextMenuRadioItem value="asc">{t('files:sort.asc')}</ContextMenuRadioItem>
+        <ContextMenuRadioItem value="desc">{t('files:sort.desc')}</ContextMenuRadioItem>
+      </ContextMenuRadioGroup>
+      <ContextMenuSeparator />
+      <ContextMenuCheckboxItem
+        checked={foldersFirst}
+        onCheckedChange={(v) => setPref('view.folders_first', v === true)}
+      >
+        {t('files:sort.foldersFirst')}
+      </ContextMenuCheckboxItem>
+    </>
+  )
   return (
     <div className="relative flex h-full min-h-0 flex-col" data-testid="browser" data-view={view}>
       <AddressBar
@@ -624,8 +881,9 @@ export function BrowserLayout({ path }: { path: string }) {
         onReorder={(id, to) => useTabsStore.getState().reorder(id, to)}
       />
       <Toolbar
-        onNewFolder={() => setNewKind('folder')}
-        onNewFile={() => setNewKind('file')}
+        onNew={openNew}
+        templates={templates.data ?? []}
+        actions={<ToolbarActions ctx={actionCtx} compact={isMobile} />}
         compact={isMobile}
         previewOpen={previewOpen}
         onTogglePreview={togglePreview}
@@ -655,9 +913,23 @@ export function BrowserLayout({ path }: { path: string }) {
         }
       />
       <div className="relative flex min-h-0 flex-1">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-columns={visibleCount}>
-          {body}
-        </div>
+        <BrowserContextMenu
+          ctx={menuOpen || !dialogOpen ? actionCtx : null}
+          context={menuContext}
+          viewMenu={viewMenu}
+          sortMenu={sortMenu}
+          columnsMenu={<ColumnContextMenuItems columns={columns} onChange={changeColumns} />}
+          templates={templates.data ?? []}
+          onOpenChange={setMenuOpen}
+        >
+          <div
+            className="flex min-h-0 min-w-0 flex-1 flex-col"
+            data-columns={visibleCount}
+            onContextMenuCapture={onContextMenuCapture}
+          >
+            {body}
+          </div>
+        </BrowserContextMenu>
         {previewOpen && !isMobile ? (
           <PreviewPanel
             items={selItems}
@@ -672,14 +944,7 @@ export function BrowserLayout({ path }: { path: string }) {
         selectedCount={selCount}
         selectedBytes={selBytes}
       />
-      <NewItemDialog
-        kind={newKind}
-        dir={path}
-        onClose={() => {
-          setNewKind(null)
-          void qc.invalidateQueries({ queryKey: ['list', path] })
-        }}
-      />
+      <FileOpsDialogs ops={ops} />
       <QuickLookDialog item={quickLook} onClose={() => setQuickLook(null)} />
       <PropertiesDialog item={properties} onClose={() => setProperties(null)} />
     </div>

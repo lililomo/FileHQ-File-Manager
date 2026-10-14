@@ -4,7 +4,7 @@ import { formatBytes, formatRelativeTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { Item } from '../api'
 import { typeLabel } from '../columns'
-import { GridView, type GridViewProps } from './GridView'
+import { GridView, type CellState, type GridViewProps } from './GridView'
 import { Thumb } from './Thumb'
 import { LARGE_SPEC, TILES_SPEC, XLARGE_SPEC, middleEllipsis } from './gridMath'
 
@@ -16,17 +16,19 @@ function Broken({ item }: { item: Item }) {
   return <Link2Off className="size-3.5 shrink-0 text-danger" aria-label={t('grid.broken')} />
 }
 
-function TileCell({ item }: { item: Item }) {
+function TileCell({ item, state }: { item: Item; state: CellState }) {
   const { t, i18n } = useTranslation('files')
   const lang = i18n.resolvedLanguage ?? 'id'
   return (
     <div className="flex h-full items-center gap-2 px-2">
       <Thumb item={item} box={48} iconSize={28} className="shrink-0" />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1">
-          <span className="truncate font-medium" title={item.name}>
-            {item.name}
-          </span>
+        <div className="flex items-center gap-1" data-name>
+          {state.renameSlot ?? (
+            <span className="truncate font-medium" title={item.name}>
+              {item.name}
+            </span>
+          )}
           <Broken item={item} />
         </div>
         <div className="truncate text-xs text-text-muted">{typeLabel(t, item)}</div>
@@ -38,7 +40,17 @@ function TileCell({ item }: { item: Item }) {
   )
 }
 
-function IconCell({ item, box, chars }: { item: Item; box: number; chars: number }) {
+function IconCell({
+  item,
+  box,
+  chars,
+  state,
+}: {
+  item: Item
+  box: number
+  chars: number
+  state: CellState
+}) {
   return (
     <div className="flex h-full flex-col items-center gap-1 p-2">
       <Thumb item={item} box={box} className="shrink-0" />
@@ -46,10 +58,13 @@ function IconCell({ item, box, chars }: { item: Item; box: number; chars: number
         className={cn(
           'flex w-full items-center justify-center gap-1 px-1 text-center text-xs leading-4',
         )}
+        data-name
       >
-        <span className="line-clamp-2 break-all" title={item.name}>
-          {middleEllipsis(item.name, chars)}
-        </span>
+        {state.renameSlot ?? (
+          <span className="line-clamp-2 break-all" title={item.name}>
+            {middleEllipsis(item.name, chars)}
+          </span>
+        )}
         <Broken item={item} />
       </div>
     </div>
@@ -62,7 +77,7 @@ export function TilesView(props: PresetProps) {
       {...props}
       spec={TILES_SPEC}
       view="tiles"
-      renderCell={(item) => <TileCell item={item} />}
+      renderCell={(item, state) => <TileCell item={item} state={state} />}
     />
   )
 }
@@ -73,7 +88,7 @@ export function LargeIconsView(props: PresetProps) {
       {...props}
       spec={LARGE_SPEC}
       view="large"
-      renderCell={(item) => <IconCell item={item} box={128} chars={34} />}
+      renderCell={(item, state) => <IconCell item={item} box={128} chars={34} state={state} />}
     />
   )
 }
@@ -84,7 +99,7 @@ export function XLIconsView(props: PresetProps) {
       {...props}
       spec={XLARGE_SPEC}
       view="xlarge"
-      renderCell={(item) => <IconCell item={item} box={256} chars={60} />}
+      renderCell={(item, state) => <IconCell item={item} box={256} chars={60} state={state} />}
     />
   )
 }

@@ -168,7 +168,7 @@ export function buildColumns(t: TFunction<'files'>, lang: string): ColumnDef[] {
       meta: COLUMN_META.name,
       cell: (it) => {
         return (
-          <span className="flex min-w-0 items-center gap-2">
+          <span className="flex min-w-0 items-center gap-2" data-name>
             <FileIcon category={it.isDir ? 'folder' : toIconCategory(it.category)} size={16} />
             <span className="truncate" title={it.name}>
               {it.name}

@@ -1,0 +1,189 @@
+{
+  "cancel": "Batal",
+  "warnWindows": "Nama ini bermasalah di Windows, tetapi tetap diterapkan.",
+  "undo": {
+    "button": "Urungkan"
+  },
+  "toast": {
+    "moved_one": "{{n}} item dipindahkan",
+    "moved_other": "{{n}} item dipindahkan",
+    "copied_one": "{{n}} item disalin",
+    "copied_other": "{{n}} item disalin",
+    "skipped_one": "{{n}} dilewati.",
+    "skipped_other": "{{n}} dilewati.",
+    "renamed": "Diganti nama menjadi {{name}}",
+    "duplicated": "Duplikat dibuat: {{name}}",
+    "deleted_one": "{{n}} item dipindahkan ke Recycle Bin",
+    "deleted_other": "{{n}} item dipindahkan ke Recycle Bin",
+    "chmod_one": "Permission {{mode}} diterapkan ke {{n}} item",
+    "chmod_other": "Permission {{mode}} diterapkan ke {{n}} item",
+    "symlinked": "Symlink {{name}} dibuat",
+    "batchRenamed_one": "{{n}} item diganti nama",
+    "batchRenamed_other": "{{n}} item diganti nama",
+    "undone": "Diurungkan: {{what}}",
+    "permanentFallback": "Hapus permanen tersedia di Recycle Bin (Step 10a); item dipindahkan ke Recycle Bin.",
+    "uploadSoon": "Upload belum tersedia (Step 12a)."
+  },
+  "announce": {
+    "copied_one": "{{n}} item disalin ke clipboard",
+    "copied_other": "{{n}} item disalin ke clipboard",
+    "cut_one": "{{n}} item dipotong",
+    "cut_other": "{{n}} item dipotong"
+  },
+  "error": {
+    "taskRequired": "Operasi terlalu besar untuk dijalankan langsung; butuh task engine (Step 11).",
+    "cannot_move_into_self": "Folder tidak bisa dipindahkan atau disalin ke dalam dirinya sendiri.",
+    "type_mismatch": "File dan folder dengan nama sama tidak bisa saling menimpa.",
+    "not_a_directory": "Tujuan bukan folder.",
+    "undo_expired": "Operasi ini sudah tidak bisa diurungkan.",
+    "undo_conflict": "Tidak bisa diurungkan: isi folder sudah berubah.",
+    "preview_not_clean": "Masih ada nama yang bentrok atau tidak valid.",
+    "target_absolute": "Target symlink harus relatif."
+  },
+  "conflict": {
+    "title": "\"{{name}}\" sudah ada",
+    "descriptionMove": "Folder tujuan {{dir}} sudah berisi item dengan nama yang sama.",
+    "descriptionCopy": "Folder tujuan {{dir}} sudah berisi item dengan nama yang sama.",
+    "counter": "{{i}} dari {{n}}",
+    "existing": "Yang sudah ada",
+    "incoming": "Yang baru",
+    "size": "Ukuran",
+    "mtime": "Diubah",
+    "folder": "Folder",
+    "typeMismatch": "Salah satunya folder dan yang lain file; tidak bisa ditimpa.",
+    "applyAll_one": "Terapkan ke semua ({{n}} konflik)",
+    "applyAll_other": "Terapkan ke semua ({{n}} konflik)",
+    "cancel": "Batal",
+    "skip": "Lewati",
+    "rename": "Ganti nama otomatis",
+    "overwrite": "Timpa",
+    "merge": "Gabungkan"
+  },
+  "picker": {
+    "root": "File Saya",
+    "label": "Pilih folder",
+    "expand": "Buka",
+    "collapse": "Tutup",
+    "error": "gagal memuat"
+  },
+  "moveCopy": {
+    "titleMove": "Pindah ke…",
+    "titleCopy": "Salin ke…",
+    "items_one": "{{n}} item",
+    "items_other": "{{n}} item",
+    "destination": "Folder tujuan",
+    "invalidPath": "Path tidak valid",
+    "intoSelf": "Tujuan berada di dalam item yang dipilih.",
+    "sameFolder": "Item sudah berada di folder ini.",
+    "newFolderHere": "Folder baru di sini",
+    "newFolderPlaceholder": "Nama folder baru",
+    "create": "Buat",
+    "submitMove": "Pindahkan",
+    "submitCopy": "Salin"
+  },
+  "batch": {
+    "title": "Batch rename",
+    "description_one": "{{n}} item",
+    "description_other": "{{n}} item",
+    "find": "Cari",
+    "replace": "Ganti dengan",
+    "regex": "Regex (RE2)",
+    "caseInsensitive": "Abaikan huruf besar/kecil",
+    "case": "Huruf",
+    "caseNone": "Tidak diubah",
+    "caseUpper": "HURUF BESAR",
+    "caseLower": "huruf kecil",
+    "caseTitle": "Huruf Awal Besar",
+    "extMode": "Ekstensi",
+    "extKeep": "Pertahankan ekstensi",
+    "extInclude": "Ikut diubah",
+    "numbering": "Penomoran",
+    "pattern": "Pola ({n}, {name}, {ext})",
+    "start": "Mulai",
+    "step": "Langkah",
+    "pad": "Digit",
+    "preview": "Preview",
+    "loading": "Menghitung…",
+    "summary": "{{changed}} dari {{n}} berubah",
+    "from": "Nama lama",
+    "to": "Nama baru",
+    "status": "Status",
+    "ok": "OK",
+    "unchanged": "Tidak berubah",
+    "collision": "Bentrok",
+    "invalid": "Tidak valid",
+    "apply": "Terapkan",
+    "reason": {
+      "duplicate_result": "hasil sama dengan item lain",
+      "exists": "sudah ada di folder",
+      "not_found": "item tidak ditemukan",
+      "empty": "nama kosong",
+      "slash": "berisi garis miring",
+      "backslash": "berisi garis miring terbalik",
+      "nul": "berisi karakter NUL",
+      "control_char": "berisi karakter kontrol",
+      "too_long": "terlalu panjang",
+      "dot": "nama . atau ..",
+      "invalid_utf8": "UTF-8 tidak valid"
+    }
+  },
+  "new": {
+    "templateTitle": "File baru dari template",
+    "symlinkTitle": "Symlink baru",
+    "template": "Template",
+    "loadingTemplates": "Memuat template…",
+    "defaultStem": "baru",
+    "target": "Target",
+    "pickTarget": "Pilih target…",
+    "hidePicker": "Sembunyikan",
+    "relative": "Disimpan sebagai tautan relatif: {{rel}}",
+    "chooseTemplate": "Pilih template…"
+  },
+  "name": {
+    "windowsWarning": "Nama ini bermasalah di Windows (tetap bisa dipakai).",
+    "exists": "Sudah ada item dengan nama ini",
+    "renameLabel": "Nama baru untuk {{name}}"
+  },
+  "perm": {
+    "title": "Permission",
+    "items_one": "{{n}} item",
+    "items_other": "{{n}} item",
+    "bit": {
+      "r": "Baca",
+      "w": "Tulis",
+      "x": "Eksekusi"
+    },
+    "who": {
+      "owner": "Pemilik",
+      "group": "Grup",
+      "public": "Publik"
+    },
+    "octal": "Oktal",
+    "recursive": "Terapkan ke subfolder dan isinya",
+    "note": "Bit setuid/setgid/sticky selalu dibuang.",
+    "apply": "Terapkan"
+  },
+  "delete": {
+    "titleOne": "Pindahkan \"{{name}}\" ke Recycle Bin?",
+    "titleMany_one": "Pindahkan {{n}} item ke Recycle Bin?",
+    "titleMany_other": "Pindahkan {{n}} item ke Recycle Bin?",
+    "description": "Item bisa dipulihkan dari Recycle Bin.",
+    "dontAsk": "Jangan tanya lagi",
+    "confirm": "Pindahkan"
+  },
+  "permanent": {
+    "titleOne": "Hapus \"{{name}}\" secara permanen?",
+    "titleMany_one": "Hapus {{n}} item secara permanen?",
+    "titleMany_other": "Hapus {{n}} item secara permanen?",
+    "description": "Tindakan ini tidak bisa diurungkan.",
+    "typeWord": "Ketik {{word}} untuk melanjutkan",
+    "fallbackNote": "Catatan: hapus permanen tiba bersama halaman Recycle Bin (Step 10a). Untuk sekarang item dipindahkan ke Recycle Bin.",
+    "confirm": "Hapus permanen"
+  },
+  "menu": {
+    "empty": "Tidak ada aksi"
+  },
+  "copyPath": {
+    "copied": "Path disalin: {{path}}"
+  }
+}

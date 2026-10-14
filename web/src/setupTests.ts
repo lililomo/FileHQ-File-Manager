@@ -22,3 +22,13 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
 await import('@/i18n')
 
 afterEach(() => cleanup())
+
+// jsdom has no ResizeObserver; Radix Switch/Select/Popper measure elements with it.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  class RO {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  Object.defineProperty(globalThis, 'ResizeObserver', { writable: true, value: RO })
+}

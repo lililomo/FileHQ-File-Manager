@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
+import { dropTargetProps } from '@/features/file-ops/dnd'
 import { cn } from '@/lib/utils'
 import { listDir, listQueryKey } from './api'
 import { pathToSplat, ROOT } from './path'
@@ -25,14 +26,19 @@ function FolderLink({
   children: React.ReactNode
   className?: string
 }) {
+  const [over, setOver] = useState(false)
   return (
     <Link
       to="/files/$"
       params={{ _splat: pathToSplat(path) }}
       className={cn(
         'max-w-48 truncate rounded px-1.5 py-0.5 text-sm text-text hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus',
+        over && 'bg-accent/15 outline outline-2 -outline-offset-1 outline-accent',
         className,
       )}
+      data-drop-over={over || undefined}
+      data-testid={`crumb-${path}`}
+      {...dropTargetProps({ dir: path, onOver: (d) => setOver(d !== null) })}
     >
       {children}
     </Link>

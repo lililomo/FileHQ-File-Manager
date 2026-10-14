@@ -4,13 +4,9 @@ import {
   FilePlus2,
   FolderPlus,
   Globe,
-  MoreHorizontal,
+  Link as LinkIcon,
   PanelRight,
-  Pencil,
   Plus,
-  Scissors,
-  ClipboardPaste,
-  Trash2,
   Upload,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -20,15 +16,24 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { IconButton } from '@/components/ui/icon-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
+export type ToolbarNewKind = 'folder' | 'file' | 'template' | 'symlink'
+
 export interface ToolbarProps {
-  onNewFolder: () => void
-  onNewFile: () => void
+  onNew: (kind: ToolbarNewKind, opts?: { template?: string }) => void
+  /** Template names for "Baru → Dari template" (GET /files/templates). */
+  templates?: string[]
+  /** Contextual file-operation buttons (`ToolbarActions`). */
+  actions?: ReactNode
   compact?: boolean
   previewOpen?: boolean
   onTogglePreview?: () => void
@@ -37,11 +42,12 @@ export interface ToolbarProps {
   viewSwitcher?: ReactNode
 }
 
-/** Toolbar (SPEC §9.3): "Baru", preview, sort and columns work; file operations
- *  (9b), upload (12a), remote download (13) and grid views (8) are placeholders. */
+/** Toolbar (SPEC §9.3): "Baru", file operations (9b), preview, sort and
+ *  columns work; upload (12a) and remote download (13) are placeholders. */
 export function Toolbar({
-  onNewFolder,
-  onNewFile,
+  onNew,
+  templates = [],
+  actions,
   compact = false,
   previewOpen = false,
   onTogglePreview,
@@ -86,14 +92,42 @@ export function Toolbar({
             <ChevronDown className="size-3.5 opacity-80" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-48">
-          <DropdownMenuItem onSelect={onNewFolder} data-testid="toolbar-new-folder">
+        <DropdownMenuContent align="start" className="w-52">
+          <DropdownMenuItem onSelect={() => onNew('folder')} data-testid="toolbar-new-folder">
             <FolderPlus className="text-icon-folder" aria-hidden="true" />
             {t('toolbar.newFolder')}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onNewFile} data-testid="toolbar-new-file">
+          <DropdownMenuItem onSelect={() => onNew('file')} data-testid="toolbar-new-file">
             <FilePlus2 aria-hidden="true" />
             {t('toolbar.newFile')}
+          </DropdownMenuItem>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger data-testid="toolbar-new-template">
+              <FilePlus2 aria-hidden="true" />
+              {t('toolbar.newFromTemplate')}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="max-h-72 overflow-auto">
+              {templates.length === 0 ? (
+                <DropdownMenuItem onSelect={() => onNew('template')}>
+                  {t('toolbar.newFromTemplate')}
+                </DropdownMenuItem>
+              ) : (
+                templates.map((name) => (
+                  <DropdownMenuItem
+                    key={name}
+                    onSelect={() => onNew('template', { template: name })}
+                    data-testid={`toolbar-template-${name}`}
+                  >
+                    {`.${name}`}
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => onNew('symlink')} data-testid="toolbar-new-symlink">
+            <LinkIcon aria-hidden="true" />
+            {t('toolbar.newSymlink')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -114,11 +148,7 @@ export function Toolbar({
         <>
           {disabledIcon(t('toolbar.remote'), Globe)}
           <div className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
-          {disabledIcon(t('toolbar.copy'), Copy)}
-          {disabledIcon(t('toolbar.cut'), Scissors)}
-          {disabledIcon(t('toolbar.paste'), ClipboardPaste)}
-          {disabledIcon(t('toolbar.rename'), Pencil)}
-          {disabledIcon(t('toolbar.delete'), Trash2)}
+          {actions}
           <div className="ml-auto flex items-center gap-1">
             {viewSwitcher}
             {sortMenu}
@@ -141,9 +171,7 @@ export function Toolbar({
         <div className="ml-auto flex items-center gap-1">
           {viewSwitcher}
           {sortMenu}
-          <IconButton label={t('toolbar.more')} disabled>
-            <MoreHorizontal aria-hidden="true" />
-          </IconButton>
+          {actions}
         </div>
       )}
     </div>

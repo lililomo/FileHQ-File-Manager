@@ -12,6 +12,12 @@ import {
 import { useTranslation } from 'react-i18next'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
+import {
+  autoScrollOnDrag,
+  dropTargetProps,
+  endItemDrag,
+  startItemDrag,
+} from '@/features/file-ops/dnd'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/ui'
 import type { Item, SortField } from './api'
@@ -35,8 +41,10 @@ import {
   type SelectionState,
 } from './SelectionModel'
 import type { SortPref } from './sortCycle'
+import type { ViewOpsProps } from './views/opsProps'
+import { useSlowClick } from './views/useSlowClick'
 
-export interface DetailsViewProps {
+export interface DetailsViewProps extends ViewOpsProps {
   items: Item[]
   total: number
   path: string
@@ -94,8 +102,17 @@ export function DetailsView({
   initialScroll = 0,
   onScrollChange,
   compact = false,
+  renamingPath = null,
+  renderRename,
+  cutPaths,
+  onSlowClick,
+  dragPaths,
+  dnd = true,
 }: DetailsViewProps) {
   const { t, i18n } = useTranslation('files')
+  const slowClick = useSlowClick(onSlowClick)
+  const [dropOver, setDropOver] = useState<string | null>(null)
+  const dragLabel = (count: number) => t('grid.dragLabel', { count, n: String(count) })
   const lang = i18n.resolvedLanguage ?? 'id'
   const density = useUIStore((s) => s.density)
   const rowHeight = density === 'comfortable' ? 40 : 36
@@ -390,6 +407,13 @@ export function DetailsView({
       tabIndex={0}
       onKeyDown={onKeyDown}
       data-testid="details-grid"
+      {...(dnd ? dropTargetProps({ dir: path }) : {})}
+      onDragOver={(e) => {
+        if (dnd) {
+          dropTargetProps({ dir: path }).onDragOver(e)
+          autoScrollOnDrag(e.currentTarget, e.clientY)
+        }
+      }}
     >
       {headerMenu ? (
         <ContextMenu>
@@ -407,6 +431,14 @@ export function DetailsView({
           const item = rows[v.index]!
           const isActive = v.index === active
           const selected = isSelected(selection, item.path)
+          const wasOnlySelected =
+            selected && selection.mode === 'explicit' && selection.paths.size === 1
+          const renaming = renamingPath === item.path
+          const isCut = cutPaths?.has(item.path) ?? false
+          const dropProps =
+            dnd && item.isDir && !renaming
+              ? dropTargetProps({ dir: item.path, onOver: setDropOver })
+              : {}
           return (
             <div
               key={item.path}
@@ -416,13 +448,33 @@ export function DetailsView({
               aria-selected={selected}
               data-index={v.index}
               data-path={item.path}
+              data-cut={isCut || undefined}
+              data-drop-over={dropOver === item.path || undefined}
               className={cn(
                 'absolute left-0 flex w-full cursor-default items-center border-b border-border/60 text-sm text-text select-none hover:bg-surface-2',
                 selected && 'bg-accent-subtle hover:bg-accent-subtle',
                 isActive && 'outline outline-1 -outline-offset-1 outline-accent/60',
+                isCut && 'opacity-50',
+                dropOver === item.path &&
+                  'bg-accent/15 outline outline-2 -outline-offset-2 outline-accent',
               )}
               style={{ height: rowHeight, transform: `translateY(${v.start}px)` }}
+              draggable={dnd && !renaming}
+              onDragStart={(e) => {
+                if (!dnd) return
+                const paths = dragPaths?.(item) ?? [item.path]
+                if (!paths.includes(item.path)) {
+                  onSelectionChange(selectOnly(item.path))
+                  startItemDrag(e, { paths: [item.path], from: path }, dragLabel(1))
+                  return
+                }
+                startItemDrag(e, { paths, from: path }, dragLabel(paths.length))
+              }}
+              onDragEnd={endItemDrag}
+              {...dropProps}
               onClick={(e) => {
+                if (renaming) return
+                slowClick.onClick(e, item, wasOnlySelected)
                 onActiveIndexChange(v.index)
                 onSelectionChange(
                   clickSelect(selection, items, item.path, {
@@ -431,7 +483,10 @@ export function DetailsView({
                   }),
                 )
               }}
-              onDoubleClick={() => onOpen(item)}
+              onDoubleClick={() => {
+                slowClick.cancel()
+                if (!renaming) onOpen(item)
+              }}
             >
               {!compact ? (
                 <div
@@ -460,7 +515,7 @@ export function DetailsView({
                   className="flex min-w-0 items-center truncate px-3"
                   style={colStyle(c.id, c.meta)}
                 >
-                  {c.cell(item)}
+                  {c.id === 'name' && renaming && renderRename ? renderRename(item) : c.cell(item)}
                 </div>
               ))}
             </div>

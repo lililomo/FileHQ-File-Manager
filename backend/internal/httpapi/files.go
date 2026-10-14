@@ -36,6 +36,7 @@ func (s *Server) mountFiles(api chi.Router) {
 		g.Use(RequirePasswordChanged)
 		g.Get("/files/list", s.handleFilesList)
 		g.Get("/files/stat", s.handleFilesStat)
+		g.Get("/files/templates", s.handleFilesTemplates)
 		g.Post("/files/mkdir", s.handleFilesMkdir)
 		g.Post("/files/create", s.handleFilesCreate)
 		g.Post("/files/sign", s.handleFilesSign)
@@ -475,4 +476,10 @@ func (s *Server) handleFilesCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusCreated, map[string]any{"item": it, "warnings": warnings})
+}
+
+// handleFilesTemplates lists the templates accepted by POST /files/create
+// ("Baru → dari template", SPEC §6.3). Static, so clients may cache it.
+func (s *Server) handleFilesTemplates(w http.ResponseWriter, r *http.Request) {
+	WriteJSON(w, http.StatusOK, map[string]any{"templates": files.TemplateNames()})
 }

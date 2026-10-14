@@ -1,0 +1,189 @@
+{
+  "cancel": "Cancel",
+  "warnWindows": "This name is problematic on Windows but was applied anyway.",
+  "undo": {
+    "button": "Undo"
+  },
+  "toast": {
+    "moved_one": "{{n}} item moved",
+    "moved_other": "{{n}} items moved",
+    "copied_one": "{{n}} item copied",
+    "copied_other": "{{n}} items copied",
+    "skipped_one": "{{n}} skipped.",
+    "skipped_other": "{{n}} skipped.",
+    "renamed": "Renamed to {{name}}",
+    "duplicated": "Duplicate created: {{name}}",
+    "deleted_one": "{{n}} item moved to the Recycle Bin",
+    "deleted_other": "{{n}} items moved to the Recycle Bin",
+    "chmod_one": "Permission {{mode}} applied to {{n}} item",
+    "chmod_other": "Permission {{mode}} applied to {{n}} items",
+    "symlinked": "Symlink {{name}} created",
+    "batchRenamed_one": "{{n}} item renamed",
+    "batchRenamed_other": "{{n}} items renamed",
+    "undone": "Undone: {{what}}",
+    "permanentFallback": "Permanent deletion arrives with the Recycle Bin (Step 10a); the items were moved to the Recycle Bin.",
+    "uploadSoon": "Upload is not available yet (Step 12a)."
+  },
+  "announce": {
+    "copied_one": "{{n}} item copied to the clipboard",
+    "copied_other": "{{n}} items copied to the clipboard",
+    "cut_one": "{{n}} item cut",
+    "cut_other": "{{n}} items cut"
+  },
+  "error": {
+    "taskRequired": "The operation is too large to run directly; it needs the task engine (Step 11).",
+    "cannot_move_into_self": "A folder cannot be moved or copied into itself.",
+    "type_mismatch": "A file and a folder with the same name cannot overwrite each other.",
+    "not_a_directory": "The destination is not a folder.",
+    "undo_expired": "This operation can no longer be undone.",
+    "undo_conflict": "Cannot undo: the folder contents have changed.",
+    "preview_not_clean": "Some names still collide or are invalid.",
+    "target_absolute": "The symlink target must be relative."
+  },
+  "conflict": {
+    "title": "\"{{name}}\" already exists",
+    "descriptionMove": "The destination {{dir}} already contains an item with the same name.",
+    "descriptionCopy": "The destination {{dir}} already contains an item with the same name.",
+    "counter": "{{i}} of {{n}}",
+    "existing": "Existing",
+    "incoming": "Incoming",
+    "size": "Size",
+    "mtime": "Modified",
+    "folder": "Folder",
+    "typeMismatch": "One is a folder and the other a file; it cannot be overwritten.",
+    "applyAll_one": "Apply to all ({{n}} conflict)",
+    "applyAll_other": "Apply to all ({{n}} conflicts)",
+    "cancel": "Cancel",
+    "skip": "Skip",
+    "rename": "Rename automatically",
+    "overwrite": "Overwrite",
+    "merge": "Merge"
+  },
+  "picker": {
+    "root": "My Files",
+    "label": "Choose a folder",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "error": "failed to load"
+  },
+  "moveCopy": {
+    "titleMove": "Move to…",
+    "titleCopy": "Copy to…",
+    "items_one": "{{n}} item",
+    "items_other": "{{n}} items",
+    "destination": "Destination folder",
+    "invalidPath": "Invalid path",
+    "intoSelf": "The destination is inside a selected item.",
+    "sameFolder": "The items are already in this folder.",
+    "newFolderHere": "New folder here",
+    "newFolderPlaceholder": "New folder name",
+    "create": "Create",
+    "submitMove": "Move",
+    "submitCopy": "Copy"
+  },
+  "batch": {
+    "title": "Batch rename",
+    "description_one": "{{n}} item",
+    "description_other": "{{n}} items",
+    "find": "Find",
+    "replace": "Replace with",
+    "regex": "Regex (RE2)",
+    "caseInsensitive": "Ignore case",
+    "case": "Case",
+    "caseNone": "Unchanged",
+    "caseUpper": "UPPER CASE",
+    "caseLower": "lower case",
+    "caseTitle": "Title Case",
+    "extMode": "Extension",
+    "extKeep": "Keep extension",
+    "extInclude": "Include extension",
+    "numbering": "Numbering",
+    "pattern": "Pattern ({n}, {name}, {ext})",
+    "start": "Start",
+    "step": "Step",
+    "pad": "Digits",
+    "preview": "Preview",
+    "loading": "Computing…",
+    "summary": "{{changed}} of {{n}} change",
+    "from": "Old name",
+    "to": "New name",
+    "status": "Status",
+    "ok": "OK",
+    "unchanged": "Unchanged",
+    "collision": "Collision",
+    "invalid": "Invalid",
+    "apply": "Apply",
+    "reason": {
+      "duplicate_result": "same result as another item",
+      "exists": "already exists in the folder",
+      "not_found": "item not found",
+      "empty": "empty name",
+      "slash": "contains a slash",
+      "backslash": "contains a backslash",
+      "nul": "contains a NUL character",
+      "control_char": "contains a control character",
+      "too_long": "too long",
+      "dot": "name . or ..",
+      "invalid_utf8": "invalid UTF-8"
+    }
+  },
+  "new": {
+    "templateTitle": "New file from template",
+    "symlinkTitle": "New symlink",
+    "template": "Template",
+    "loadingTemplates": "Loading templates…",
+    "defaultStem": "new",
+    "target": "Target",
+    "pickTarget": "Pick target…",
+    "hidePicker": "Hide",
+    "relative": "Stored as a relative link: {{rel}}",
+    "chooseTemplate": "Choose a template…"
+  },
+  "name": {
+    "windowsWarning": "This name is problematic on Windows (still allowed).",
+    "exists": "An item with this name already exists",
+    "renameLabel": "New name for {{name}}"
+  },
+  "perm": {
+    "title": "Permissions",
+    "items_one": "{{n}} item",
+    "items_other": "{{n}} items",
+    "bit": {
+      "r": "Read",
+      "w": "Write",
+      "x": "Execute"
+    },
+    "who": {
+      "owner": "Owner",
+      "group": "Group",
+      "public": "Public"
+    },
+    "octal": "Octal",
+    "recursive": "Apply to subfolders and their contents",
+    "note": "setuid/setgid/sticky bits are always dropped.",
+    "apply": "Apply"
+  },
+  "delete": {
+    "titleOne": "Move \"{{name}}\" to the Recycle Bin?",
+    "titleMany_one": "Move {{n}} item to the Recycle Bin?",
+    "titleMany_other": "Move {{n}} items to the Recycle Bin?",
+    "description": "Items can be restored from the Recycle Bin.",
+    "dontAsk": "Don't ask again",
+    "confirm": "Move"
+  },
+  "permanent": {
+    "titleOne": "Delete \"{{name}}\" permanently?",
+    "titleMany_one": "Delete {{n}} item permanently?",
+    "titleMany_other": "Delete {{n}} items permanently?",
+    "description": "This cannot be undone.",
+    "typeWord": "Type {{word}} to continue",
+    "fallbackNote": "Note: permanent deletion arrives with the Recycle Bin page (Step 10a). For now the items are moved to the Recycle Bin.",
+    "confirm": "Delete permanently"
+  },
+  "menu": {
+    "empty": "No actions"
+  },
+  "copyPath": {
+    "copied": "Path copied: {{path}}"
+  }
+}

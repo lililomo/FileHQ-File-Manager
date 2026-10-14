@@ -369,6 +369,24 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+  /api/v1/files/templates:
+    get:
+      summary: List the templates accepted by POST /files/create
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: Template identifiers (= file extension)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [templates]
+                properties:
+                  templates:
+                    type: array
+                    items: { type: string, example: md }
+        "401": { $ref: "#/components/responses/Error" }
   /api/v1/files/mkdir:
     post:
       summary: Create a folder

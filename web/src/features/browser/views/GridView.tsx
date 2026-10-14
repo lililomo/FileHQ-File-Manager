@@ -9,6 +9,12 @@ import {
   type ReactNode,
 } from 'react'
 import { useTranslation } from 'react-i18next'
+import {
+  autoScrollOnDrag,
+  dropTargetProps,
+  endItemDrag,
+  startItemDrag,
+} from '@/features/file-ops/dnd'
 import { cn } from '@/lib/utils'
 import type { Item } from '../api'
 import {
@@ -23,13 +29,17 @@ import {
 import { cellsInRect, gridLayout, moveInGrid, type GridSpec } from './gridMath'
 import { useMarquee } from './useMarquee'
 import { useTypeAhead } from './useTypeAhead'
+import type { ViewOpsProps } from './opsProps'
+import { useSlowClick } from './useSlowClick'
 
 export interface CellState {
   selected: boolean
   active: boolean
+  /** Inline rename in progress: render `renameSlot` instead of the name. */
+  renameSlot?: ReactNode
 }
 
-export interface GridViewProps {
+export interface GridViewProps extends ViewOpsProps {
   items: Item[]
   total: number
   path: string
@@ -71,8 +81,16 @@ export function GridView({
   initialScroll = 0,
   onScrollChange,
   view,
+  renamingPath = null,
+  renderRename,
+  cutPaths,
+  onSlowClick,
+  dragPaths,
+  dnd = true,
 }: GridViewProps) {
   const { t } = useTranslation('files')
+  const slowClick = useSlowClick(onSlowClick)
+  const [dropOver, setDropOver] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
   useLayoutEffect(() => {
@@ -205,6 +223,13 @@ export function GridView({
       onPointerDown={marquee.onPointerDown}
       data-testid={`${view}-grid`}
       data-columns={layout.columns}
+      {...(dnd ? dropTargetProps({ dir: path }) : {})}
+      onDragOver={(e) => {
+        if (dnd) {
+          dropTargetProps({ dir: path }).onDragOver(e)
+          autoScrollOnDrag(e.currentTarget, e.clientY)
+        }
+      }}
     >
       <div
         style={{ height: virtualizer.getTotalSize(), position: 'relative' }}
@@ -230,6 +255,14 @@ export function GridView({
                 const index = start + col
                 const selected = isSelected(selection, item.path)
                 const isActive = index === active
+                const wasOnlySelected =
+                  selected && selection.mode === 'explicit' && selection.paths.size === 1
+                const renaming = renamingPath === item.path
+                const isCut = cutPaths?.has(item.path) ?? false
+                const dropProps =
+                  dnd && item.isDir && !renaming
+                    ? dropTargetProps({ dir: item.path, onOver: setDropOver })
+                    : {}
                 return (
                   <div
                     key={item.path}
@@ -240,14 +273,34 @@ export function GridView({
                     data-cell
                     data-index={index}
                     data-path={item.path}
+                    data-cut={isCut || undefined}
+                    data-drop-over={dropOver === item.path || undefined}
                     className={cn(
                       'relative shrink-0 cursor-default rounded-md border border-transparent text-sm text-text',
                       'hover:bg-surface-2',
                       selected && 'border-accent/40 bg-accent-subtle hover:bg-accent-subtle',
                       isActive && 'outline outline-1 -outline-offset-1 outline-accent/60',
+                      isCut && 'opacity-50',
+                      dropOver === item.path && 'border-accent bg-accent/15',
                     )}
                     style={{ width: spec.cellW, height: spec.cellH }}
+                    draggable={dnd && !renaming}
+                    onDragStart={(e) => {
+                      if (!dnd) return
+                      const paths = dragPaths?.(item) ?? [item.path]
+                      const label = (n: number) => t('grid.dragLabel', { count: n, n: String(n) })
+                      if (!paths.includes(item.path)) {
+                        onSelectionChange(selectOnly(item.path))
+                        startItemDrag(e, { paths: [item.path], from: path }, label(1))
+                        return
+                      }
+                      startItemDrag(e, { paths, from: path }, label(paths.length))
+                    }}
+                    onDragEnd={endItemDrag}
+                    {...dropProps}
                     onClick={(e) => {
+                      if (renaming) return
+                      slowClick.onClick(e, item, wasOnlySelected)
                       onActiveIndexChange(index)
                       onSelectionChange(
                         clickSelect(selection, items, item.path, {
@@ -256,9 +309,16 @@ export function GridView({
                         }),
                       )
                     }}
-                    onDoubleClick={() => onOpen(item)}
+                    onDoubleClick={() => {
+                      slowClick.cancel()
+                      if (!renaming) onOpen(item)
+                    }}
                   >
-                    {renderCell(item, { selected, active: isActive })}
+                    {renderCell(item, {
+                      selected,
+                      active: isActive,
+                      renameSlot: renaming && renderRename ? renderRename(item) : undefined,
+                    })}
                   </div>
                 )
               })}
