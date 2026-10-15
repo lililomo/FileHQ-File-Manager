@@ -10,6 +10,7 @@ import {
   CopyPlus,
   Download,
   ExternalLink,
+  FileCode2,
   AppWindow,
   PinOff,
   StarOff,
@@ -146,6 +147,8 @@ export interface ActionContext {
   /** Step 14a: compress the selection / extract the focused archive (tasks). */
   compress?: () => void
   extractArchive?: () => void
+  /** Step 16a: open the focused text/code file in the editor. */
+  openInEditor?: () => void
   /** Step 14b: open the archive browser overlay for the focused archive. */
   browseArchive?: () => void
   /** Archive browser only (context "archive"): selected members. */
@@ -200,6 +203,14 @@ export const ACTIONS: ActionDef[] = [
     submenu: true,
     isApplicable: oneFile,
     run: noop,
+  },
+  {
+    id: 'openInEditor',
+    labelKey: 'openInEditor',
+    group: 'navigate',
+    icon: FileCode2,
+    isApplicable: (c) => oneFile(c) && !!c.openInEditor,
+    run: (c) => c.openInEditor?.(),
   },
   {
     id: 'openInNewTab',
@@ -809,6 +820,7 @@ export type MenuContext = 'file' | 'folder' | 'multi' | 'background' | 'trash' |
 export const MENU_MATRIX: Record<MenuContext, string[]> = {
   file: [
     'open',
+    'openInEditor',
     'openWith',
     'quickLook',
     '|',

@@ -484,8 +484,15 @@ export function DetailsView({
                   }),
                 )
               }}
-              onDoubleClick={() => {
+              onDoubleClick={(e) => {
                 slowClick.cancel()
+                // the note cell edits inline on double click (Step 10b); since
+                // 16a "open" launches the editor, never treat that as open
+                if (
+                  e.target instanceof Element &&
+                  e.target.closest('[data-testid="note-cell"], [data-testid="note-editor"]')
+                )
+                  return
                 if (!renaming) onOpen(item)
               }}
             >

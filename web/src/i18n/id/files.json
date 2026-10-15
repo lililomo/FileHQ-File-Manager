@@ -516,7 +516,8 @@
     "unpin": "Lepas pin",
     "openInNewWindow": "Buka di jendela baru",
     "tagNone": "Tanpa tag",
-    "contentSearch": "Cari isi file"
+    "contentSearch": "Cari isi file",
+    "openInEditor": "Buka di editor"
   },
   "view": {
     "label": "Mode tampilan",

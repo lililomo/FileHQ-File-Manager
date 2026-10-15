@@ -516,7 +516,8 @@
     "unpin": "Unpin",
     "openInNewWindow": "Open in new window",
     "tagNone": "No tag",
-    "contentSearch": "Search file contents"
+    "contentSearch": "Search file contents",
+    "openInEditor": "Open in editor"
   },
   "view": {
     "label": "View mode",

@@ -1,6 +1,8 @@
 import { useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { ArchiveBrowser } from '@/features/archive/ArchiveBrowser'
+import { EditorModal } from '@/features/editor/EditorModal'
+import { isEditableByName } from '@/features/editor/languages'
 import { FolderOpen, FolderPlus, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -136,6 +138,7 @@ export function BrowserLayout({
   const previewOverlay = useMediaQuery('(max-width: 1279px)')
   const [editing, setEditing] = useState(false)
   const [quickLook, setQuickLook] = useState<Item | null>(null)
+  const [editorPath, setEditorPath] = useState<string | null>(null)
   const [properties, setProperties] = useState<PropertiesTarget | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [filter, setFilter] = useState('')
@@ -448,6 +451,12 @@ export function BrowserLayout({
         recordOpen(item.path).catch(() => {})
         return
       }
+      if (isEditableByName(item.name, item.mime, item.category)) {
+        // SPEC §8.13: text and code open in the editor (modal; maximize → /editor)
+        setEditorPath(item.path)
+        recordOpen(item.path).catch(() => {})
+        return
+      }
       toast(t('files:viewer.notYet', { name: item.name }))
       // Recent reflects opens (SPEC §8.7); the viewers of Step 17 keep calling this.
       recordOpen(item.path).catch(() => {})
@@ -710,7 +719,7 @@ export function BrowserLayout({
     fileOps,
     selItems,
   ])
-  useDialogScope(!!quickLook || !!properties || !!archivePath)
+  useDialogScope(!!quickLook || !!properties || !!archivePath || !!editorPath)
 
   // --- action registry context (palette, toolbar, context menu) ---
   const actionCtx = useMemo<ActionContext>(
@@ -766,6 +775,9 @@ export function BrowserLayout({
       focusFilter: () => filterRef.current?.focus(),
       open: () => {
         if (focusItem) onOpen(focusItem)
+      },
+      openInEditor: () => {
+        if (focusItem && !focusItem.isDir) setEditorPath(focusItem.path)
       },
       openInNewTab: () => {
         if (focusItem?.isDir) openTab(focusItem.path)
@@ -1173,6 +1185,7 @@ export function BrowserLayout({
       />
       <NoteDialog item={noteTarget} onClose={() => setNoteTarget(null)} onSave={saveNote} />
       {archivePath ? <ArchiveBrowser archivePath={archivePath} onClose={closeArchive} /> : null}
+      <EditorModal path={editorPath} onClose={() => setEditorPath(null)} />
       <QuickLookDialog
         item={quickLook}
         onClose={() => setQuickLook(null)}
