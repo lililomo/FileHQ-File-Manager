@@ -348,7 +348,6 @@
     "verify": "Verifikasi",
     "verifyMatch": "Cocok",
     "verifyMismatch": "Tidak cocok (hash sebenarnya {{actual}})",
-    "versionsSoon": "Riwayat versi tiba di Step 16b.",
     "multiTitle": "{{n}} item dipilih",
     "multiFiles_one": "{{n}} file",
     "multiFiles_other": "{{n}} file",
@@ -357,7 +356,9 @@
     "multiSize": "Total ukuran file",
     "multiNote": "Ukuran folder tidak dihitung; gunakan \"Hitung ukuran\" per folder.",
     "location": "Lokasi",
-    "copyPath": "Salin path"
+    "copyPath": "Salin path",
+    "versionsOpenEditor": "Buka di editor",
+    "versionsHint": "Versi pre-image dibuat saat file teks disimpan dari editor, di-replace, dipulihkan, atau ditimpa oleh upload."
   },
   "quickLook": {
     "title": "Quick Look",

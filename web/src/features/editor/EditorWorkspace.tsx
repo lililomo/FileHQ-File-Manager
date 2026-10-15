@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { PageSpinner } from '@/components/PageSpinner'
 import { pushScope, registerShortcut } from '@/lib/shortcuts'
@@ -9,7 +8,15 @@ import { useSessionStore } from '@/stores/session'
 import { getEditorSession, putEditorSession, type SessionTab } from './api'
 import { WorkspaceContext, WorkspaceController, type CloseRequest } from './controller'
 import { pruneDrafts } from './drafts'
-import { CloseDirtyDialog, ConflictDialog, DiffDialog, type DiffSpec } from './EditorDialogs'
+import {
+  CloseDirtyDialog,
+  ConflictDialog,
+  DiffDialog,
+  EncodingPickerDialog,
+  type DiffSpec,
+} from './EditorDialogs'
+import { VersionHistoryDialog } from './VersionHistory'
+import { listVersions } from './versionsApi'
 import { EditorPane } from './EditorPane'
 import { Explorer } from './Explorer'
 import { loadMonaco, type MonacoApi } from './monaco'
@@ -26,6 +33,10 @@ export interface EditorWorkspaceProps {
   initialPath?: string | undefined
   line?: number | undefined
   col?: number | undefined
+  /** Open this stored version of `initialPath` read-only (Step 16b). */
+  initialVersion?: string | undefined
+  /** Share scope (Step 18b will route API calls through it); unused until then. */
+  scope?: string | undefined
   onMaximize?: (() => void) | undefined
   onClose?: (() => void) | undefined
 }
@@ -43,11 +54,13 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [quickOpen, setQuickOpen] = useState(false)
   const [reveal, setReveal] = useState<string | null>(null)
+  const [versionsFor, setVersionsFor] = useState<string | null>(null)
+  const [encodingFor, setEncodingFor] = useState<string | null>(null)
+  const [find, setFind] = useState<{ open: boolean; seed?: string | undefined }>({ open: false })
   const prefs = useEditorPrefs()
   const explorerOpen = p.mode === 'modal' ? prefs.explorer && false : prefs.explorer
   const [modalExplorer, setModalExplorer] = useState(false)
   const showExplorer = p.mode === 'modal' ? modalExplorer : explorerOpen
-  const navigate = useNavigate()
   const tabs = useEditorStore((s) => s.tabs)
   const activePath = useEditorStore((s) => s.activePath)
   const hydrated = useEditorStore((s) => s.hydrated)
@@ -63,7 +76,24 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
     }
   }, [])
 
-  const ui = useMemo(() => ({ setCloseRequest: setCloseReq, setDiff }), [])
+  const openFind = useCallback(
+    (seed?: string) => {
+      if (p.mode === 'modal') setModalExplorer(true)
+      else setEditorPref('explorer', true)
+      setFind({ open: true, seed })
+    },
+    [p.mode],
+  )
+  const ui = useMemo(
+    () => ({
+      setCloseRequest: setCloseReq,
+      setDiff,
+      openVersions: setVersionsFor,
+      openEncodingPicker: setEncodingFor,
+      openFindInFiles: openFind,
+    }),
+    [openFind],
+  )
   const ws = useMemo(() => (monaco ? new WorkspaceController(monaco, ui) : null), [monaco, ui])
   useEffect(() => () => ws?.dispose(), [ws])
 
@@ -94,13 +124,23 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
       // restored tabs have no content yet
       for (const tab of useEditorStore.getState().tabs)
         if (tab.status === 'loading' && !tab.etag) void ws.load(tab.path)
-      const key = `${p.initialPath ?? ''}|${p.line ?? ''}|${p.col ?? ''}`
+      const key = `${p.initialPath ?? ''}|${p.line ?? ''}|${p.col ?? ''}|${p.initialVersion ?? ''}`
       if (p.initialPath && openedInitial.current !== key) {
         openedInitial.current = key
         ws.openFile(p.initialPath, {
           ...(p.line ? { line: p.line } : {}),
           ...(p.col ? { col: p.col } : {}),
         })
+        if (p.initialVersion) {
+          const path = p.initialPath
+          const id = p.initialVersion
+          listVersions(path)
+            .then((res) => {
+              const v = res.items.find((x) => x.id === id)
+              if (v && !cancelled) ws.openVersion(path, v)
+            })
+            .catch(() => {})
+        }
       }
       void pruneDrafts()
     }
@@ -108,7 +148,7 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
     return () => {
       cancelled = true
     }
-  }, [ws, p.initialPath, p.line, p.col])
+  }, [ws, p.initialPath, p.line, p.col, p.initialVersion])
 
   // session persistence (debounced)
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -116,14 +156,17 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
   useEffect(() => {
     if (!hydrated) return
     const session = {
-      tabs: tabs.map<SessionTab>((x) => ({
-        path: x.path,
-        scrollTop: x.scrollTop,
-        cursor: x.cursor,
-        language: x.language,
-        encoding: x.encoding,
-      })),
-      activePath,
+      tabs: tabs
+        .filter((x) => !x.versionId)
+        .map<SessionTab>((x) => ({
+          path: x.path,
+          scrollTop: x.scrollTop,
+          cursor: x.cursor,
+          language: x.language,
+          encoding: x.encoding,
+        })),
+      activePath:
+        activePath && tabs.find((x) => x.path === activePath)?.versionId ? null : activePath,
     }
     const json = JSON.stringify(session)
     if (json === lastSaved.current) return
@@ -181,21 +224,24 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
       registerShortcut('editorPalette', () => ws.runEditorAction('editor.action.quickCommand')),
       registerShortcut('editorQuickOpen', () => setQuickOpen(true)),
       registerShortcut('editorFindInFiles', () => {
-        const a = st().activePath
-        const dir = a ? a.slice(0, a.lastIndexOf('/')) || '/' : '/'
-        void navigate({ to: '/search', search: { kind: 'content', path: dir } })
+        const ed = ws.editorRef.current
+        const sel = ed?.getModel()?.getValueInRange(ed.getSelection()!) ?? ''
+        openFind(sel.includes('\n') ? '' : sel)
       }),
-      registerShortcut('editorFormat', () => ws.runEditorAction('editor.action.formatDocument')),
+      registerShortcut('editorFormat', () => {
+        const a = st().activePath
+        if (a) void ws.formatDocument(a)
+      }),
     ]
     return () => {
       offs.forEach((off) => off())
       pop()
     }
-  }, [ws, navigate])
+  }, [ws, openFind])
   useEffect(() => {
-    if (!closeReq && !diff && !settingsOpen && !quickOpen) return
+    if (!closeReq && !diff && !settingsOpen && !quickOpen && !versionsFor && !encodingFor) return
     return pushScope('dialog')
-  }, [closeReq, diff, settingsOpen, quickOpen])
+  }, [closeReq, diff, settingsOpen, quickOpen, versionsFor, encodingFor])
 
   const copyPath = useCallback(
     (path: string) => {
@@ -223,7 +269,13 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
           onClose={p.onClose}
         />
         <div className="flex min-h-0 flex-1">
-          {showExplorer ? <Explorer reveal={reveal} /> : null}
+          {showExplorer ? (
+            <Explorer
+              reveal={reveal}
+              find={find}
+              onFindChange={(open) => setFind((f) => ({ ...f, open }))}
+            />
+          ) : null}
           <div className="flex min-w-0 flex-1 flex-col">
             <TabBar
               tabs={tabs}
@@ -257,8 +309,10 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
           </div>
         </div>
         <CloseDirtyDialog req={closeReq} />
-        <ConflictDialog tab={active} />
+        <ConflictDialog tab={active} monaco={monaco!} />
         <DiffDialog spec={diff} monaco={monaco!} onClose={() => setDiff(null)} />
+        <VersionHistoryDialog path={versionsFor} onClose={() => setVersionsFor(null)} />
+        <EncodingPickerDialog path={encodingFor} onClose={() => setEncodingFor(null)} />
         <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
         <QuickOpen
           open={quickOpen}

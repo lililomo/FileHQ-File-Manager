@@ -40,18 +40,22 @@ import { NewItemDialog } from '@/features/file-ops/NewItemDialog'
 import { cn } from '@/lib/utils'
 import { useEditorStore } from '@/stores/editor'
 import { useWorkspace } from './controller'
+import { FindInFiles } from './FindInFiles'
 
 const LIST_OPTS = { limit: 500, foldersFirst: true as const }
 
 export interface ExplorerProps {
   /** Path to expand and highlight (tab "Reveal in explorer"). */
   reveal: string | null
+  /** Find in files panel (Step 16b), controlled by the workspace. */
+  find: { open: boolean; seed?: string | undefined }
+  onFindChange: (open: boolean) => void
 }
 
 /** Lazy folder tree (SPEC §8.13 "Explorer"): `files/list` per expanded
  *  folder, client-side name filter with "search on server", context menu
  *  for new file/folder, rename, delete (Recycle Bin), refresh. */
-export function Explorer({ reveal }: ExplorerProps) {
+export function Explorer({ reveal, find, onFindChange }: ExplorerProps) {
   const { t } = useTranslation('editor')
   const navigate = useNavigate()
   const [filter, setFilter] = useState('')
@@ -131,51 +135,64 @@ export function Explorer({ reveal }: ExplorerProps) {
         >
           <RefreshCw />
         </IconButton>
+        <IconButton
+          size="icon-xs"
+          label={t('find.title')}
+          aria-pressed={find.open}
+          onClick={() => onFindChange(!find.open)}
+          data-testid="explorer-find-toggle"
+          className={find.open ? 'bg-surface-3' : undefined}
+        >
+          <Search />
+        </IconButton>
       </div>
-      <div className="flex items-center gap-1 px-2 pb-1">
-        <Input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder={t('explorer.filter')}
-          className="h-7 text-xs"
-          aria-label={t('explorer.filter')}
-          data-testid="explorer-filter"
-        />
-        {needle ? (
-          <IconButton
-            size="icon-xs"
-            label={t('explorer.searchServer')}
-            onClick={() =>
-              void navigate({
-                to: '/search',
-                search: { q: filter.trim(), path: '/', kind: 'name' },
-              })
-            }
-          >
-            <Search />
-          </IconButton>
-        ) : null}
-      </div>
-      <div
-        role="tree"
-        aria-label={t('explorer.title')}
-        className="min-h-0 flex-1 overflow-auto px-1 pb-2 text-sm"
-      >
-        <Node
-          path="/"
-          name={t('explorer.root')}
-          isDir
-          depth={0}
-          expanded={expanded}
-          toggle={toggle}
-          needle={needle}
-          activePath={activePath}
-          onOpen={(p) => ws.openFile(p)}
-          onNew={(mode, dir) => setNewItem({ mode, dir })}
-          onRename={setRename}
-          onDelete={setDel}
-          onRefresh={refresh}
-        />
+      {find.open ? <FindInFiles seed={find.seed} onClose={() => onFindChange(false)} /> : null}
+      <div className={find.open ? 'hidden' : 'contents'}>
+        <div className="flex items-center gap-1 px-2 pb-1">
+          <Input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder={t('explorer.filter')}
+            className="h-7 text-xs"
+            aria-label={t('explorer.filter')}
+            data-testid="explorer-filter"
+          />
+          {needle ? (
+            <IconButton
+              size="icon-xs"
+              label={t('explorer.searchServer')}
+              onClick={() =>
+                void navigate({
+                  to: '/search',
+                  search: { q: filter.trim(), path: '/', kind: 'name' },
+                })
+              }
+            >
+              <Search />
+            </IconButton>
+          ) : null}
+        </div>
+        <div
+          role="tree"
+          aria-label={t('explorer.title')}
+          className="min-h-0 flex-1 overflow-auto px-1 pb-2 text-sm"
+        >
+          <Node
+            path="/"
+            name={t('explorer.root')}
+            isDir
+            depth={0}
+            expanded={expanded}
+            toggle={toggle}
+            needle={needle}
+            activePath={activePath}
+            onOpen={(p) => ws.openFile(p)}
+            onNew={(mode, dir) => setNewItem({ mode, dir })}
+            onRename={setRename}
+            onDelete={setDel}
+            onRefresh={refresh}
+          />
+        </div>
       </div>
       {newItem ? (
         <NewItemDialog

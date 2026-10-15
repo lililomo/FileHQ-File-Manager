@@ -348,7 +348,6 @@
     "verify": "Verify",
     "verifyMatch": "Match",
     "verifyMismatch": "No match (actual hash {{actual}})",
-    "versionsSoon": "Version history arrives in Step 16b.",
     "multiTitle": "{{n}} items selected",
     "multiFiles_one": "{{n}} file",
     "multiFiles_other": "{{n}} files",
@@ -357,7 +356,9 @@
     "multiSize": "Total file size",
     "multiNote": "Folder sizes are not included; use \"Folder size\" per folder.",
     "location": "Location",
-    "copyPath": "Copy path"
+    "copyPath": "Copy path",
+    "versionsOpenEditor": "Open in editor",
+    "versionsHint": "Pre-image versions are taken when a text file is saved from the editor, replaced, restored, or overwritten by an upload."
   },
   "quickLook": {
     "title": "Quick Look",

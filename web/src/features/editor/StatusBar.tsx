@@ -205,13 +205,21 @@ export function StatusBar({ tab }: { tab: EditorTab | null }) {
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
-      <span
-        className={cn(chip, 'cursor-default opacity-60')}
-        title={t('status.historySoon')}
-        data-testid="status-history"
-      >
-        {t('status.history', { n: 0 })}
-      </span>
+      {tab.versionId ? (
+        <span className={cn(chip, 'cursor-default')} data-testid="status-version">
+          {t('status.versionTab', { no: tab.versionNo })}
+        </span>
+      ) : (
+        <button
+          type="button"
+          className={chip}
+          title={t('status.historyOpen')}
+          onClick={() => ws.openVersions(tab.path)}
+          data-testid="status-history"
+        >
+          {t('status.history', { n: tab.versions ?? 0 })}
+        </button>
+      )}
     </div>
   )
 }

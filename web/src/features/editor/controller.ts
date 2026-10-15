@@ -13,18 +13,48 @@ import { MAX_EDITOR_TABS, useEditorStore, type EditorTab } from '@/stores/editor
 import { useSessionStore } from '@/stores/session'
 import { getContent, saveContent, type FileContent } from './api'
 import { deleteDraft, loadDraft, saveDraft } from './drafts'
+import { formatWithPrettier, prettierSupports } from './formatting'
 import { detectLanguage } from './languages'
 import type { MonacoApi } from './monaco'
 import { disposeModel, getModel, isDirty, markSaved, setModel } from './models'
+import { editorPrefsSnapshot } from './prefs'
+import {
+  getVersionContent,
+  listVersions,
+  restoreVersion as apiRestoreVersion,
+  type FileVersion,
+} from './versionsApi'
 
 export type CloseRequest = { paths: string[]; then?: (() => void) | undefined }
 
+/** What the diff dialog shows (Step 16b): server vs yours, current vs draft,
+ *  a stored version vs the live model, or an editable merge of a conflict. */
+export interface DiffSpec {
+  path: string
+  original: string
+  modified: string
+  kind: 'conflict' | 'draft' | 'version' | 'merge'
+  /** Left/right captions (kind-specific defaults when omitted). */
+  leftLabel?: string
+  rightLabel?: string
+  /** Called with the (edited) right side when the user applies a merge. */
+  onApply?: ((modified: string) => void | Promise<void>) | undefined
+}
+
 export interface ControllerUI {
   setCloseRequest: (req: CloseRequest | null) => void
-  setDiff: (
-    diff: { path: string; original: string; modified: string; kind: 'conflict' | 'draft' } | null,
-  ) => void
+  setDiff: (diff: DiffSpec | null) => void
+  /** Version history dialog for a live path (Step 16b). */
+  openVersions?: (path: string) => void
+  /** "Reopen with encoding" picker (Monaco action / F1). */
+  openEncodingPicker?: (path: string) => void
+  /** Find in files panel in the explorer (Ctrl+Shift+F). */
+  openFindInFiles?: (seed?: string) => void
 }
+
+/** Tab key of a read-only version tab and its live path. */
+export const versionTabKey = (path: string, id: string) => `${path}#v${id}`
+export const livePathOf = (key: string) => key.split('#v')[0] ?? key
 
 export class WorkspaceController {
   monaco: MonacoApi
@@ -84,11 +114,13 @@ export class WorkspaceController {
       (tab?.encoding && tab.encoding !== tab.detectedEncoding ? tab.encoding : undefined)
     let c: FileContent
     try {
-      c = await getContent(
-        path,
-        { ...(encoding ? { encoding } : {}), ...(q.tail ? { tail: q.tail } : {}) },
-        ac.signal,
-      )
+      c = tab?.versionId
+        ? await getVersionContent(tab.versionId, encoding, ac.signal)
+        : await getContent(
+            path,
+            { ...(encoding ? { encoding } : {}), ...(q.tail ? { tail: q.tail } : {}) },
+            ac.signal,
+          )
     } catch (e) {
       if (ac.signal.aborted) return
       if (e instanceof ApiError && e.code === 'FILE_TOO_LARGE' && !q.tail) {
@@ -108,6 +140,7 @@ export class WorkspaceController {
     if (ac.signal.aborted) return
     this.applyContent(path, c)
     if (!c.readOnly) await this.checkDraft(path, c)
+    if (!tab?.versionId) void this.refreshVersionCount(path)
   }
 
   private applyContent(path: string, c: FileContent): void {
@@ -167,6 +200,7 @@ export class WorkspaceController {
   private onModelChange(path: string): void {
     const dirty = isDirty(path)
     const tab = this.tab(path)
+    if (tab?.versionId) return
     if (tab && tab.dirty !== dirty) this.store.patch(path, { dirty })
     const timer = this.draftTimers.get(path)
     if (timer) clearTimeout(timer)
@@ -240,6 +274,8 @@ export class WorkspaceController {
       await deleteDraft(this.userId, path)
       if (res.noop) toast.message(i18n.t('editor:toast.noop', { name: tab.name }))
       else toast.success(i18n.t('editor:toast.saved', { name: tab.name }))
+      if (res.version) this.store.patch(path, { versions: (tab.versions ?? 0) + 1 })
+      else if (!res.noop) void this.refreshVersionCount(path)
       return true
     } catch (e) {
       this.store.patch(path, { saving: false })
@@ -389,7 +425,10 @@ export class WorkspaceController {
     })
   }
 
-  async resolveConflict(path: string, action: 'overwrite' | 'reload' | 'diff'): Promise<void> {
+  async resolveConflict(
+    path: string,
+    action: 'overwrite' | 'reload' | 'diff' | 'merge',
+  ): Promise<void> {
     const model = getModel(path)
     if (!model) return
     switch (action) {
@@ -401,20 +440,163 @@ export class WorkspaceController {
         this.store.patch(path, { conflict: null })
         await this.load(path)
         return
-      case 'diff': {
+      case 'diff':
+      case 'merge': {
         try {
           const server = await getContent(path)
+          this.store.patch(path, { conflict: null })
           this.ui.setDiff({
             path,
             original: server.content,
             modified: model.getValue(),
-            kind: 'conflict',
+            kind: action === 'merge' ? 'merge' : 'conflict',
+            onApply:
+              action === 'merge'
+                ? async (merged) => {
+                    model.setValue(merged)
+                    await this.save(path, { force: true })
+                  }
+                : undefined,
           })
         } catch (e) {
           toast.error(errorMessage(e))
         }
       }
     }
+  }
+
+  // --- versions (Step 16b) ---
+
+  async refreshVersionCount(path: string): Promise<void> {
+    try {
+      const res = await listVersions(path)
+      if (this.tab(path)) this.store.patch(path, { versions: res.items.length })
+    } catch {
+      /* count stays unknown */
+    }
+  }
+
+  /** Open a stored version in a read-only tab. */
+  openVersion(path: string, v: FileVersion): boolean {
+    const key = versionTabKey(path, v.id)
+    const existed = !!this.tab(key)
+    const ok = this.store.open(key, { version: { id: v.id, no: v.no } })
+    if (!ok) {
+      toast.error(i18n.t('editor:tabs.limit', { max: MAX_EDITOR_TABS }))
+      return false
+    }
+    if (!existed) void this.load(key)
+    return true
+  }
+
+  /** Diff a stored version (left) against the live model or file (right). */
+  async compareVersion(path: string, v: FileVersion): Promise<void> {
+    try {
+      const [old, current] = await Promise.all([
+        getVersionContent(v.id),
+        (async () => getModel(path)?.getValue() ?? (await getContent(path)).content)(),
+      ])
+      this.ui.setDiff({
+        path,
+        original: old.content,
+        modified: current,
+        kind: 'version',
+        leftLabel: i18n.t('editor:dialog.diffVersionLeft', {
+          no: v.no,
+          at: new Date(v.createdAt).toLocaleString(i18n.resolvedLanguage ?? 'id'),
+        }),
+      })
+    } catch (e) {
+      toast.error(errorMessage(e))
+    }
+  }
+
+  /** Restore a version; an open tab of the path reloads (unsaved edits go to the draft). */
+  async restoreVersion(path: string, v: FileVersion): Promise<boolean> {
+    try {
+      const res = await apiRestoreVersion(v.id)
+      const tab = this.tab(path)
+      if (tab) {
+        if (isDirty(path)) await this.persistDraft(path)
+        this.store.patch(path, { conflict: null })
+        await this.load(path)
+        toast.success(i18n.t('editor:toast.restoredReload', { no: v.no }))
+      } else {
+        toast.success(i18n.t('editor:versions.restored', { no: v.no, name: path.split('/').pop() }))
+      }
+      void res
+      return true
+    } catch (e) {
+      toast.error(errorMessage(e))
+      return false
+    }
+  }
+
+  openVersions(path: string): void {
+    this.ui.openVersions?.(livePathOf(path))
+  }
+
+  openEncodingPicker(path: string): void {
+    this.ui.openEncodingPicker?.(path)
+  }
+
+  openFindInFiles(seed?: string): void {
+    this.ui.openFindInFiles?.(seed)
+  }
+
+  // --- formatting (Step 16b) ---
+
+  /** Format the active document: invalid JSON is reported and left alone;
+   *  Markdown/YAML go through Prettier (lazy) when the preference is on;
+   *  everything else uses Monaco's built-in formatter when one exists. */
+  async formatDocument(path: string): Promise<void> {
+    const tab = this.tab(path)
+    const model = getModel(path)
+    const ed = this.editorRef.current
+    if (!tab || !model || !ed || tab.readOnly) return
+    if (tab.language === 'json') {
+      try {
+        JSON.parse(model.getValue())
+      } catch (e) {
+        const pos = jsonErrorPosition(model.getValue(), e)
+        toast.error(i18n.t('editor:format.invalidJson', pos))
+        ed.revealLineInCenter(pos.line)
+        ed.setPosition({ lineNumber: pos.line, column: pos.col })
+        return
+      }
+    }
+    const prefs = editorPrefsSnapshot()
+    if (prefs.format_with_prettier && prettierSupports(tab.language)) {
+      try {
+        const out = await formatWithPrettier(model.getValue(), tab.language, {
+          tabWidth: prefs.tab_size,
+          useTabs: !prefs.insert_spaces,
+        })
+        if (out !== model.getValue()) {
+          ed.pushUndoStop()
+          ed.executeEdits('prettier', [{ range: model.getFullModelRange(), text: out }])
+          ed.pushUndoStop()
+        }
+        toast.message(i18n.t('editor:format.done'))
+      } catch (e) {
+        toast.error(i18n.t('editor:format.failed', { message: errorMessage(e) }))
+      }
+      return
+    }
+    const action = ed.getAction('editor.action.formatDocument')
+    const providers = this.monaco.languages.getLanguages().some((l) => l.id === tab.language)
+    if (!action || !providers || !hasFormatter(this.monaco, model)) {
+      toast.message(i18n.t('editor:format.noFormatter', { language: tab.language }))
+      return
+    }
+    ed.focus()
+    await action.run()
+  }
+
+  togglePreview(path: string): void {
+    const tab = this.tab(path)
+    if (!tab) return
+    this.store.patch(path, { preview: !tab.preview })
   }
 
   clearConflict(path: string): void {
@@ -449,6 +631,27 @@ export class WorkspaceController {
     for (const ac of this.loading.values()) ac.abort()
     this.loading.clear()
   }
+}
+
+function jsonErrorPosition(text: string, e: unknown): { line: number; col: number } {
+  const msg = e instanceof Error ? e.message : String(e)
+  const m = /position (\d+)/.exec(msg)
+  const lineCol = /line (\d+) column (\d+)/.exec(msg)
+  if (lineCol) return { line: Number(lineCol[1]), col: Number(lineCol[2]) }
+  if (m) {
+    const off = Math.min(Number(m[1]), text.length)
+    const before = text.slice(0, off)
+    const line = before.split('\n').length
+    const col = off - before.lastIndexOf('\n')
+    return { line, col }
+  }
+  return { line: 1, col: 1 }
+}
+
+/** Whether Monaco has a document formatting provider for the model's language. */
+function hasFormatter(_monaco: MonacoApi, model: Monaco.editor.ITextModel): boolean {
+  const lang = model.getLanguageId()
+  return ['json', 'css', 'scss', 'less', 'html', 'javascript', 'typescript'].includes(lang)
 }
 
 export const WorkspaceContext = createContext<WorkspaceController | null>(null)

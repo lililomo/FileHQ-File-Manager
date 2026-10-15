@@ -31,19 +31,30 @@ export interface EditorTab {
   saving: boolean
   cursor: { line: number; col: number }
   scrollTop: number
-  /** Position to jump to once the content is in (deep link / search result). */
-  pending: { line: number; col?: number } | null
+  /** Position to jump to once the content is in (deep link / search result); len selects a match. */
+  pending: { line: number; col?: number; len?: number } | null
   /** Draft found in IndexedDB that differs from the server content. */
   draft: { content: string; etag: string; at: number } | null
   /** Conflict reported by the last save (409). */
   conflict: { serverEtag: string; serverMtime: string } | null
+  /** Step 16b: a read-only tab showing one version of `path` (no live file behind it). */
+  versionId: string | null
+  versionNo: number
+  /** Number of stored versions of the live file (null = unknown yet). */
+  versions: number | null
+  /** Markdown preview pane open. */
+  preview: boolean
 }
 
 export interface OpenOptions {
   line?: number
   col?: number
+  /** Length of the match to select at line/col (find in files). */
+  len?: number
   activate?: boolean
   encoding?: string
+  /** Open a stored version read-only (tab key = `${path}#v${versionId}`). */
+  version?: { id: string; no: number }
 }
 
 export interface EditorState {
@@ -96,6 +107,10 @@ export function newTab(path: string, extra: Partial<EditorTab> = {}): EditorTab 
     pending: null,
     draft: null,
     conflict: null,
+    versionId: null,
+    versionNo: 0,
+    versions: null,
+    preview: false,
     ...extra,
   }
 }
@@ -119,7 +134,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   open: (path, opts = {}) => {
     const { tabs } = get()
     const existing = tabs.find((t) => t.path === path)
-    const pending = opts.line ? { line: opts.line, ...(opts.col ? { col: opts.col } : {}) } : null
+    const pending = opts.line
+      ? {
+          line: opts.line,
+          ...(opts.col ? { col: opts.col } : {}),
+          ...(opts.len ? { len: opts.len } : {}),
+        }
+      : null
     if (existing) {
       set({
         tabs: tabs.map((t) => (t.path === path ? { ...t, pending: pending ?? t.pending } : t)),
@@ -128,7 +149,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return true
     }
     if (tabs.length >= MAX_EDITOR_TABS) return false
-    const tab = newTab(path, { pending, ...(opts.encoding ? { encoding: opts.encoding } : {}) })
+    const tab = newTab(path, {
+      pending,
+      ...(opts.encoding ? { encoding: opts.encoding } : {}),
+      ...(opts.version
+        ? {
+            versionId: opts.version.id,
+            versionNo: opts.version.no,
+            readOnly: true,
+            name: `${baseName(path.split('#v')[0] ?? path)} (v${opts.version.no})`,
+          }
+        : {}),
+    })
     set({
       tabs: [...tabs, tab],
       activePath: opts.activate === false ? (get().activePath ?? path) : path,

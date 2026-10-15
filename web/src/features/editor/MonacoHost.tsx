@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type * as Monaco from 'monaco-editor'
+import i18n from '@/i18n'
 import { useUIStore } from '@/stores/ui'
 import { useEditorStore, type EditorTab } from '@/stores/editor'
 import { useWorkspace } from './controller'
@@ -45,6 +46,52 @@ export function MonacoHost({ tab }: { tab: EditorTab }) {
     })
     editorRef.current = editor
     ws.attachEditor(editor)
+    // application commands in Monaco's F1 palette (SPEC §8.13 "F1 command palette")
+    const act = (id: string, label: string, run: () => void, keybindings?: number[]) =>
+      editor.addAction({
+        id,
+        label,
+        run,
+        contextMenuGroupId: 'fm',
+        ...(keybindings ? { keybindings } : {}),
+      })
+    const t = (k: string): string => String((i18n.t as (key: string) => unknown)(`editor:${k}`))
+    const activePath = () => useEditorStore.getState().activePath
+    act('fm.saveAll', t('toolbar.saveAll'), () => void ws.saveAll())
+    act('fm.closeOthers', t('tabs.closeOthers'), () => {
+      const a = activePath()
+      if (a) ws.closeOthers(a)
+    })
+    act('fm.togglePreview', t('toolbar.preview'), () => {
+      const a = activePath()
+      if (a) ws.togglePreview(a)
+    })
+    act('fm.reopenWithEncoding', t('encoding.reopen'), () => {
+      const a = activePath()
+      if (a) ws.openEncodingPicker(a)
+    })
+    act('fm.versionHistory', t('toolbar.history'), () => {
+      const a = activePath()
+      if (a) ws.openVersions(a)
+    })
+    act('fm.findInFiles', t('toolbar.findInFiles'), () => {
+      const sel = editor.getModel()?.getValueInRange(editor.getSelection()!) ?? ''
+      ws.openFindInFiles(sel.includes('\n') ? '' : sel)
+    })
+    act('fm.formatDocument', t('toolbar.format'), () => {
+      const a = activePath()
+      if (a) void ws.formatDocument(a)
+    })
+    // Shift+Alt+F inside Monaco would run its own formatter (no JSON validity
+    // check, no Prettier): route it through the workspace instead
+    const keys = editor.onKeyDown((e) => {
+      if (e.shiftKey && e.altKey && !e.ctrlKey && e.keyCode === monaco.KeyCode.KeyF) {
+        e.preventDefault()
+        e.stopPropagation()
+        const a = activePath()
+        if (a) void ws.formatDocument(a)
+      }
+    })
     const cursor = editor.onDidChangeCursorPosition((e) => {
       const p = pathRef.current
       if (!p) return
@@ -63,6 +110,7 @@ export function MonacoHost({ tab }: { tab: EditorTab }) {
       )
     })
     return () => {
+      keys.dispose()
       cursor.dispose()
       scroll.dispose()
       if (scrollTimer) clearTimeout(scrollTimer)
@@ -116,7 +164,17 @@ export function MonacoHost({ tab }: { tab: EditorTab }) {
         lineNumber: Math.min(pending.line, model.getLineCount()),
         column: pending.col ?? 1,
       }
-      editor.setPosition(pos)
+      if (pending.len && pending.len > 0) {
+        // anchor at the end, cursor at the start: Ln/Col show the match start
+        editor.setSelection(
+          new monaco.Selection(
+            pos.lineNumber,
+            pos.column + pending.len,
+            pos.lineNumber,
+            pos.column,
+          ),
+        )
+      } else editor.setPosition(pos)
       editor.revealPositionInCenter(pos)
       useEditorStore.getState().patch(tab.path, { pending: null })
     }

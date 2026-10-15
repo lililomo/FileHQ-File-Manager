@@ -155,6 +155,7 @@ export function SettingsDialog({
           )}
           {toggle('line_numbers', t('settings.lineNumbers'))}
           {toggle('bracket_pair_colorization', t('settings.bracketColors'))}
+          {toggle('format_with_prettier', t('settings.formatWithPrettier'))}
           {toggle('auto_save', t('settings.autoSave'))}
           {row(
             t('settings.autoSaveInterval'),

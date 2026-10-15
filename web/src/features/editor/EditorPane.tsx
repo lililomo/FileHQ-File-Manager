@@ -2,9 +2,11 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Download, FileWarning, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageSpinner } from '@/components/PageSpinner'
-import { formatNumber } from '@/lib/format'
+import { formatBytes, formatDateTimeFull, formatNumber } from '@/lib/format'
 import type { EditorTab } from '@/stores/editor'
-import { useWorkspace } from './controller'
+import { useSessionStore } from '@/stores/session'
+import { livePathOf, useWorkspace } from './controller'
+import { MarkdownPreview } from './MarkdownPreview'
 import { MonacoHost } from './MonacoHost'
 
 /** The editing area of the active tab: banners (tail mode, draft, lossy,
@@ -12,6 +14,7 @@ import { MonacoHost } from './MonacoHost'
 export function EditorPane({ tab }: { tab: EditorTab }) {
   const { t, i18n } = useTranslation('editor')
   const ws = useWorkspace()
+  const maxSize = useSessionStore((s) => s.config?.editorMaxFileSize ?? 0)
   if (tab.status === 'loading' && !tab.etag) return <PageSpinner />
   if (tab.status === 'binary') {
     return (
@@ -39,12 +42,56 @@ export function EditorPane({ tab }: { tab: EditorTab }) {
       </Notice>
     )
   }
+  const lang = i18n.resolvedLanguage ?? 'id'
+  const livePath = livePathOf(tab.path)
+  const showPreview = tab.preview && tab.language === 'markdown' && tab.status === 'ready'
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {tab.versionId ? (
+        <Banner tone="info" testId="banner-version">
+          <span>
+            {t('banner.versionTab', {
+              no: tab.versionNo,
+              at: formatDateTimeFull(tab.mtime, lang),
+            })}
+          </span>
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() =>
+              void ws.compareVersion(livePath, {
+                id: tab.versionId!,
+                no: tab.versionNo,
+                path: livePath,
+                size: tab.size,
+                sha256: '',
+                reason: 'save',
+                createdAt: tab.mtime,
+              })
+            }
+            data-testid="version-tab-compare"
+          >
+            {t('banner.versionCompare')}
+          </Button>
+          <Button
+            size="xs"
+            onClick={() => ws.openVersions(livePath)}
+            data-testid="version-tab-history"
+          >
+            {t('toolbar.history')}
+          </Button>
+        </Banner>
+      ) : null}
       {tab.truncated ? (
         <Banner tone="warn" testId="banner-tail">
           <span>
-            {t('banner.tail', { n: formatNumber(tab.tailLines, i18n.resolvedLanguage ?? 'id') })}
+            {t('banner.tail', { n: formatNumber(tab.tailLines, lang) })}{' '}
+            <span className="text-text-muted" data-testid="tail-reason">
+              {t('banner.tailReason', {
+                max: formatBytes(maxSize, lang),
+                n: formatNumber(tab.tailLines, lang),
+              })}
+            </span>
           </span>
           <Button
             size="xs"
@@ -54,8 +101,13 @@ export function EditorPane({ tab }: { tab: EditorTab }) {
           >
             {t('banner.loadMore')}
           </Button>
-          <Button size="xs" variant="ghost" onClick={() => void ws.download(tab.path)}>
-            <Download /> {t('banner.download')}
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => void ws.download(tab.path)}
+            data-testid="tail-download"
+          >
+            <Download /> {t('banner.downloadToEdit')}
           </Button>
         </Banner>
       ) : null}
@@ -85,8 +137,15 @@ export function EditorPane({ tab }: { tab: EditorTab }) {
           <span>{t('status.lossy')}</span>
         </Banner>
       ) : null}
-      <div className="min-h-0 flex-1">
-        <MonacoHost tab={tab} />
+      <div className="flex min-h-0 flex-1">
+        <div className={showPreview ? 'min-w-0 flex-1 basis-1/2' : 'min-w-0 flex-1'}>
+          <MonacoHost tab={tab} />
+        </div>
+        {showPreview ? (
+          <div className="min-w-0 flex-1 basis-1/2">
+            <MarkdownPreview path={tab.path} />
+          </div>
+        ) : null}
       </div>
     </div>
   )

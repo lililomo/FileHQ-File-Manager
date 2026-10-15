@@ -43,6 +43,7 @@ import { useOpenLocation } from '@/features/browser/openLocation'
 import { MetaControls } from '@/features/meta/MetaControls'
 import type { MetaOps } from '@/features/meta/useMeta'
 import { NoteCell } from '@/features/browser/NoteCell'
+import { VersionsTab } from './VersionsTab'
 import { formatBytes, formatNumber } from '@/lib/format'
 
 export type PropertiesTab = 'general' | 'checksum' | 'versions'
@@ -292,9 +293,7 @@ function SingleProperties({
         </TabsContent>
       ) : null}
       <TabsContent value="versions" className="pt-3">
-        <p className="text-sm text-text-muted" data-testid="props-versions-placeholder">
-          {t('files:props.versionsSoon')}
-        </p>
+        <VersionsTab item={item} onClose={onClose} />
       </TabsContent>
     </Tabs>
   )

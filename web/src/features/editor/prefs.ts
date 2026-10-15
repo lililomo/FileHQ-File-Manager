@@ -26,6 +26,8 @@ export interface EditorPrefs {
   auto_save: boolean
   auto_save_interval: number
   format_on_save: boolean
+  /** Step 16b: Prettier (lazy chunk) for Markdown/YAML instead of "no formatter". */
+  format_with_prettier: boolean
   bracket_pair_colorization: boolean
   explorer: boolean
 }
@@ -43,6 +45,7 @@ export const EDITOR_DEFAULTS: EditorPrefs = {
   auto_save: false,
   auto_save_interval: 30,
   format_on_save: false,
+  format_with_prettier: true,
   bracket_pair_colorization: true,
   explorer: true,
 }
@@ -83,4 +86,14 @@ export function useEditorPrefs(): EditorPrefs {
 
 export function setEditorPref<K extends keyof EditorPrefs>(key: K, value: EditorPrefs[K]): void {
   usePrefsStore.getState().set(`editor.${key}`, value)
+}
+
+/** Non-reactive read (controller code outside React). */
+export function editorPrefsSnapshot(): EditorPrefs {
+  const prefs = usePrefsStore.getState().prefs
+  const out = { ...EDITOR_DEFAULTS }
+  for (const k of Object.keys(EDITOR_DEFAULTS) as (keyof EditorPrefs)[]) {
+    ;(out as Record<string, unknown>)[k] = coerce(k, prefs[`editor.${k}`])
+  }
+  return out
 }

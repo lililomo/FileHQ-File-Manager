@@ -2,6 +2,9 @@ import { useTranslation } from 'react-i18next'
 import {
   AArrowDown,
   AArrowUp,
+  Eye,
+  FileSearch,
+  History,
   ListOrdered,
   Maximize2,
   PanelLeft,
@@ -117,10 +120,37 @@ export function Toolbar(p: ToolbarProps) {
         label={t('toolbar.format')}
         shortcut={keys('Shift+Alt+F')}
         disabled={!ready || !!p.tab?.readOnly}
-        onClick={() => ws.runEditorAction('editor.action.formatDocument')}
+        onClick={() => p.tab && void ws.formatDocument(p.tab.path)}
       >
         <WrapText />
       </IconButton>
+      <Separator orientation="vertical" className="mx-1 h-5" />
+      <IconButton
+        label={t('toolbar.findInFiles')}
+        onClick={() => ws.openFindInFiles()}
+        data-testid="btn-find-in-files"
+      >
+        <FileSearch />
+      </IconButton>
+      <IconButton
+        label={t('toolbar.history')}
+        disabled={!ready || !!p.tab?.versionId}
+        onClick={() => p.tab && ws.openVersions(p.tab.path)}
+        data-testid="btn-history"
+      >
+        <History />
+      </IconButton>
+      {p.tab?.language === 'markdown' ? (
+        <IconButton
+          label={t('toolbar.preview')}
+          aria-pressed={!!p.tab.preview}
+          onClick={() => p.tab && ws.togglePreview(p.tab.path)}
+          data-testid="btn-preview"
+          className={p.tab.preview ? 'bg-surface-3' : undefined}
+        >
+          <Eye />
+        </IconButton>
+      ) : null}
       <Separator orientation="vertical" className="mx-1 h-5" />
       <IconButton
         label={t('toolbar.fontSmaller')}

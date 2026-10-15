@@ -15,7 +15,10 @@
     "maximize": "Buka di halaman penuh",
     "close": "Tutup editor",
     "quickOpen": "Buka cepat",
-    "noTab": "Tidak ada file terbuka. Pilih file di explorer atau tekan Ctrl+P."
+    "noTab": "Tidak ada file terbuka. Pilih file di explorer atau tekan Ctrl+P.",
+    "preview": "Pratinjau Markdown",
+    "history": "Riwayat versi",
+    "findInFiles": "Cari di file"
   },
   "tabs": {
     "label": "Tab editor",
@@ -65,7 +68,9 @@
     "saved": "Tersimpan",
     "draft": "Draft tersimpan lokal",
     "bom": "BOM",
-    "location": "Lokasi"
+    "location": "Lokasi",
+    "historyOpen": "Buka riwayat versi",
+    "versionTab": "Versi {{no}} (hanya-baca)"
   },
   "encoding": {
     "reopen": "Buka ulang dengan encoding",
@@ -99,7 +104,12 @@
     "draftView": "Lihat perbedaan",
     "conflict": "File berubah di server sejak dibuka.",
     "notFound": "File tidak ditemukan.",
-    "retry": "Coba lagi"
+    "retry": "Coba lagi",
+    "tailReason": "File lebih besar dari batas editor ({{max}}), hanya {{n}} baris terakhir yang ditampilkan dan tidak bisa diedit.",
+    "downloadToEdit": "Unduh untuk mengedit",
+    "versionTab": "Menampilkan versi {{no}} dari {{at}} (hanya-baca).",
+    "versionRestore": "Pulihkan versi ini",
+    "versionCompare": "Bandingkan dengan sekarang"
   },
   "dialog": {
     "closeDirtyTitle": "Simpan perubahan pada {{name}}?",
@@ -118,7 +128,18 @@
     "diffRight": "Milik Anda",
     "diffDraftLeft": "Server",
     "diffDraftRight": "Draft",
-    "close": "Tutup"
+    "close": "Tutup",
+    "conflictMerge": "Gabung manual",
+    "conflictApply": "Terapkan & simpan",
+    "conflictLoading": "Memuat versi server…",
+    "diffInline": "Tampilan inline",
+    "diffSideBySide": "Berdampingan",
+    "diffVersionLeft": "Versi {{no}} ({{at}})",
+    "diffVersionRight": "Sekarang (belum disimpan jika ada perubahan)",
+    "diffMergeRight": "Hasil gabungan (dapat diedit)",
+    "encodingTitle": "Buka ulang dengan encoding",
+    "encodingPick": "Pilih encoding",
+    "apply": "Terapkan"
   },
   "settings": {
     "title": "Pengaturan editor",
@@ -141,7 +162,8 @@
     "autoSave": "Simpan otomatis ke server",
     "autoSaveInterval": "Interval simpan otomatis (detik)",
     "bracketColors": "Warnai pasangan kurung",
-    "done": "Selesai"
+    "done": "Selesai",
+    "formatWithPrettier": "Format Markdown/YAML dengan Prettier (dimuat saat dipakai)"
   },
   "quickOpen": {
     "placeholder": "Ketik nama file…",
@@ -156,6 +178,66 @@
     "unencodable": "Karakter \"{{char}}\" (baris {{line}}, kolom {{col}}) tidak bisa disimpan dengan encoding {{enc}}",
     "readOnly": "File hanya-baca tidak bisa disimpan",
     "pathCopied": "Path disalin",
-    "created": "{{name}} dibuat"
+    "created": "{{name}} dibuat",
+    "restoredReload": "File dipulihkan ke versi {{no}}; tab dimuat ulang."
+  },
+  "versions": {
+    "title": "Riwayat versi",
+    "titleFor": "Riwayat versi — {{name}}",
+    "empty": "Belum ada versi tersimpan.",
+    "disabled": "Riwayat versi dinonaktifkan di server (FILE_VERSION_LIMIT=0).",
+    "limit": "Maksimal {{n}} versi per file; yang tertua dihapus otomatis.",
+    "count_one": "{{count}} versi",
+    "count_other": "{{count}} versi",
+    "open": "Buka hanya-baca",
+    "compare": "Bandingkan dengan sekarang",
+    "restore": "Pulihkan",
+    "download": "Unduh",
+    "delete": "Hapus versi",
+    "deleteAll": "Hapus semua versi",
+    "restoreTitle": "Pulihkan versi {{no}}?",
+    "restoreDesc": "Isi file sekarang disimpan dulu sebagai versi baru (alasan: restore), lalu versi {{no}} ditulis kembali ke {{name}}.",
+    "restored": "Versi {{no}} dipulihkan ke {{name}}.",
+    "deleted": "Versi dihapus.",
+    "deleteAllTitle": "Hapus semua versi {{name}}?",
+    "deleteAllDesc": "{{n}} versi dan kuota yang dipakainya akan dibebaskan. Tindakan ini tidak dapat dibatalkan.",
+    "reason": {
+      "save": "Simpan",
+      "force_save": "Timpa",
+      "restore": "Pulihkan",
+      "replace_in_files": "Replace in files",
+      "external_overwrite": "Timpa oleh upload"
+    },
+    "no": "v{{no}}",
+    "loadError": "Riwayat versi gagal dimuat: {{message}}"
+  },
+  "find": {
+    "title": "Cari di file",
+    "placeholder": "Cari isi…",
+    "folder": "Folder",
+    "regex": "Regex",
+    "caseSensitive": "Peka huruf",
+    "wholeWord": "Kata utuh",
+    "glob": "Ekstensi (mis. js,ts)",
+    "run": "Cari",
+    "stop": "Berhenti",
+    "replace": "Replace in files…",
+    "empty": "Tidak ada kecocokan.",
+    "summary": "{{matches}} kecocokan di {{files}} file",
+    "truncated": "Hasil dipotong pada {{n}} kecocokan.",
+    "error": "Pencarian gagal: {{message}}",
+    "close": "Tutup pencarian",
+    "replaceTitle": "Replace in files"
+  },
+  "preview": {
+    "title": "Pratinjau",
+    "imagePlaceholder": "Gambar eksternal tidak dimuat",
+    "openLink": "Buka {{name}}"
+  },
+  "format": {
+    "invalidJson": "JSON tidak valid di baris {{line}} kolom {{col}}: isi tidak diubah.",
+    "noFormatter": "Tidak ada pemformat untuk bahasa {{language}}.",
+    "done": "Dokumen diformat.",
+    "failed": "Format gagal: {{message}}"
   }
 }

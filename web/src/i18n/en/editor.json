@@ -15,7 +15,10 @@
     "maximize": "Open full page",
     "close": "Close editor",
     "quickOpen": "Quick open",
-    "noTab": "No file open. Pick one in the explorer or press Ctrl+P."
+    "noTab": "No file open. Pick one in the explorer or press Ctrl+P.",
+    "preview": "Markdown preview",
+    "history": "Version history",
+    "findInFiles": "Find in files"
   },
   "tabs": {
     "label": "Editor tabs",
@@ -65,7 +68,9 @@
     "saved": "Saved",
     "draft": "Draft kept locally",
     "bom": "BOM",
-    "location": "Location"
+    "location": "Location",
+    "historyOpen": "Open version history",
+    "versionTab": "Version {{no}} (read-only)"
   },
   "encoding": {
     "reopen": "Reopen with encoding",
@@ -99,7 +104,12 @@
     "draftView": "View differences",
     "conflict": "The file changed on the server since it was opened.",
     "notFound": "File not found.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "tailReason": "The file is larger than the editor limit ({{max}}); only the last {{n}} lines are shown and cannot be edited.",
+    "downloadToEdit": "Download to edit",
+    "versionTab": "Showing version {{no}} from {{at}} (read-only).",
+    "versionRestore": "Restore this version",
+    "versionCompare": "Compare with current"
   },
   "dialog": {
     "closeDirtyTitle": "Save changes to {{name}}?",
@@ -118,7 +128,18 @@
     "diffRight": "Yours",
     "diffDraftLeft": "Server",
     "diffDraftRight": "Draft",
-    "close": "Close"
+    "close": "Close",
+    "conflictMerge": "Merge manually",
+    "conflictApply": "Apply & save",
+    "conflictLoading": "Loading the server version…",
+    "diffInline": "Inline view",
+    "diffSideBySide": "Side by side",
+    "diffVersionLeft": "Version {{no}} ({{at}})",
+    "diffVersionRight": "Current (unsaved changes included)",
+    "diffMergeRight": "Merged result (editable)",
+    "encodingTitle": "Reopen with encoding",
+    "encodingPick": "Choose an encoding",
+    "apply": "Apply"
   },
   "settings": {
     "title": "Editor settings",
@@ -141,7 +162,8 @@
     "autoSave": "Auto-save to server",
     "autoSaveInterval": "Auto-save interval (seconds)",
     "bracketColors": "Colorize bracket pairs",
-    "done": "Done"
+    "done": "Done",
+    "formatWithPrettier": "Format Markdown/YAML with Prettier (loaded on use)"
   },
   "quickOpen": {
     "placeholder": "Type a file name…",
@@ -156,6 +178,66 @@
     "unencodable": "Character \"{{char}}\" (line {{line}}, column {{col}}) cannot be saved with encoding {{enc}}",
     "readOnly": "A read-only file cannot be saved",
     "pathCopied": "Path copied",
-    "created": "{{name}} created"
+    "created": "{{name}} created",
+    "restoredReload": "File restored to version {{no}}; the tab was reloaded."
+  },
+  "versions": {
+    "title": "Version history",
+    "titleFor": "Version history — {{name}}",
+    "empty": "No versions stored yet.",
+    "disabled": "Version history is disabled on the server (FILE_VERSION_LIMIT=0).",
+    "limit": "At most {{n}} versions per file; the oldest are pruned automatically.",
+    "count_one": "{{count}} version",
+    "count_other": "{{count}} versions",
+    "open": "Open read-only",
+    "compare": "Compare with current",
+    "restore": "Restore",
+    "download": "Download",
+    "delete": "Delete version",
+    "deleteAll": "Delete all versions",
+    "restoreTitle": "Restore version {{no}}?",
+    "restoreDesc": "The current content is stored first as a new version (reason: restore), then version {{no}} is written back to {{name}}.",
+    "restored": "Version {{no}} restored to {{name}}.",
+    "deleted": "Version deleted.",
+    "deleteAllTitle": "Delete all versions of {{name}}?",
+    "deleteAllDesc": "{{n}} versions and the quota they use will be freed. This cannot be undone.",
+    "reason": {
+      "save": "Save",
+      "force_save": "Overwrite",
+      "restore": "Restore",
+      "replace_in_files": "Replace in files",
+      "external_overwrite": "Overwritten by upload"
+    },
+    "no": "v{{no}}",
+    "loadError": "Version history failed to load: {{message}}"
+  },
+  "find": {
+    "title": "Find in files",
+    "placeholder": "Search content…",
+    "folder": "Folder",
+    "regex": "Regex",
+    "caseSensitive": "Match case",
+    "wholeWord": "Whole word",
+    "glob": "Extensions (e.g. js,ts)",
+    "run": "Search",
+    "stop": "Stop",
+    "replace": "Replace in files…",
+    "empty": "No matches.",
+    "summary": "{{matches}} matches in {{files}} files",
+    "truncated": "Results cut off at {{n}} matches.",
+    "error": "Search failed: {{message}}",
+    "close": "Close search",
+    "replaceTitle": "Replace in files"
+  },
+  "preview": {
+    "title": "Preview",
+    "imagePlaceholder": "External image not loaded",
+    "openLink": "Open {{name}}"
+  },
+  "format": {
+    "invalidJson": "Invalid JSON at line {{line}} column {{col}}: content unchanged.",
+    "noFormatter": "No formatter for language {{language}}.",
+    "done": "Document formatted.",
+    "failed": "Formatting failed: {{message}}"
   }
 }
