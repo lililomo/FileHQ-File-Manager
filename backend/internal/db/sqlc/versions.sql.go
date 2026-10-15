@@ -120,6 +120,58 @@ func (q *Queries) ListFileVersionsByPath(ctx context.Context, arg ListFileVersio
 	return items, nil
 }
 
+const listFileVersionsPrefix = `-- name: ListFileVersionsPrefix :many
+SELECT id, user_id, path, version_no, size, sha256, blob_rel, reason, created_at FROM file_versions
+WHERE user_id = ?1
+  AND (path = ?2 OR substr(path, 1, ?3) = ?4)
+ORDER BY path, version_no DESC
+`
+
+type ListFileVersionsPrefixParams struct {
+	UserID    string `json:"user_id"`
+	Path      string `json:"path"`
+	PrefixLen int64  `json:"prefix_len"`
+	Prefix    string `json:"prefix"`
+}
+
+func (q *Queries) ListFileVersionsPrefix(ctx context.Context, arg ListFileVersionsPrefixParams) ([]FileVersion, error) {
+	rows, err := q.db.QueryContext(ctx, listFileVersionsPrefix,
+		arg.UserID,
+		arg.Path,
+		arg.PrefixLen,
+		arg.Prefix,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FileVersion{}
+	for rows.Next() {
+		var i FileVersion
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Path,
+			&i.VersionNo,
+			&i.Size,
+			&i.Sha256,
+			&i.BlobRel,
+			&i.Reason,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const sumFileVersionBytes = `-- name: SumFileVersionBytes :one
 SELECT COALESCE(SUM(size), 0) AS total FROM file_versions WHERE user_id = ?
 `

@@ -120,6 +120,7 @@ type Querier interface {
 	ListFileTagsInDir(ctx context.Context, arg ListFileTagsInDirParams) ([]FileTag, error)
 	ListFileVersions(ctx context.Context, userID string) ([]FileVersion, error)
 	ListFileVersionsByPath(ctx context.Context, arg ListFileVersionsByPathParams) ([]FileVersion, error)
+	ListFileVersionsPrefix(ctx context.Context, arg ListFileVersionsPrefixParams) ([]FileVersion, error)
 	ListMediaMetadataByPaths(ctx context.Context, arg ListMediaMetadataByPathsParams) ([]MediaMetadatum, error)
 	// prefix = "<dir>/" and prefix_len = len(prefix): sqlc's SQLite parser has no
 	// LIKE ... ESCAPE, substr avoids wildcard escaping.

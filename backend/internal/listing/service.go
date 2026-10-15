@@ -245,6 +245,11 @@ func filterItems(items []*Item, req ListRequest) []*Item {
 		if !req.Hidden && strings.HasPrefix(it.Name, ".") {
 			continue
 		}
+		if isStagingName(it.Name) {
+			// atomic-write / upload / zip-edit staging files never show up,
+			// even with hidden files on (Step 16b; same rule as files.IsTempName)
+			continue
+		}
 		if needle != "" && !strings.Contains(it.folded, needle) {
 			continue
 		}
@@ -341,4 +346,11 @@ func (s *Service) InvalidateUser(user string) {
 		}
 	}
 	s.countMu.Unlock()
+}
+
+// isStagingName matches the transient names writers stage next to their
+// target: `.<name>.fm-tmp-<id>` (atomic writes), `.fm-upload-<id>` and
+// `.fm-zipedit-<task>-<name>`.
+func isStagingName(name string) bool {
+	return strings.HasPrefix(name, ".") && (strings.Contains(name, ".fm-tmp-") || strings.HasPrefix(name, ".fm-upload-") || strings.HasPrefix(name, ".fm-zipedit-"))
 }

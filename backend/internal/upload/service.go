@@ -27,6 +27,7 @@ import (
 	"kppbwi.app/filemanager/internal/files"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/quota"
+	"kppbwi.app/filemanager/internal/versions"
 )
 
 const (
@@ -89,13 +90,18 @@ type Options struct {
 	ChunkSize     int64
 	// BaseURL is APP_BASE_URL (no trailing slash); the tus Location header is
 	// absolute and built from it (SPEC §6.5).
-	BaseURL  string
-	CrossFS  bool
-	Repo     db.Repository
-	Quota    *quota.Service
-	Files    *files.Service
-	Locks    *fsjail.LockManager
-	OpenJail OpenJailFunc
+	BaseURL string
+	CrossFS bool
+	Repo    db.Repository
+	Quota   *quota.Service
+	Files   *files.Service
+	Locks   *fsjail.LockManager
+	// Versions takes a pre-image of a text file that an overwrite replaces
+	// (SPEC §8.13 "Versi", Step 16b); nil = no versions. EditorMaxFileSize
+	// bounds the files that get one.
+	Versions          *versions.Store
+	EditorMaxFileSize int64
+	OpenJail          OpenJailFunc
 	// Invalidate drops the listing cache of a folder.
 	Invalidate func(userID string, dir fsjail.VPath)
 	// OnChange is the thumbnail/media invalidation hook.

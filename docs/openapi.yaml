@@ -2208,6 +2208,7 @@ paths:
         the stored size is verified, the file is moved atomically into `path/relativePath/filename` (folders created as needed) under
         `onConflict`, quota is committed, `activity_logs` gets `upload`, listings/thumbnails are invalidated and `file.changed` is sent.
         Finalisation answers with `Upload-Result: created|renamed|overwritten|skipped` and `Upload-Path` (percent-encoded virtual path,
+        Upload-Version: { schema: { type: string }, description: "Id of the pre-image version an overwrite of a text file took (Step 16b)" }
         empty when skipped). If the destination folder disappeared the upload is dropped (`404 NOT_FOUND`); a folder in the way of an
         `overwrite` is `400 VALIDATION_FAILED type_mismatch` (upload dropped); a path lock answers `423 OPERATION_IN_PROGRESS` so tus
         clients retry. Excluded from the API timeout and the JSON body limit.
@@ -2437,6 +2438,82 @@ paths:
                   enabled: { type: boolean }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [versions]
+      summary: Delete every version of a file (rows + blobs; bytes return to the quota)
+      operationId: versionsDeleteAll
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted (also when there was nothing) }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/files/versions:
+    get:
+      tags: [versions]
+      summary: Alias of GET /versions (PROMPT Step 16b naming)
+      operationId: filesVersionsList
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, limit, enabled]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/FileVersion" } }
+                  limit: { type: integer }
+                  enabled: { type: boolean }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/versions/{id}/content:
+    get:
+      tags: [versions]
+      summary: Decoded content of a version (read-only, same shape as /files/content)
+      operationId: versionContent
+      description: |
+        The blob is decoded like the live file (BOM/chardet or `encoding` override, EOL, language from the path). `readOnly`
+        is always true and `etag` is `"v-<id>"`. Blobs above `EDITOR_MAX_FILE_SIZE` answer `413 FILE_TOO_LARGE` (use download);
+        binary blobs `415 BINARY_FILE`.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: encoding, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FileContent" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+  /api/v1/versions/{id}/download:
+    get:
+      tags: [versions]
+      summary: Download the raw blob of a version as `<name>.v<no>.<ext>`
+      operationId: versionDownload
+      description: |
+        Session-bound attachment stream (Range, ETag) with the §8.9 attachment policy; no signed URL is involved because the
+        route is owner-only (SPEC §6.3 lists it as a signed redirect — deviation recorded in PROGRESS, Step 16b).
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Attachment stream }
+        "206": { description: Partial content }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
   /api/v1/versions/{id}/restore:
     post:
       tags: [versions]
@@ -2453,6 +2530,8 @@ paths:
       responses:
         "200":
           description: Restored
+          headers:
+            ETag: { schema: { type: string }, description: "New etag of the file (Step 16b)" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/VersionRestoreResult" }

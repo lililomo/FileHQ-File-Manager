@@ -376,6 +376,9 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		"POST /api/v1/search/replace/preview": true, "POST /api/v1/search/replace": true,
 		"GET /api/v1/search/history": true, "DELETE /api/v1/search/history": true,
 		"GET /api/v1/versions": true, "POST /api/v1/versions/{id}/restore": true, "DELETE /api/v1/versions/{id}": true,
+		// Step 16b: versions completed (gated above)
+		"GET /api/v1/files/versions": true, "DELETE /api/v1/versions": true,
+		"GET /api/v1/versions/{id}/content": true, "GET /api/v1/versions/{id}/download": true,
 		// Step 16a: editor (gated above)
 		"GET /api/v1/files/content": true, "PUT /api/v1/files/content": true,
 		"GET /api/v1/me/editor-session": true, "PUT /api/v1/me/editor-session": true,

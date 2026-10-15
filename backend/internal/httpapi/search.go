@@ -12,7 +12,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"kppbwi.app/filemanager/internal/files"
-	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/quota"
 	"kppbwi.app/filemanager/internal/search"
@@ -39,23 +38,6 @@ func (s *Server) mountSearch(api chi.Router) {
 		g.Post("/search/replace", s.handleReplaceApply)
 		g.Get("/search/history", s.handleSearchHistory)
 		g.Delete("/search/history", s.handleSearchHistoryClear)
-	})
-}
-
-// mountVersions registers the minimal /versions group of Step 15 (list,
-// restore, delete); content/download arrive with the editor (16b).
-func (s *Server) mountVersions(api chi.Router) {
-	if s.versions == nil {
-		return
-	}
-	api.Group(func(g chi.Router) {
-		g.Use(OriginCheck(s.cfg.AppBaseURL))
-		g.Use(s.RequireAuth)
-		g.Use(s.RequireCSRF)
-		g.Use(RequirePasswordChanged)
-		g.Get("/versions", s.handleVersionsList)
-		g.Post("/versions/{id}/restore", s.handleVersionRestore)
-		g.Delete("/versions/{id}", s.handleVersionDelete)
 	})
 }
 
@@ -285,80 +267,6 @@ func (s *Server) handleSearchHistory(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSearchHistoryClear(w http.ResponseWriter, r *http.Request) {
 	u, _ := UserFrom(r.Context())
 	if err := s.search.ClearHistory(r.Context(), u.ID); err != nil {
-		s.writeSearchError(w, r, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// --- versions (minimal, SPEC §6.3 "Versions") ---
-
-func (s *Server) handleVersionsList(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
-		return
-	}
-	vp, err := fsjail.Clean(r.URL.Query().Get("path"))
-	if err != nil || vp.IsRoot() {
-		WriteError(w, r, CodePathInvalid, 0, "path is not valid", map[string]any{"fields": map[string]any{"path": "invalid"}})
-		return
-	}
-	u, _ := UserFrom(r.Context())
-	items, err := s.versions.List(r.Context(), u.ID, vp)
-	if err != nil {
-		s.writeSearchError(w, r, err)
-		return
-	}
-	WriteJSON(w, http.StatusOK, map[string]any{"items": items, "limit": s.versions.Limit(), "enabled": s.versions.Enabled()})
-}
-
-func (s *Server) handleVersionRestore(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
-		return
-	}
-	id := chi.URLParam(r, "id")
-	j, u, release, ok := s.userJail(w, r)
-	if !ok {
-		return
-	}
-	defer release()
-	v, err := s.versions.Get(r.Context(), u.ID, id)
-	if err != nil {
-		s.writeSearchError(w, r, err)
-		return
-	}
-	vp, err := fsjail.Clean(v.Path)
-	if err != nil {
-		s.writeSearchError(w, r, err)
-		return
-	}
-	if s.locks != nil {
-		unlock, lerr := s.locks.TryAcquire(u.ID, fsjail.Write, "restore", vp)
-		if lerr != nil {
-			WriteError(w, r, CodeOperationInProgress, http.StatusLocked, "another operation is running on this file", map[string]any{"path": string(vp)})
-			return
-		}
-		defer unlock()
-	}
-	res, err := s.versions.Restore(r.Context(), j, u.ID, id)
-	if err != nil {
-		s.writeSearchError(w, r, err)
-		return
-	}
-	if s.files != nil {
-		s.files.RecordActivity(r.Context(), u.ID, files.ActRestore, res.Path, "", map[string]any{"versionId": id, "versionNo": v.No})
-	}
-	if s.search != nil {
-		s.search.InvalidateNames(u.ID)
-	}
-	WriteJSON(w, http.StatusOK, res)
-}
-
-func (s *Server) handleVersionDelete(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
-		return
-	}
-	u, _ := UserFrom(r.Context())
-	if err := s.versions.Delete(r.Context(), u.ID, chi.URLParam(r, "id")); err != nil {
 		s.writeSearchError(w, r, err)
 		return
 	}

@@ -230,6 +230,7 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 	t.Cleanup(func() { stopEngine(); env.tasks.Shutdown(2 * time.Second); env.events.Close() })
 	env.upload, err = upload.New(upload.Options{DataDir: cfg.DataDir, MaxUploadSize: cfg.MaxUploadSize, ChunkSize: cfg.UploadChunkSize, BaseURL: cfg.AppBaseURL,
 		Repo: store, Quota: env.quota, Files: env.files, Locks: env.locks, OpenJail: upload.OpenJailFunc(env.trash.OpenJail),
+		Versions: env.versions, EditorMaxFileSize: cfg.EditorMaxFileSize,
 		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) },
 		Publish:    env.events.Publish, RequestID: RequestIDFrom, Logger: logger, Now: clock.Now})
 	if err != nil {

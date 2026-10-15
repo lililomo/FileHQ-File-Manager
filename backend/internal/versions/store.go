@@ -109,7 +109,10 @@ func New(o Options) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{o: o, sys: sys}, nil
+	s := &Store{o: o, sys: sys}
+	// blobs follow the rows on rename/move/purge (Step 16b)
+	files.RegisterReferenceUpdater(string(db.RefFileVersions), refUpdater{s: s})
+	return s, nil
 }
 
 // Close releases the directory handle.

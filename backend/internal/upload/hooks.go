@@ -17,13 +17,16 @@ import (
 	"kppbwi.app/filemanager/internal/files"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/quota"
+	"kppbwi.app/filemanager/internal/versions"
 )
 
 // Response headers of the final PATCH (the tus protocol has no body):
 // the client learns the final name and what happened.
 const (
 	HeaderResult = "Upload-Result" // created | renamed | overwritten | skipped
-	HeaderPath   = "Upload-Path"   // percent-encoded virtual path (empty when skipped)
+	// HeaderVersion carries the id of the pre-image version an overwrite took (Step 16b).
+	HeaderVersion = "Upload-Version"
+	HeaderPath    = "Upload-Path" // percent-encoded virtual path (empty when skipped)
 )
 
 // preCreate validates Upload-Metadata, reserves quota and records the
@@ -140,6 +143,8 @@ type FinalizeResult struct {
 	Path   fsjail.VPath // "" when skipped
 	Dir    fsjail.VPath
 	Size   int64
+	// VersionID is the pre-image taken before an overwrite (Step 16b), "" when none.
+	VersionID string
 }
 
 // preFinish verifies the stored bytes and moves the file into the jail
@@ -187,6 +192,9 @@ func (s *Service) preFinish(ev handler.HookEvent) (handler.HTTPResponse, error) 
 		return handler.HTTPResponse{}, s.tusError(ctx, ferr)
 	}
 	h := handler.HTTPHeader{HeaderResult: res.Status, HeaderPath: (&url.URL{Path: string(res.Path)}).EscapedPath()}
+	if res.VersionID != "" {
+		h[HeaderVersion] = res.VersionID
+	}
 	return handler.HTTPResponse{Header: h}, nil
 }
 
@@ -258,6 +266,14 @@ func (s *Service) finalize(ctx context.Context, p Principal, row sqlc.UploadSess
 		s.logger.WarnContext(ctx, "uploads live on another filesystem; copying instead of renaming", slog.String("path", string(target)))
 	}
 	if res.Status == "overwritten" {
+		// pre-image of a text file (SPEC §8.13 "Versi"; the lock is held)
+		if s.o.Versions != nil {
+			if v, created, verr := s.o.Versions.SnapshotIfText(ctx, j, p.UserID, target, versions.ReasonExternalOverwrite, s.o.EditorMaxFileSize); verr != nil {
+				s.logger.WarnContext(ctx, "upload overwrite: version snapshot failed", slog.String("path", string(target)), slog.String("error", verr.Error()))
+			} else if created && v != nil {
+				res.VersionID = v.ID
+			}
+		}
 		// Land next to the target, then rename over it: readers never see a
 		// truncated file and the replacement is atomic.
 		tmp, err := fsjail.Join(dir, ".fm-upload-"+row.ID)

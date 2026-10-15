@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -79,7 +80,16 @@ func ReadContent(j *fsjail.Jail, p fsjail.VPath, o ContentOptions) (*Content, er
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
+	return ReadContentFile(f, info, string(p), o)
+}
+
+// ReadContentFile decodes an already opened regular file (the editor path
+// and the version blobs of Step 16b share it). name is the virtual path
+// reported in Content.Path; its base name drives the language hint.
+func ReadContentFile(f *os.File, info fsjail.Info, name string, o ContentOptions) (*Content, error) {
+	p := fsjail.VPath(name)
 	c := &Content{Path: string(p), Size: info.Size, Mtime: info.ModTime.UTC().Format("2006-01-02T15:04:05.000000000Z07:00"), Etag: Etag(info), Mode: "0" + strconv.FormatInt(int64(info.Mode.Perm()), 8), Language: LanguageHint(p.Base())}
+	var err error
 	var raw []byte
 	switch {
 	case o.MaxSize > 0 && info.Size > o.MaxSize:

@@ -13,6 +13,8 @@ type VersionRepo interface {
 	ListFileVersionsByPath(ctx context.Context, userID, path string) ([]sqlc.FileVersion, error)
 	LatestFileVersion(ctx context.Context, userID, path string) (sqlc.FileVersion, error)
 	DeleteFileVersion(ctx context.Context, userID, id string) (int64, error)
+	// ListFileVersionsPrefix lists the versions of path and everything below it (Step 16b: blob cleanup on delete).
+	ListFileVersionsPrefix(ctx context.Context, userID, path string) ([]sqlc.FileVersion, error)
 }
 
 func (s *Store) GetFileVersion(ctx context.Context, userID, id string) (sqlc.FileVersion, error) {
@@ -29,4 +31,9 @@ func (s *Store) LatestFileVersion(ctx context.Context, userID, path string) (sql
 
 func (s *Store) DeleteFileVersion(ctx context.Context, userID, id string) (int64, error) {
 	return s.w.DeleteFileVersion(ctx, sqlc.DeleteFileVersionParams{ID: id, UserID: userID})
+}
+
+func (s *Store) ListFileVersionsPrefix(ctx context.Context, userID, path string) ([]sqlc.FileVersion, error) {
+	prefix, plen, _ := refPrefix(path)
+	return s.r.ListFileVersionsPrefix(ctx, sqlc.ListFileVersionsPrefixParams{UserID: userID, Path: path, PrefixLen: plen, Prefix: prefix})
 }

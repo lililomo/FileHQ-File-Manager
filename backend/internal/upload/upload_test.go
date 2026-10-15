@@ -25,6 +25,7 @@ import (
 	"kppbwi.app/filemanager/internal/files"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/quota"
+	"kppbwi.app/filemanager/internal/versions"
 )
 
 // env is a self-contained upload stack: SQLite, one user with a home, the
@@ -37,6 +38,7 @@ type env struct {
 	store    *db.Store
 	user     sqlc.User
 	quota    *quota.Service
+	versions *versions.Store
 	svc      *Service
 	srv      *httptest.Server
 	events   []string
@@ -51,7 +53,7 @@ func newEnv(t *testing.T, quotaBytes int64) *env {
 	root := t.TempDir()
 	storage := filepath.Join(root, "storage")
 	dataDir := filepath.Join(storage, ".system")
-	for _, d := range []string{"db", "uploads", "tmp", "thumbs", "trash"} {
+	for _, d := range []string{"db", "uploads", "tmp", "thumbs", "trash", "versions"} {
 		if err := os.MkdirAll(filepath.Join(dataDir, d), 0o750); err != nil {
 			t.Fatal(err)
 		}
@@ -97,12 +99,18 @@ func (e *env) openJail(_ context.Context, userID string) (*fsjail.Jail, func(), 
 func (e *env) build() {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	e.quota = quota.New(e.store, logger, nil)
+	vs, verr := versions.New(versions.Options{DataDir: e.dataDir, Limit: 5, Repo: e.store, Quota: e.quota, Logger: logger})
+	if verr != nil {
+		e.t.Fatal(verr)
+	}
+	e.versions = vs
 	e.quota.MinDiskFree = 0
 	locks := fsjail.NewLockManager()
 	filesSvc := files.New(files.Options{Repo: e.store, Locks: locks, Logger: logger, Quota: e.quota, BlockedExtensions: []string{"exe"}})
 	svc, err := New(Options{
 		DataDir: e.dataDir, MaxUploadSize: e.max, ChunkSize: e.chunk, BaseURL: "https://file.example.test",
 		Repo: e.store, Quota: e.quota, Files: filesSvc, Locks: locks, OpenJail: e.openJail,
+		Versions: e.versions, EditorMaxFileSize: 1 << 20,
 		Publish: func(_ string, name string, data any) {
 			raw, _ := json.Marshal(data)
 			e.events = append(e.events, name+" "+string(raw))
