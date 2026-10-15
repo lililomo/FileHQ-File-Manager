@@ -31,6 +31,10 @@ tags:
     description: Remote download dari URL http/https dengan SSRF guard (SPEC §8.10, §10.1)
   - name: archives
     description: Compress & extract sebagai task, proteksi zip-slip/bomb (SPEC §8.11, ADR-08)
+  - name: search
+    description: Pencarian nama (walk) dan isi (ripgrep / fallback Go), replace in files dengan pratinjau, riwayat (SPEC §8.12)
+  - name: versions
+    description: Versi pre-image file (SPEC §8.13; Step 15 minimal — content/download tiba di Step 16b)
 
 paths:
   /healthz:
@@ -2146,6 +2150,225 @@ paths:
       security: [{ cookieAuth: [] }]
       responses:
         "200": { description: Protocol headers }
+  /api/v1/search/names:
+    get:
+      tags: [search]
+      summary: Name search below a folder (SPEC §8.12 "Pencarian nama")
+      operationId: searchNames
+      description: |
+        Walks `path` (default `/`, `recursive` default true) without following symlinked folders and matches the entry name:
+        case-insensitive substring (Unicode fold) by default, `*`/`?` wildcards (`glob=1` or when the query contains them) or
+        RE2 (`regex=1`). Filters: `types` (categories of `files/list`), `ext` (comma list), `minSize`/`maxSize` (bytes, files only),
+        `from`/`to` (mtime, RFC 3339 or YYYY-MM-DD), `tag` (colour). Either `q` or one filter is required. The result set is
+        capped at 5 000 entries / 20 s (`truncated:true`), sorted naturally, cached 60 s and paged with `cursor`
+        (`limit` default 500, max 1 000). A fresh search counts against 30/minute per user (`429 RATE_LIMITED`, `Retry-After`)
+        and is written to the history. `path` outside the root → `400 PATH_INVALID`; `.system` and atomic-write staging files never appear.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 512 } }
+        - { name: path, in: query, schema: { type: string, default: "/" } }
+        - { name: recursive, in: query, schema: { type: boolean, default: true } }
+        - { name: glob, in: query, schema: { type: boolean } }
+        - { name: regex, in: query, schema: { type: boolean } }
+        - { name: types, in: query, schema: { type: string }, description: "Comma-separated categories" }
+        - { name: ext, in: query, schema: { type: string }, description: "Comma-separated extensions" }
+        - { name: minSize, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: maxSize, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+        - { name: tag, in: query, schema: { type: string } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 500 } }
+      responses:
+        "200":
+          description: One page of results
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchNamesResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/search/content:
+    post:
+      tags: [search]
+      summary: Content search streamed as NDJSON (SPEC §8.12 "Pencarian isi", ADR-12)
+      operationId: searchContent
+      description: |
+        Engine `rg --json --no-ignore --hidden --no-follow -n --column -C 1 --max-filesize <EDITOR_MAX_FILE_SIZE> --max-count 200`
+        with cwd = the folder (read lock held), timeout 30 s, or the Go fallback (2 workers, RE2, NUL = binary, 1 MB line buffer)
+        when `RG_PATH` is empty/missing; both produce the same rows. The pattern is validated as RE2 first (`400 VALIDATION_FAILED
+        fields.q=invalid_regex`), so catastrophic patterns are impossible. Response `application/x-ndjson`: one `SearchMatch` per
+        line, then a final `SearchSummary` (`done:true`). The stream stops at `maxMatches` (default/max 2 000, `truncated:true`)
+        or when the client disconnects; a new search of the same user cancels the previous one. Rate limit 10/minute per user.
+        `minSize`/`from`/`to` are applied after matching (ripgrep has no such filters).
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContentSearchRequest" }
+      responses:
+        "200":
+          description: NDJSON stream
+          content:
+            application/x-ndjson:
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/SearchMatch" }
+                  - { $ref: "#/components/schemas/SearchSummary" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "423": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/search/replace/preview:
+    post:
+      tags: [search]
+      summary: Queue a replace_preview task (SPEC §8.12 "Replace in files")
+      operationId: searchReplacePreview
+      description: |
+        Runs the content search, then computes the replacement per matching line in memory (regex → `ReplaceAllString` with
+        `$1` groups; plain → literal) and stores the hunks under `DATA_DIR/tmp/sr-<task>/preview.json` for 10 minutes.
+        Task result: `ReplacePreviewResult` — the first 20 files carry up to 50 hunks each, the rest only counts. Files that
+        are binary, not UTF-8 (decoder arrives with Step 16a), too large or unreadable are listed with `skipped`.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReplacePreviewRequest" }
+      responses:
+        "202":
+          description: Task queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskAccepted" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/search/replace:
+    post:
+      tags: [search]
+      summary: Queue a replace_apply task for a stored preview
+      operationId: searchReplaceApply
+      description: |
+        For every selected file (default: all previewed files): write lock, re-read, sha256 compared with the preview (changed →
+        skipped `changed`), pre-image version `replace_in_files` (when `FILE_VERSION_LIMIT` > 0), atomic write (tmp + rename,
+        mode and per-line EOL kept), quota delta, activity `replace`, one log line per file. Result `ReplaceApplyResult` with the
+        version ids for rollback (`POST /versions/{id}/restore`). The preview is deleted afterwards.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReplaceApplyRequest" }
+      responses:
+        "202":
+          description: Task queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskAccepted" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { description: "NOT_FOUND — preview expired or unknown (`details.reason: preview_expired`)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/search/history:
+    get:
+      tags: [search]
+      summary: The user's last 50 queries (newest first)
+      operationId: searchHistory
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: kind, in: query, schema: { type: string, enum: [name, content] } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, limit]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/SearchHistoryEntry" } }
+                  limit: { type: integer }
+        "401": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [search]
+      summary: Clear the user's search history
+      operationId: searchHistoryClear
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Cleared }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/versions:
+    get:
+      tags: [versions]
+      summary: Versions of a file, newest first (SPEC §6.3 "Versions")
+      operationId: versionsList
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, limit, enabled]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/FileVersion" } }
+                  limit: { type: integer, description: "FILE_VERSION_LIMIT" }
+                  enabled: { type: boolean }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/versions/{id}/restore:
+    post:
+      tags: [versions]
+      summary: Write a version back to its path
+      operationId: versionRestore
+      description: |
+        Takes a pre-image of the current content first (reason `restore`, skipped when identical), then writes the blob
+        atomically with the mode of the existing file (0640 when the file was gone). `423 OPERATION_IN_PROGRESS` while another
+        operation holds the path; `403 FORBIDDEN reason=versions_disabled` when `FILE_VERSION_LIMIT=0`.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Restored
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VersionRestoreResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "423": { $ref: "#/components/responses/Error" }
+  /api/v1/versions/{id}:
+    delete:
+      tags: [versions]
+      summary: Delete one version (row + blob; bytes return to the quota)
+      operationId: versionDelete
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     cookieAuth:
@@ -3195,6 +3418,151 @@ components:
       properties:
         ids: { type: array, items: { type: string }, maxItems: 200 }
         all: { type: boolean }
+    SearchNameItem:
+      allOf:
+        - { $ref: "#/components/schemas/Item" }
+        - type: object
+          required: [location]
+          properties:
+            location: { type: string, description: "Parent folder" }
+    SearchNamesResponse:
+      type: object
+      required: [items, total, truncated, tookMs, path]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/SearchNameItem" } }
+        total: { type: integer, description: "Size of the whole result set (max 5 000)" }
+        nextCursor: { type: string }
+        truncated: { type: boolean, description: "5 000 results or 20 s reached" }
+        tookMs: { type: integer }
+        path: { type: string }
+    ContentSearchRequest:
+      type: object
+      required: [q]
+      properties:
+        q: { type: string, maxLength: 512 }
+        path: { type: string, default: "/" }
+        regex: { type: boolean, default: false }
+        caseSensitive: { type: boolean, default: false }
+        wholeWord: { type: boolean, default: false }
+        recursive: { type: boolean, default: true }
+        ext: { type: array, items: { type: string } }
+        minSize: { type: integer, minimum: 0 }
+        maxSize: { type: integer, minimum: 0, description: "Capped at EDITOR_MAX_FILE_SIZE" }
+        from: { type: string, description: "RFC 3339 or YYYY-MM-DD (mtime ≥)" }
+        to: { type: string, description: "RFC 3339 or YYYY-MM-DD (mtime ≤)" }
+        maxMatches: { type: integer, minimum: 1, maximum: 2000, default: 2000 }
+    SearchMatch:
+      type: object
+      required: [file, line, col, text]
+      properties:
+        file: { type: string }
+        line: { type: integer }
+        col: { type: integer, description: "1-based rune column" }
+        len: { type: integer, description: "Matched span in runes (highlighting)" }
+        text: { type: string, description: "The line, at most 500 characters" }
+        before: { type: string }
+        after: { type: string }
+    SearchSummary:
+      type: object
+      required: [done, files, matches, truncated, engine]
+      properties:
+        done: { type: boolean, enum: [true] }
+        files: { type: integer }
+        matches: { type: integer }
+        truncated: { type: boolean }
+        engine: { type: string, enum: [rg, go] }
+        tookMs: { type: integer }
+        error: { type: string, description: "Present only when the stream ended early (stream_interrupted)" }
+    ReplacePreviewRequest:
+      allOf:
+        - { $ref: "#/components/schemas/ContentSearchRequest" }
+        - type: object
+          required: [replace]
+          properties:
+            replace: { type: string, maxLength: 512, description: "Regex mode expands $1/${name}; plain mode is literal" }
+    ReplaceHunk:
+      type: object
+      required: [line, before, after]
+      properties:
+        line: { type: integer }
+        before: { type: string }
+        after: { type: string }
+    ReplacePreviewFile:
+      type: object
+      required: [path, replacements, hunksTotal]
+      properties:
+        path: { type: string }
+        replacements: { type: integer }
+        hunks: { type: array, items: { $ref: "#/components/schemas/ReplaceHunk" } }
+        hunksTotal: { type: integer }
+        skipped: { type: string, enum: [encoding, too_large, binary, unreadable] }
+    ReplacePreviewResult:
+      type: object
+      description: Task result of replace_preview
+      required: [previewId, files, totalFiles, totalReplacements, truncated, engine, expiresAt]
+      properties:
+        previewId: { type: string }
+        files: { type: array, items: { $ref: "#/components/schemas/ReplacePreviewFile" } }
+        totalFiles: { type: integer }
+        totalReplacements: { type: integer }
+        truncated: { type: boolean }
+        engine: { type: string }
+        expiresAt: { type: string, format: date-time }
+    ReplaceApplyRequest:
+      type: object
+      required: [previewId]
+      properties:
+        previewId: { type: string }
+        files: { type: array, items: { type: string }, description: "Subset of previewed paths; empty = all" }
+    ReplaceApplyResult:
+      type: object
+      description: Task result of replace_apply
+      required: [files, replacements, versionIds, skipped]
+      properties:
+        files:
+          type: array
+          items:
+            type: object
+            required: [path, status, replacements]
+            properties:
+              path: { type: string }
+              status: { type: string, enum: [ok, skipped] }
+              reason: { type: string, enum: [locked, changed, no_change, version_failed, quota, write_failed, encoding, too_large, binary, unreadable] }
+              replacements: { type: integer }
+              versionId: { type: string }
+        replacements: { type: integer }
+        versionIds: { type: array, items: { type: string } }
+        skipped: { type: integer }
+    SearchHistoryEntry:
+      type: object
+      required: [id, kind, query, path, at]
+      properties:
+        id: { type: integer }
+        kind: { type: string, enum: [name, content] }
+        query: { type: string }
+        path: { type: string }
+        filters: { type: object, additionalProperties: true }
+        at: { type: string, format: date-time }
+    FileVersion:
+      type: object
+      required: [id, path, no, size, sha256, reason, createdAt]
+      properties:
+        id: { type: string }
+        path: { type: string }
+        no: { type: integer }
+        size: { type: integer }
+        sha256: { type: string }
+        reason: { type: string, enum: [save, force_save, restore, replace_in_files, external_overwrite] }
+        createdAt: { type: string, format: date-time }
+    VersionRestoreResult:
+      type: object
+      required: [path, size, etag, restored]
+      properties:
+        path: { type: string }
+        size: { type: integer }
+        etag: { type: string }
+        version: { oneOf: [{ $ref: "#/components/schemas/FileVersion" }, { type: "null" }], description: "Pre-image of the replaced content" }
+        restored: { $ref: "#/components/schemas/FileVersion" }
   responses:
     Error:
       description: Error envelope

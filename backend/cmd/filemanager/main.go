@@ -41,11 +41,13 @@ import (
 	"kppbwi.app/filemanager/internal/quota"
 	"kppbwi.app/filemanager/internal/remotedl"
 	"kppbwi.app/filemanager/internal/scheduler"
+	"kppbwi.app/filemanager/internal/search"
 	"kppbwi.app/filemanager/internal/sse"
 	"kppbwi.app/filemanager/internal/tasks"
 	"kppbwi.app/filemanager/internal/thumbs"
 	"kppbwi.app/filemanager/internal/trash"
 	"kppbwi.app/filemanager/internal/upload"
+	"kppbwi.app/filemanager/internal/versions"
 	"kppbwi.app/filemanager/internal/webassets"
 )
 
@@ -405,6 +407,42 @@ func runServe(envFile string, noMigrate bool) int {
 		Logger: logger,
 	})
 
+	// Versions (pre-image copies, Step 15 minimal) and search (Step 15,
+	// SPEC §8.12): ripgrep when RG_PATH exists, Go fallback otherwise.
+	versionsSvc, err := versions.New(versions.Options{DataDir: cfg.DataDir, Limit: cfg.FileVersionLimit, Repo: store, Quota: quotaSvc, Logger: logger,
+		Invalidate: func(userID string, dir fsjail.VPath) { listingSvc.Invalidate(userID, "", dir) },
+		OnChange: func(ctx context.Context, userID string, p fsjail.VPath, isDir bool) {
+			if err := thumbsSvc.Invalidate(ctx, userID, p, isDir); err != nil {
+				logger.Warn("thumbnail invalidation failed", slog.String("path", string(p)), slog.String("error", err.Error()))
+			}
+		}})
+	if err != nil {
+		logger.Error("versions store unavailable", slog.String("error", err.Error()))
+		return exitConfig
+	}
+	defer func() { _ = versionsSvc.Close() }()
+	searchSvc := search.New(search.Options{DataDir: cfg.DataDir, RgPath: cfg.RgPath, Runner: runner, MaxFileSize: cfg.EditorMaxFileSize,
+		Repo: store, Quota: quotaSvc, Files: filesSvc, Locks: locks, Tasks: engine, Versions: versionsSvc, Logger: logger,
+		Less: func(a, b string) bool { return listing.NaturalLess(a, b, collator) },
+		TagPaths: func(ctx context.Context, userID, color string) ([]string, error) {
+			rows, err := store.ListFileTagsByColor(ctx, userID, color)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]string, 0, len(rows))
+			for _, r := range rows {
+				out = append(out, r.Path)
+			}
+			return out, nil
+		},
+		Invalidate: func(userID string, dir fsjail.VPath) { listingSvc.Invalidate(userID, "", dir) },
+		OnChange: func(ctx context.Context, userID string, p fsjail.VPath, isDir bool) {
+			if err := thumbsSvc.Invalidate(ctx, userID, p, isDir); err != nil {
+				logger.Warn("thumbnail invalidation failed", slog.String("path", string(p)), slog.String("error", err.Error()))
+			}
+		}})
+	logger.Info("search engine", slog.String("content", searchSvc.Engine()), slog.Int("versionLimit", cfg.FileVersionLimit))
+
 	handler := httpapi.New(httpapi.Options{
 		Cfg:         cfg,
 		Logger:      logger,
@@ -428,6 +466,8 @@ func runServe(envFile string, noMigrate bool) int {
 		Upload:      uploadSvc,
 		Remote:      remoteSvc,
 		Archives:    archiveSvc,
+		Search:      searchSvc,
+		Versions:    versionsSvc,
 		Warnings: func() []string {
 			var out []string
 			for _, tool := range thumbsSvc.MissingTools() {

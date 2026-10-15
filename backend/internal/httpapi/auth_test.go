@@ -24,6 +24,7 @@ import (
 	"kppbwi.app/filemanager/internal/db"
 	"kppbwi.app/filemanager/internal/db/sqlc"
 	"kppbwi.app/filemanager/internal/download"
+	fmexec "kppbwi.app/filemanager/internal/exec"
 	"kppbwi.app/filemanager/internal/files"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/listing"
@@ -32,10 +33,12 @@ import (
 	"kppbwi.app/filemanager/internal/notify"
 	"kppbwi.app/filemanager/internal/quota"
 	"kppbwi.app/filemanager/internal/remotedl"
+	"kppbwi.app/filemanager/internal/search"
 	"kppbwi.app/filemanager/internal/sse"
 	"kppbwi.app/filemanager/internal/tasks"
 	"kppbwi.app/filemanager/internal/trash"
 	"kppbwi.app/filemanager/internal/upload"
+	"kppbwi.app/filemanager/internal/versions"
 )
 
 const initialAdminPassword = "IB+35t3U5+I_p5ZJcHLodfcr"
@@ -65,25 +68,27 @@ func (c *fakeClock) Advance(d time.Duration) {
 }
 
 type authEnv struct {
-	cfg     *config.Config
-	store   *db.Store
-	auth    *auth.Service
-	handler http.Handler
-	logs    *syncBuffer
-	clock   *fakeClock
-	locks   *fsjail.LockManager
-	trash   *trash.Store
-	listing *listing.Service
-	files   *files.Service
-	quota   *quota.Service
-	meta    *meta.Service
-	tasks   *tasks.Engine
-	events  *sse.Broker
-	notify  *notify.Service
-	upload  *upload.Service
-	dl      *download.Limiter
-	remote  *remotedl.Service
-	archive *archive.Service
+	cfg      *config.Config
+	store    *db.Store
+	auth     *auth.Service
+	handler  http.Handler
+	logs     *syncBuffer
+	clock    *fakeClock
+	locks    *fsjail.LockManager
+	trash    *trash.Store
+	listing  *listing.Service
+	files    *files.Service
+	quota    *quota.Service
+	meta     *meta.Service
+	tasks    *tasks.Engine
+	events   *sse.Broker
+	notify   *notify.Service
+	upload   *upload.Service
+	dl       *download.Limiter
+	remote   *remotedl.Service
+	archive  *archive.Service
+	search   *search.Service
+	versions *versions.Store
 }
 
 type notifyFunc func(ctx context.Context, userID, typ, title, body, link string) error
@@ -109,9 +114,11 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 		"ADMIN_INITIAL_PASSWORD=" + initialAdminPassword,
 	}
 	// TEST_* entries tune the services instead of the configuration.
-	syncMaxEntries, itemDelay, remoteLoopback := 0, time.Duration(0), false
+	syncMaxEntries, itemDelay, remoteLoopback, searchEngine := 0, time.Duration(0), false, "go"
 	for _, kv := range extraEnv {
 		switch {
+		case strings.HasPrefix(kv, "TEST_SEARCH_ENGINE="):
+			searchEngine = strings.TrimPrefix(kv, "TEST_SEARCH_ENGINE=")
 		case kv == "TEST_REMOTE_ALLOW_LOOPBACK=1":
 			remoteLoopback = true
 		case strings.HasPrefix(kv, "TEST_SYNC_MAX_ENTRIES="):
@@ -195,6 +202,27 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 	env.archive = archive.New(archive.Options{DataDir: cfg.DataDir, SevenZip: cfg.SevenZipPath, MaxExtractSize: cfg.ArchiveMaxExtractSize, MaxEntries: cfg.ArchiveMaxEntries,
 		Repo: store, Quota: env.quota, Files: env.files, Locks: env.locks, Tasks: env.tasks, Logger: logger, ProgressStep: 64 << 10,
 		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) }})
+	// Versions + search (Step 15): the Go engine unless TEST_SEARCH_ENGINE=rg
+	env.versions, err = versions.New(versions.Options{DataDir: cfg.DataDir, Limit: cfg.FileVersionLimit, Repo: store, Quota: env.quota, Logger: logger, Now: clock.Now,
+		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = env.versions.Close() })
+	env.search = search.New(search.Options{DataDir: cfg.DataDir, RgPath: cfg.RgPath, Runner: fmexec.New(filepath.Join(cfg.DataDir, "tmp")), MaxFileSize: cfg.EditorMaxFileSize,
+		Repo: store, Quota: env.quota, Files: env.files, Locks: env.locks, Tasks: env.tasks, Versions: env.versions, Logger: logger, Engine: searchEngine,
+		TagPaths: func(ctx context.Context, userID, color string) ([]string, error) {
+			rows, err := store.ListFileTagsByColor(ctx, userID, color)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]string, 0, len(rows))
+			for _, r := range rows {
+				out = append(out, r.Path)
+			}
+			return out, nil
+		},
+		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) }})
 	engineCtx, stopEngine := context.WithCancel(context.Background())
 	if err := env.tasks.Start(engineCtx); err != nil {
 		t.Fatal(err)
@@ -209,7 +237,7 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 	}
 	env.dl = download.NewLimiter(0)
 	env.handler = New(Options{Cfg: cfg, Logger: logger, Version: "test", Store: store, Auth: svc, Listing: env.listing, Locks: env.locks, Files: env.files, Quota: env.quota, Meta: env.meta,
-		Tasks: env.tasks, Events: env.events, Notify: env.notify, Upload: env.upload, Downloads: env.dl, Remote: env.remote, Archives: env.archive,
+		Tasks: env.tasks, Events: env.events, Notify: env.notify, Upload: env.upload, Downloads: env.dl, Remote: env.remote, Archives: env.archive, Search: env.search, Versions: env.versions,
 		Assets: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("spa")) })})
 	return env
 }

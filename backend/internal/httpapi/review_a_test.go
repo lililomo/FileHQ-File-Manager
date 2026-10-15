@@ -371,6 +371,11 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		"GET /api/v1/archives/entry-content": true, "HEAD /api/v1/archives/entry-content": true,
 		"POST /api/v1/archives/extract-entries": true, "POST /api/v1/archives/add": true,
 		"POST /api/v1/archives/remove-entries": true, "POST /api/v1/archives/remove-entry": true,
+		// Step 15: search + versions (gated above)
+		"GET /api/v1/search/names": true, "POST /api/v1/search/content": true,
+		"POST /api/v1/search/replace/preview": true, "POST /api/v1/search/replace": true,
+		"GET /api/v1/search/history": true, "DELETE /api/v1/search/history": true,
+		"GET /api/v1/versions": true, "POST /api/v1/versions/{id}/restore": true, "DELETE /api/v1/versions/{id}": true,
 	}
 	// the signed endpoints reject cookie-only access: no signature → 403
 	for _, p := range []string{"/api/v1/files/thumb?path=/x&size=128", "/api/v1/files/download?path=/x", "/api/v1/files/raw?path=/x&purpose=media", "/api/v1/files/zip?token=x", "/api/v1/archives/entry-content?path=/x&inner=a"} {

@@ -36,6 +36,7 @@ const (
 	ActMkdir       = "mkdir"
 	ActDownload    = "download"
 	ActRemoteDL    = "remote_download"
+	ActReplace     = "replace"
 )
 
 // RecentActions feed the Recent page (SPEC §8.7): opened, edited, uploaded,

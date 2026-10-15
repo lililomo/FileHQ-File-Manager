@@ -23,10 +23,12 @@ import (
 	"kppbwi.app/filemanager/internal/notify"
 	"kppbwi.app/filemanager/internal/quota"
 	"kppbwi.app/filemanager/internal/remotedl"
+	"kppbwi.app/filemanager/internal/search"
 	"kppbwi.app/filemanager/internal/sse"
 	"kppbwi.app/filemanager/internal/tasks"
 	"kppbwi.app/filemanager/internal/thumbs"
 	"kppbwi.app/filemanager/internal/upload"
+	"kppbwi.app/filemanager/internal/versions"
 )
 
 // JSONBodyLimit is the maximum JSON request body on /api/v1 (SPEC §6.2
@@ -63,6 +65,8 @@ type Options struct {
 	Downloads   *download.Limiter   // concurrent download/zip slots per user; default 3
 	Remote      *remotedl.Service   // remote downloads (Step 13); nil disables /remote-downloads
 	Archives    *archive.Service    // compress/extract tasks (Step 14a); nil disables /archives
+	Search      *search.Service     // name/content search + replace (Step 15); nil disables /search
+	Versions    *versions.Store     // file versions (Step 15 minimal); nil disables /versions
 }
 
 // Server holds dependencies shared by handlers.
@@ -94,6 +98,8 @@ type Server struct {
 	dlLimit     *download.Limiter
 	remote      *remotedl.Service
 	archives    *archive.Service
+	search      *search.Service
+	versions    *versions.Store
 }
 
 // New builds the router. The returned handler is safe for http.Server.
@@ -123,6 +129,8 @@ func New(o Options) http.Handler {
 		dlLimit:  o.Downloads,
 		remote:   o.Remote,
 		archives: o.Archives,
+		search:   o.Search,
+		versions: o.Versions,
 	}
 	s.warnings = o.Warnings
 	if s.dlLimit == nil {
@@ -163,7 +171,7 @@ func New(o Options) http.Handler {
 	r.Get("/readyz", s.handleReadyz)
 
 	r.Route("/api/v1", func(api chi.Router) {
-		api.Use(TimeoutExcept(APITimeout, EventsPath, TusPrefix, DownloadPath, RawPath, ZipPath, EntryContentPath))
+		api.Use(TimeoutExcept(APITimeout, EventsPath, TusPrefix, DownloadPath, RawPath, ZipPath, EntryContentPath, ContentSearchPath))
 		api.Use(MaxBytes(JSONBodyLimit, TusPrefix))
 		api.NotFound(func(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, r, CodeNotFound, 0, "endpoint not found", nil)
@@ -197,6 +205,8 @@ func (s *Server) mountAPI(api chi.Router) {
 		s.mountDownload(api)
 		s.mountRemoteDL(api)
 		s.mountArchives(api)
+		s.mountSearch(api)
+		s.mountVersions(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": s.cfg.AppName})

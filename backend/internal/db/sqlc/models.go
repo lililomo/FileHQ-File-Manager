@@ -129,6 +129,16 @@ type QuotaUsage struct {
 	UpdatedAt     string  `json:"updated_at"`
 }
 
+type SearchHistory struct {
+	ID          int64   `json:"id"`
+	UserID      string  `json:"user_id"`
+	Kind        string  `json:"kind"`
+	Query       string  `json:"query"`
+	ScopePath   string  `json:"scope_path"`
+	FiltersJson *string `json:"filters_json"`
+	At          string  `json:"at"`
+}
+
 type Session struct {
 	ID                string  `json:"id"`
 	UserID            string  `json:"user_id"`

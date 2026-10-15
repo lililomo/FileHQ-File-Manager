@@ -407,7 +407,7 @@ func (s *sevenZipSource) entry(zf *sevenzip.File) Entry {
 		e.Open = func() (io.ReadCloser, error) {
 			rc, err := zf.Open()
 			if err != nil {
-				if isPasswordErr(err) || s.password != "" {
+				if isPasswordErr(err) || s.password != "" || s.enc {
 					return nil, ErrPasswordWrong
 				}
 				return nil, corruptErr("cannot read 7z entry")
