@@ -129,6 +129,9 @@ export interface ActionContext {
   setTag?: (color: string | null) => void
   /** Only provided by Search / Recent lists: navigate to the folder and select the item. */
   openLocation?: () => void
+  /** Step 15: name search scoped to the focused folder / content search in the open folder. */
+  searchHere?: () => void
+  contentSearch?: () => void
   openInNewWindow?: () => void
   /** Step 12b: single file via signed URL; folders / selections as a streamed zip. */
   download?: () => void
@@ -462,9 +465,17 @@ export const ACTIONS: ActionDef[] = [
     labelKey: 'searchHere',
     group: 'navigate',
     icon: FileSearch,
-    available: false,
-    isApplicable: oneFolder,
-    run: noop,
+    isApplicable: (c) => oneFolder(c) && !!c.searchHere,
+    run: (c) => c.searchHere?.(),
+  },
+  {
+    id: 'contentSearch',
+    labelKey: 'contentSearch',
+    group: 'navigate',
+    icon: FileSearch,
+    shortcut: 'contentSearch',
+    isApplicable: (c) => !!c.contentSearch,
+    run: (c) => c.contentSearch?.(),
   },
   // --- attributes ---
   {

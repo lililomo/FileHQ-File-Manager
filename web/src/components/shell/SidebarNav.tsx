@@ -10,6 +10,7 @@ import {
   Trash2,
   Users,
   type LucideIcon,
+  Search,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -28,6 +29,7 @@ interface NavItem {
 
 const ITEMS: NavItem[] = [
   { key: 'files', icon: Folder, link: { to: '/files/$', params: { _splat: '' } } as LinkProps },
+  { key: 'search', icon: Search, link: { to: '/search' } },
   { key: 'recent', icon: Clock, link: { to: '/recent' } },
   { key: 'favorites', icon: Star, link: { to: '/favorites' } },
   { key: 'sharedWithMe', icon: Users, link: { to: '/shared-with-me' } },

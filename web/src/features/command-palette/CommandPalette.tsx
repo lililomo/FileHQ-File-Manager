@@ -115,9 +115,21 @@ export function CommandPalette() {
         ) : null}
         <CommandSeparator />
         <CommandGroup heading={t('files:palette.search')}>
-          <CommandItem value="search files" disabled>
+          <CommandItem
+            value={`search files ${query}`}
+            onSelect={() => {
+              const q = query.trim()
+              close()
+              void navigate({ to: '/search', search: q ? { q } : {} })
+            }}
+            data-testid="palette-search-files"
+          >
             <Search aria-hidden="true" />
-            <span>{t('files:palette.searchSoon')}</span>
+            <span>
+              {query.trim()
+                ? t('files:palette.searchFor', { q: query.trim() })
+                : t('files:palette.searchFiles')}
+            </span>
           </CommandItem>
         </CommandGroup>
       </CommandList>

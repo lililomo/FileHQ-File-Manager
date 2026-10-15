@@ -274,10 +274,10 @@ test('"?" lists the shortcuts and the command palette runs actions', async ({ pa
   await page.getByTestId('palette-action-newFolder').click()
   await expect(page.getByRole('dialog', { name: 'Folder baru' })).toBeVisible()
   await page.keyboard.press('Escape')
-  // top bar search button opens the palette too
+  // top bar search box opens the search page (Step 15); the palette offers "Cari file"
   await page.getByTestId('topbar-search').click()
-  await expect(page.getByTestId('palette-input')).toBeVisible()
-  await page.keyboard.press('Escape')
+  await expect(page).toHaveURL(/\/search/)
+  await expect(page.getByTestId('search-input')).toBeFocused()
 })
 
 test('axe: no serious or critical violations on /files', async ({ page }) => {

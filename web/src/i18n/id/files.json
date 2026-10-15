@@ -443,7 +443,8 @@
     "jump": "Lompat ke",
     "actions": "Aksi",
     "search": "Cari file",
-    "searchSoon": "Pencarian file tersedia di Step 15"
+    "searchFiles": "Cari file…",
+    "searchFor": "Cari file \"{{q}}\""
   },
   "actions": {
     "refresh": "Muat ulang",
@@ -514,7 +515,8 @@
     "unfavorite": "Hapus dari favorit",
     "unpin": "Lepas pin",
     "openInNewWindow": "Buka di jendela baru",
-    "tagNone": "Tanpa tag"
+    "tagNone": "Tanpa tag",
+    "contentSearch": "Cari isi file"
   },
   "view": {
     "label": "Mode tampilan",

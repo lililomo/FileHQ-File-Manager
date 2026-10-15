@@ -540,6 +540,15 @@ export function BrowserLayout({
       },
       remoteDownload: () => openDialog({ kind: 'remoteDownload', dir: path }),
       remoteDownloadEnabled,
+      searchHere: () => {
+        const dir = focusItem?.isDir ? focusItem.path : path
+        void navigate({ to: '/search', search: { path: dir !== '/' ? dir : undefined } })
+      },
+      contentSearch: () =>
+        void navigate({
+          to: '/search',
+          search: { kind: 'content', path: path !== '/' ? path : undefined },
+        }),
       compress: () => {
         const target = selPaths.length ? selPaths : focusItem ? [focusItem.path] : []
         if (target.length) openDialog({ kind: 'compress', paths: target, dir: path })
@@ -562,6 +571,7 @@ export function BrowserLayout({
     [
       ops,
       dl,
+      navigate,
       selPaths,
       selItems,
       path,
@@ -635,6 +645,12 @@ export function BrowserLayout({
         if (selCount > 0) setSelection(clearSelection())
       }),
       registerShortcut('filter', () => filterRef.current?.focus()),
+      registerShortcut('contentSearch', () =>
+        navigate({
+          to: '/search',
+          search: { kind: 'content', path: path !== '/' ? path : undefined },
+        }),
+      ),
       registerShortcut('newFolder', () => openNew('folder')),
       registerShortcut('newFile', () => openNew('file')),
       registerShortcut('viewDetails', () => changeView('details')),
@@ -676,6 +692,7 @@ export function BrowserLayout({
     return () => offs.forEach((off) => off())
   }, [
     handlers,
+    navigate,
     selection,
     items,
     selCount,

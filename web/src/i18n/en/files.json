@@ -443,7 +443,8 @@
     "jump": "Jump to",
     "actions": "Actions",
     "search": "Search files",
-    "searchSoon": "File search arrives in Step 15"
+    "searchFiles": "Search files…",
+    "searchFor": "Search files for \"{{q}}\""
   },
   "actions": {
     "refresh": "Refresh",
@@ -514,7 +515,8 @@
     "unfavorite": "Remove from favourites",
     "unpin": "Unpin",
     "openInNewWindow": "Open in new window",
-    "tagNone": "No tag"
+    "tagNone": "No tag",
+    "contentSearch": "Search file contents"
   },
   "view": {
     "label": "View mode",
