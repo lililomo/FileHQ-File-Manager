@@ -28,6 +28,13 @@ type AuditLog struct {
 	DetailsJson   *string `json:"details_json"`
 }
 
+type EditorSession struct {
+	UserID     string  `json:"user_id"`
+	TabsJson   string  `json:"tabs_json"`
+	ActivePath *string `json:"active_path"`
+	UpdatedAt  string  `json:"updated_at"`
+}
+
 type Favorite struct {
 	UserID    string `json:"user_id"`
 	Path      string `json:"path"`

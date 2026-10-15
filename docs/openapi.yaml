@@ -272,6 +272,41 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "413": { description: "PAYLOAD_TOO_LARGE — dokumen > 64 KB", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
+  /api/v1/me/editor-session:
+    get:
+      tags: [me]
+      summary: Open editor tabs of the user (SPEC §8.13 "Tab & sesi")
+      operationId: meEditorSessionGet
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: "`{tabs:[], activePath:null}` when nothing was saved yet"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EditorSession" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { description: PASSWORD_CHANGE_REQUIRED, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    put:
+      tags: [me]
+      summary: Replace the open tabs (max 20; paths validated; ≤ 32 KB)
+      operationId: meEditorSessionPut
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EditorSession" }
+      responses:
+        "200":
+          description: Stored session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EditorSession" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+
   /api/v1/me/folder-prefs:
     get:
       tags: [me]
@@ -370,6 +405,76 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+  /api/v1/files/content:
+    get:
+      tags: [files]
+      summary: Open a text file for the editor (SPEC §8.13 "Membuka file")
+      operationId: filesContentGet
+      description: |
+        Regular files only (`400 VALIDATION_FAILED reason=not_a_file` for folders). Binary content (NUL in the first 8000 bytes or > 30 %
+        non-text bytes) answers `415 BINARY_FILE`. Files above `EDITOR_MAX_FILE_SIZE` answer `413 FILE_TOO_LARGE` unless `tail` is given:
+        `tail=N` (or `tail=true` → 1000) returns the last N lines (≤ 2 MB, from a line boundary) read-only with `truncated:true`,
+        `offset` (byte offset of the first returned line) and `tailLines`; ask for a bigger N to load more. Encoding: BOM (UTF-8/UTF-16)
+        → certain; valid UTF-8 → `utf-8`; otherwise chardet (gbk, big5, shift_jis, euc-jp, euc-kr, windows-125x, iso-8859-x, koi8-r)
+        with ≥ 50 % confidence, fallback `windows-1252`; `encoding=` overrides. Undecodable bytes become U+FFFD and set `lossy:true`.
+        `eol` is `lf`, `crlf` or `mixed`. `etag` (`"size-mtimeNs"`) must be sent back as `If-Match` on save. Takes a read lock.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+        - { name: encoding, in: query, schema: { type: string }, description: "Override the detected encoding" }
+        - { name: tail, in: query, schema: { type: string }, description: "Line count or true (1000) for tail mode (alias tail_lines)" }
+      responses:
+        "200":
+          description: Decoded content
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FileContent" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { description: FILE_TOO_LARGE, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "415": { description: BINARY_FILE, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "423": { $ref: "#/components/responses/Error" }
+    put:
+      tags: [files]
+      summary: Save a text file (SPEC §8.13 "Menyimpan")
+      operationId: filesContentPut
+      description: |
+        Header `If-Match: <etag>` (from GET; `*` or `force:true` skips the check). A different server etag answers `409 CONFLICT`
+        (`details.serverEtag`, `serverMtime`, `serverSize`). The text is encoded to `encoding` (default utf-8; `bom:true` adds a BOM,
+        UTF-16 always has one) — an unrepresentable character answers `400 VALIDATION_FAILED fields.content=unencodable` with
+        `details.line/col/char`; `eol` `lf|crlf` rewrites every line ending, `keep` (default) leaves them. Bytes identical to the file
+        → `200 noop:true` without a write or a version. Otherwise: write lock, pre-image version (`reason save|force_save`, deduplicated
+        by sha256, when versions are enabled), atomic write (tmp + rename, mode kept), quota delta, activity `edit`. A missing file is
+        created only with `create:true` (blocked extensions refused, folder must exist, activity `create`). Body limit:
+        4 × `EDITOR_MAX_FILE_SIZE` + 64 KB (JSON escaping); `content` itself ≤ `EDITOR_MAX_FILE_SIZE`.
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: If-Match, in: header, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FileContentPut" }
+      responses:
+        "200":
+          description: Saved (or no-op)
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FileContentSaved" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { description: CONFLICT (etag mismatch), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "413": { description: FILE_TOO_LARGE or QUOTA_EXCEEDED or PAYLOAD_TOO_LARGE, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "415": { $ref: "#/components/responses/Error" }
+        "423": { $ref: "#/components/responses/Error" }
   /api/v1/files/stat:
     get:
       summary: Describe one item
@@ -3202,6 +3307,78 @@ components:
         passwordStdin: { type: boolean }
         maxExtractSize: { type: integer, format: int64 }
         maxEntries: { type: integer }
+    FileContent:
+      type: object
+      description: Decoded text file for the editor (SPEC §8.13)
+      required: [path, content, encoding, detectedEncoding, bom, lossy, eol, language, size, mtime, etag, mode, lines, truncated, readOnly]
+      properties:
+        path: { type: string }
+        content: { type: string }
+        encoding: { type: string, description: "Encoding used to decode (override or detected)" }
+        detectedEncoding: { type: string }
+        bom: { type: boolean }
+        lossy: { type: boolean, description: "Some bytes had no mapping (U+FFFD)" }
+        eol: { type: string, enum: [lf, crlf, mixed] }
+        language: { type: string, description: "Monaco language id hint from the file name" }
+        size: { type: integer, format: int64 }
+        mtime: { type: string, format: date-time }
+        etag: { type: string }
+        mode: { type: string, description: "Octal permission bits, e.g. 0640" }
+        lines: { type: integer }
+        truncated: { type: boolean, description: "Tail mode: only the last lines are returned" }
+        offset: { type: integer, format: int64, description: "Tail mode: byte offset of the first returned line" }
+        tailLines: { type: integer }
+        readOnly: { type: boolean }
+    FileContentPut:
+      type: object
+      required: [path, content]
+      properties:
+        path: { type: string }
+        content: { type: string }
+        encoding: { type: string, default: utf-8 }
+        bom: { type: boolean, default: false }
+        eol: { type: string, enum: [keep, lf, crlf], default: keep }
+        force: { type: boolean, default: false, description: "Overwrite even when the etag differs (version reason force_save)" }
+        create: { type: boolean, default: false, description: "Create the file when it does not exist" }
+        mode: { type: string, description: "Reserved" }
+    FileContentSaved:
+      type: object
+      required: [etag, mtime, size, version, noop]
+      properties:
+        etag: { type: string }
+        mtime: { type: string, format: date-time }
+        size: { type: integer, format: int64 }
+        version:
+          nullable: true
+          type: object
+          properties:
+            id: { type: string }
+            no: { type: integer }
+        noop: { type: boolean }
+        created: { type: boolean }
+    EditorSession:
+      type: object
+      required: [tabs]
+      properties:
+        tabs:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [path]
+            properties:
+              path: { type: string }
+              scrollTop: { type: integer, minimum: 0 }
+              cursor:
+                type: object
+                properties:
+                  line: { type: integer, minimum: 1 }
+                  col: { type: integer, minimum: 1 }
+              language: { type: string, maxLength: 64 }
+              encoding: { type: string, maxLength: 32 }
+              pinned: { type: boolean }
+        activePath: { type: string, nullable: true }
+        updatedAt: { type: string, format: date-time }
     ArchiveCompressRequest:
       type: object
       required: [paths, format]

@@ -34,6 +34,7 @@ type Querier interface {
 	DeleteActivityForUser(ctx context.Context, userID string) (int64, error)
 	DeleteActivityOlderThan(ctx context.Context, at string) (int64, error)
 	DeleteAuditOlderThan(ctx context.Context, at string) (int64, error)
+	DeleteEditorSession(ctx context.Context, userID string) (int64, error)
 	DeleteExpiredSessions(ctx context.Context, before string) (int64, error)
 	DeleteFavorite(ctx context.Context, arg DeleteFavoriteParams) (int64, error)
 	DeleteFavoritesPrefix(ctx context.Context, arg DeleteFavoritesPrefixParams) (int64, error)
@@ -59,6 +60,7 @@ type Querier interface {
 	DeleteTrashItemRow(ctx context.Context, arg DeleteTrashItemRowParams) error
 	DeleteUploadSessionsBefore(ctx context.Context, before string) (int64, error)
 	DeleteUserTask(ctx context.Context, arg DeleteUserTaskParams) (int64, error)
+	GetEditorSession(ctx context.Context, userID string) (EditorSession, error)
 	GetFavorite(ctx context.Context, arg GetFavoriteParams) (Favorite, error)
 	GetFileNote(ctx context.Context, arg GetFileNoteParams) (FileNote, error)
 	GetFileTag(ctx context.Context, arg GetFileTagParams) (FileTag, error)
@@ -176,6 +178,7 @@ type Querier interface {
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error
 	UpdateUserQuota(ctx context.Context, arg UpdateUserQuotaParams) error
 	UpdateUserStatus(ctx context.Context, arg UpdateUserStatusParams) error
+	UpsertEditorSession(ctx context.Context, arg UpsertEditorSessionParams) (EditorSession, error)
 	// Path-keyed metadata tables (SPEC 5.7). Prefix matching uses substr because
 	// sqlc's SQLite parser has no LIKE ... ESCAPE: prefix = old || '/',
 	// prefix_len = len(prefix), from_pos = len(old) + 1.

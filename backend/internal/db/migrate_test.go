@@ -53,7 +53,7 @@ func TestMigrateUpDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const migrations = 9 // 0001..0009 (0009_search_history, Step 15)
+	const migrations = 10 // 0001..0010 (0010_editor_sessions, Step 16a)
 	if len(st) != migrations {
 		t.Fatalf("want %d embedded migrations, got %d", migrations, len(st))
 	}

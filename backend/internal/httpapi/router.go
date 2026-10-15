@@ -172,7 +172,7 @@ func New(o Options) http.Handler {
 
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Use(TimeoutExcept(APITimeout, EventsPath, TusPrefix, DownloadPath, RawPath, ZipPath, EntryContentPath, ContentSearchPath))
-		api.Use(MaxBytes(JSONBodyLimit, TusPrefix))
+		api.Use(MaxBytes(JSONBodyLimit, TusPrefix, ContentPath))
 		api.NotFound(func(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, r, CodeNotFound, 0, "endpoint not found", nil)
 		})
@@ -207,6 +207,7 @@ func (s *Server) mountAPI(api chi.Router) {
 		s.mountArchives(api)
 		s.mountSearch(api)
 		s.mountVersions(api)
+		s.mountEditor(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": s.cfg.AppName})
