@@ -44,7 +44,7 @@ type env struct {
 	engine   *tasks.Engine
 	svc      *Service
 	user     sqlc.User
-	logs     *bytes.Buffer
+	logs     *syncBuffer
 	resolver *fakeResolver
 	home     string
 }
@@ -107,7 +107,7 @@ func newEnv(t *testing.T, opts ...envOpt) *env {
 	if _, err := database.MigrateUp(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	logs := &bytes.Buffer{}
+	logs := &syncBuffer{}
 	logger := config.NewLogger(logs, cfg.AppEnv, slog.LevelDebug)
 	store := db.NewStore(database)
 	authSvc := auth.NewService(cfg, store, audit.New(store, logger, nil), logger, nil)
@@ -290,4 +290,35 @@ func (s *server) serveBytes(path, name string, data []byte, extra http.Header) {
 		w.Header().Set("ETag", `"`+name+`"`)
 		http.ServeContent(w, r, name, mod, bytes.NewReader(data))
 	})
+}
+
+// syncBuffer is a goroutine-safe log sink: runners log from engine goroutines
+// while tests read the buffer (race detector finding of review C).
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+func (s *syncBuffer) Bytes() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]byte(nil), s.b.Bytes()...)
+}
+
+func (s *syncBuffer) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.b.Reset()
 }

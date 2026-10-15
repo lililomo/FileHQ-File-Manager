@@ -362,24 +362,26 @@ func (e *Engine) dispatch() {
 			continue
 		}
 		r := &run{task: t, spec: spec, done: make(chan struct{}), secrets: e.secrets[t.ID]}
+		// the cancel func is created here, under e.mu, so a Cancel that arrives
+		// before execute runs still reaches the runner's context (review C)
+		ctx, cancel := context.WithCancel(e.baseCtx)
+		r.cancel = cancel
 		delete(e.secrets, t.ID)
 		e.running[t.ID] = r
 		if t.UserID != "" {
 			e.perUser[t.UserID]++
 		}
 		e.wg.Add(1)
-		go e.execute(r)
+		go e.execute(r, ctx)
 	}
 	e.queue = kept
 	e.mu.Unlock()
 }
 
-func (e *Engine) execute(r *run) {
+func (e *Engine) execute(r *run, ctx context.Context) {
 	defer e.wg.Done()
 	t := r.task
-	ctx, cancel := context.WithCancel(e.baseCtx)
-	r.cancel = cancel
-	defer cancel()
+	defer r.cancel()
 	start := e.now()
 	r.startedAt = start
 	r.lastDB, r.lastSSE = start, start
@@ -669,9 +671,7 @@ func (e *Engine) Cancel(ctx context.Context, userID, id string) (Task, error) {
 		if _, err := e.o.Repo.SetTaskCancelRequested(ctx, id, e.ts(now)); err != nil {
 			return Task{}, err
 		}
-		if r.cancel != nil {
-			r.cancel()
-		}
+		r.cancel()
 		t.CancelRequested = true
 		return t, nil
 	}

@@ -32,6 +32,8 @@ var dangerousMIME = map[string]bool{
 	"application/vnd.ms-htmlhelp":   true, "text/vbscript": true,
 	"application/mathml+xml": true, "application/rss+xml": true, "application/atom+xml": true, "application/xslt+xml": true,
 	"text/cache-manifest": true, "application/manifest+json": true,
+	// web archives / mail bodies embed HTML parts a browser may render
+	"multipart/related": true, "message/rfc822": true, "application/x-mimearchive": true,
 }
 
 // dangerousExt is the extension side of the same rule: a .html file whose
@@ -43,6 +45,7 @@ var dangerousExt = map[string]bool{
 	"xml": true, "xsl": true, "xslt": true, "rss": true, "atom": true, "mathml": true,
 	"js": true, "mjs": true, "cjs": true, "jsx": true, "ts": true, "vbs": true, "hta": true,
 	"css": true, "swf": true, "chm": true, "appcache": true, "webmanifest": true, "url": true,
+	"mhtml": true, "mht": true, "eml": true,
 }
 
 // inlineRaster are the raster image types a browser renders without

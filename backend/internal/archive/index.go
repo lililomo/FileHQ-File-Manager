@@ -48,6 +48,11 @@ type IndexEntry struct {
 type Index struct {
 	Format    Format
 	Encrypted bool
+	// HeaderEncrypted: the member list itself was only readable with the
+	// password (7z -mhe, rar -hp). The index cache key carries no password,
+	// so a cached index with this flag is refused to password-less requests
+	// (review C).
+	HeaderEncrypted bool
 	// Encoding is the name encoding that was applied (detected for auto).
 	Encoding string
 	Entries  []IndexEntry
@@ -163,6 +168,9 @@ func BuildIndex(ctx context.Context, src Source, limit int) (*Index, error) {
 	ix := &Index{Format: src.Format(), Encrypted: src.Encrypted(), built: time.Now()}
 	if d, ok := src.(interface{ Detected() string }); ok {
 		ix.Encoding = d.Detected()
+	}
+	if h, ok := src.(interface{ HeaderEncrypted() bool }); ok && ix.Encrypted {
+		ix.HeaderEncrypted = h.HeaderEncrypted()
 	}
 	ix.addAll(entries)
 	return ix, nil

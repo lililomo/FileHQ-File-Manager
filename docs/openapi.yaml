@@ -2074,7 +2074,10 @@ paths:
       tags: [upload]
       summary: Current offset of an upload (resume)
       operationId: tusHead
-      description: Only the owner of an **active** session sees it; any other id answers `404 NOT_FOUND` (finished, aborted, expired or foreign uploads).
+      description: |
+        Only the owner of an **active** session sees it; any other id answers `404 NOT_FOUND` (finished, aborted, expired or foreign uploads).
+        If every byte is already stored but the finalisation of the last PATCH failed with a retryable error (e.g. `423`), HEAD (and an empty
+        PATCH at the final offset) finalises the upload and answers like the last PATCH would (`Upload-Result`/`Upload-Path` headers, review C).
       security: [{ cookieAuth: [] }]
       parameters:
         - { name: Tus-Resumable, in: header, required: true, schema: { type: string, enum: ["1.0.0"] } }

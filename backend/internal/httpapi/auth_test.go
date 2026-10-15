@@ -69,7 +69,7 @@ type authEnv struct {
 	store   *db.Store
 	auth    *auth.Service
 	handler http.Handler
-	logs    *bytes.Buffer
+	logs    *syncBuffer
 	clock   *fakeClock
 	locks   *fsjail.LockManager
 	trash   *trash.Store
@@ -135,7 +135,7 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 	if _, err := database.MigrateUp(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	logs := &bytes.Buffer{}
+	logs := &syncBuffer{}
 	logger := config.NewLogger(logs, cfg.AppEnv, slog.LevelDebug)
 	clock := &fakeClock{t: time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)}
 	store := db.NewStore(database)
@@ -672,4 +672,35 @@ func TestSeedRequiresInitialPassword(t *testing.T) {
 	if err := svc.Seed(context.Background()); err == nil {
 		t.Fatal("seeding without ADMIN_INITIAL_PASSWORD must fail")
 	}
+}
+
+// syncBuffer is a goroutine-safe log sink: runners log from engine goroutines
+// while tests read the buffer (race detector finding of review C).
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+func (s *syncBuffer) Bytes() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]byte(nil), s.b.Bytes()...)
+}
+
+func (s *syncBuffer) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.b.Reset()
 }

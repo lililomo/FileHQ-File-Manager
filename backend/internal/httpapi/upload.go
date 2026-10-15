@@ -49,6 +49,8 @@ func (s *Server) mountUpload(api chi.Router) {
 			g.Options(p, withPrincipal(http.NotFound))
 		}
 		g.Options("/upload/tus/{id}", withPrincipal(http.NotFound))
+		// HEAD/PATCH go through upload.Handler, which finalises a complete
+		// upload whose last PATCH failed in the pre-finish hook (review C).
 		g.Head("/upload/tus/{id}", s.requireUploadOwner(withPrincipal(tus.HeadFile)))
 		g.Patch("/upload/tus/{id}", s.requireUploadOwner(s.limitChunk(withPrincipal(tus.PatchFile))))
 		g.Delete("/upload/tus/{id}", s.requireUploadOwner(withPrincipal(tus.DelFile)))

@@ -305,6 +305,13 @@ type sevenZipSource struct {
 	f        *os.File
 	size     int64
 	password string
+	// enc is detected once without the password: 7z headers carry no
+	// per-entry flag the library exposes, and a reader opened with the right
+	// password cannot tell an encrypted archive from a plain one (review C).
+	enc bool
+	// hdrEnc: the header itself is encrypted (-mhe=on) → listing needs the
+	// password, so a cached index must not be served without one.
+	hdrEnc bool
 }
 
 func newSevenZipSource(f *os.File, size int64, password string) (*sevenZipSource, error) {
@@ -312,36 +319,18 @@ func newSevenZipSource(f *os.File, size int64, password string) (*sevenZipSource
 	if _, err := src.reader(); err != nil {
 		return nil, err
 	}
+	src.enc = src.detectEncrypted()
 	return src, nil
 }
 
-func (s *sevenZipSource) reader() (*sevenzip.Reader, error) {
-	r, err := sevenzip.NewReaderWithPassword(s.f, s.size, s.password)
+// detectEncrypted opens the archive WITHOUT a password and tries to read the
+// first regular member: encrypted headers fail at open, encrypted bodies at
+// the first read ("aes7z: no password set").
+func (s *sevenZipSource) detectEncrypted() bool {
+	r, err := sevenzip.NewReader(s.f, s.size)
 	if err != nil {
-		if isPasswordErr(err) {
-			if s.password == "" {
-				return nil, ErrPasswordRequired
-			}
-			return nil, ErrPasswordWrong
-		}
-		return nil, corruptErr("not a valid 7z file")
-	}
-	return r, nil
-}
-
-func isPasswordErr(err error) bool {
-	s := strings.ToLower(err.Error())
-	return strings.Contains(s, "password") || strings.Contains(s, "checksum") || strings.Contains(s, "crc")
-}
-
-func (s *sevenZipSource) Format() Format { return FormatSevenZip }
-
-// Encrypted opens the first regular entry on a throw-away Reader: without
-// a password an encrypted folder fails at Open.
-func (s *sevenZipSource) Encrypted() bool {
-	r, err := s.reader()
-	if err != nil {
-		return errors.Is(err, ErrPasswordRequired) || errors.Is(err, ErrPasswordWrong)
+		s.hdrEnc = true
+		return true
 	}
 	for _, zf := range r.File {
 		if zf.FileInfo().IsDir() {
@@ -349,7 +338,7 @@ func (s *sevenZipSource) Encrypted() bool {
 		}
 		rc, err := zf.Open()
 		if err != nil {
-			return isPasswordErr(err)
+			return true
 		}
 		var probe [1]byte
 		_, rerr := rc.Read(probe[:])
@@ -359,9 +348,53 @@ func (s *sevenZipSource) Encrypted() bool {
 	return false
 }
 
+func (s *sevenZipSource) reader() (*sevenzip.Reader, error) {
+	r, err := sevenzip.NewReaderWithPassword(s.f, s.size, s.password)
+	if err != nil {
+		switch {
+		case isPasswordErr(err):
+			if s.password == "" {
+				return nil, ErrPasswordRequired
+			}
+			return nil, ErrPasswordWrong
+		case s.password == "" && isEncryptedHeaderErr(err):
+			// -mhe=on: the header itself is AES-encrypted; without a password
+			// bodgit cannot parse it ("unexpected id"). The signature was
+			// already verified by Detect, so a parse failure here means
+			// "password required" rather than "corrupt" (review C).
+			return nil, ErrPasswordRequired
+		case s.password != "":
+			// a wrong password on encrypted headers surfaces as a parse error
+			// (same mapping as the 7-Zip CLI "can't open as archive" case)
+			return nil, ErrPasswordWrong
+		}
+		return nil, corruptErr("not a valid 7z file")
+	}
+	return r, nil
+}
+
+// isEncryptedHeaderErr matches the error bodgit/sevenzip reports when the
+// archive header is encrypted (-mhe=on) and no/the wrong password was given.
+func isEncryptedHeaderErr(err error) bool {
+	return strings.Contains(strings.ToLower(err.Error()), "unexpected id")
+}
+
+func isPasswordErr(err error) bool {
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "password") || strings.Contains(s, "checksum") || strings.Contains(s, "crc")
+}
+
+func (s *sevenZipSource) Format() Format { return FormatSevenZip }
+
+// Encrypted reports the password-less probe made at open (see detectEncrypted).
+func (s *sevenZipSource) Encrypted() bool { return s.enc }
+
+// HeaderEncrypted reports whether the member list itself needs the password.
+func (s *sevenZipSource) HeaderEncrypted() bool { return s.hdrEnc }
+
 func (s *sevenZipSource) entry(zf *sevenzip.File) Entry {
 	fi := zf.FileInfo()
-	e := Entry{Name: zf.Name, Size: fi.Size(), CompressedSize: -1, ModTime: zf.Modified, Mode: fi.Mode(), IsDir: fi.IsDir()}
+	e := Entry{Name: zf.Name, Size: fi.Size(), CompressedSize: -1, ModTime: zf.Modified, Mode: fi.Mode(), IsDir: fi.IsDir(), Encrypted: s.enc && !fi.IsDir()}
 	if fi.Mode()&fs.ModeSymlink != 0 {
 		e.IsSymlink = true
 		if rc, err := zf.Open(); err == nil {
@@ -445,6 +478,18 @@ func newRarSource(f *os.File, password string) (*rarSource, error) {
 }
 
 func (r *rarSource) Format() Format { return FormatRar }
+
+// HeaderEncrypted reports a -hp archive: rardecode refuses to open it
+// without a password (ErrArchiveEncrypted), so the cached index must not
+// be served to a request without one.
+func (r *rarSource) HeaderEncrypted() bool {
+	if _, err := r.f.Seek(0, io.SeekStart); err != nil {
+		return false
+	}
+	_, err := rardecode.NewReader(r.f)
+	_, _ = r.f.Seek(0, io.SeekStart)
+	return errors.Is(err, rardecode.ErrArchiveEncrypted)
+}
 
 func (r *rarSource) reader() (*rardecode.Reader, error) {
 	if _, err := r.f.Seek(0, io.SeekStart); err != nil {

@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"path"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -79,7 +81,7 @@ func (s *Service) run7z(ctx context.Context, args []string, password, dir string
 		case password == "" && strings.Contains(combined, "enter password"):
 			return res, ErrPasswordRequired
 		}
-		return res, newErr(CodeCorrupt, "7-Zip failed (exit "+strconv.Itoa(ee.Code)+")", http.StatusUnprocessableEntity, map[string]any{"reason": "cli", "exit": ee.Code, "stderr": tail(ee.Stderr, 400)})
+		return res, newErr(CodeCorrupt, "7-Zip failed (exit "+strconv.Itoa(ee.Code)+")", http.StatusUnprocessableEntity, map[string]any{"reason": "cli", "exit": ee.Code, "stderr": tail(scrubHostPaths(ee.Stderr, args, dir), 400)})
 	case errors.Is(err, fmexec.ErrMissing):
 		return res, newErr(CodeDependency, "7-Zip is not installed on the server", http.StatusNotImplemented, map[string]any{"tool": "7z"})
 	case errors.Is(err, fmexec.ErrTimeout):
@@ -89,6 +91,31 @@ func (s *Service) run7z(ctx context.Context, args []string, password, dir string
 		return res, ctx.Err()
 	}
 	return res, err
+}
+
+// absPathRe matches an absolute host path with at least two segments.
+var absPathRe = regexp.MustCompile(`(?:/[^\s/:"'\\]+){2,}/?`)
+
+// scrubHostPaths removes STORAGE_ROOT/DATA_DIR prefixes from 7-Zip output
+// before it reaches an API error or a task log (review C): every absolute
+// argument (archive, sources, output dir, cwd) is reduced to its base name,
+// and any other absolute path keeps only its last segment.
+func scrubHostPaths(stderr string, args []string, dir string) string {
+	known := append([]string(nil), args...)
+	if dir != "" {
+		known = append(known, dir)
+	}
+	// longest first so a parent path does not eat its children's base names
+	sort.Slice(known, func(i, j int) bool { return len(known[i]) > len(known[j]) })
+	for _, a := range known {
+		if !strings.HasPrefix(a, "/") || len(a) < 2 {
+			continue
+		}
+		stderr = strings.ReplaceAll(stderr, a, "…/"+path.Base(a))
+	}
+	return absPathRe.ReplaceAllStringFunc(stderr, func(m string) string {
+		return "…/" + path.Base(strings.TrimSuffix(m, "/"))
+	})
 }
 
 func tail(s string, n int) string {

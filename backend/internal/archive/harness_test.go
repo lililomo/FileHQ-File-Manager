@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,7 +38,7 @@ type env struct {
 	engine *tasks.Engine
 	svc    *Service
 	user   sqlc.User
-	logs   *bytes.Buffer
+	logs   *syncBuffer
 	home   string
 	root   string
 }
@@ -75,7 +76,7 @@ func newEnv(t *testing.T, opts ...envOpt) *env {
 	if _, err := database.MigrateUp(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	logs := &bytes.Buffer{}
+	logs := &syncBuffer{}
 	logger := config.NewLogger(logs, cfg.AppEnv, slog.LevelDebug)
 	store := db.NewStore(database)
 	authSvc := auth.NewService(cfg, store, audit.New(store, logger, nil), logger, nil)
@@ -304,4 +305,35 @@ func have7z(t *testing.T) {
 	if !fmexec.Executable(sevenZipBin) {
 		t.Skip("7z not installed")
 	}
+}
+
+// syncBuffer is a goroutine-safe log sink: runners log from engine goroutines
+// while tests read the buffer (race detector finding of review C).
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+func (s *syncBuffer) Bytes() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]byte(nil), s.b.Bytes()...)
+}
+
+func (s *syncBuffer) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.b.Reset()
 }

@@ -109,6 +109,11 @@ func (s *Service) source(op *opened, password, encoding string) (Source, error) 
 func (s *Service) indexFor(ctx context.Context, j *fsjail.Jail, userID string, op *opened, password, encoding string) (*Index, error) {
 	key := indexKey(userID, string(op.archive), op.info.Size, op.info.ModTime.UnixNano(), encoding)
 	if ix, ok := s.index.get(key); ok {
+		if ix.HeaderEncrypted && password == "" {
+			// the names were only readable with the password that built
+			// the index; a later request without one must not see them
+			return nil, ErrPasswordRequired
+		}
 		return ix, nil
 	}
 	var (
@@ -152,7 +157,9 @@ func (s *Service) indexCLI(ctx context.Context, j *fsjail.Jail, op *opened, pass
 		}
 		entries = append(entries, e)
 	}
-	ix := &Index{Format: op.format, built: time.Now()}
+	// the CLI path cannot tell plain from encrypted headers; when a password
+	// was needed to get here, listing again without one is refused
+	ix := &Index{Format: op.format, HeaderEncrypted: password != "" && op.format == FormatSevenZip, Encrypted: password != "" && op.format == FormatSevenZip, built: time.Now()}
 	ix.addAll(entries)
 	return ix, nil
 }

@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tus/tusd/v2/pkg/filestore"
@@ -117,6 +118,8 @@ type Service struct {
 	now     func() time.Time
 	ttl     time.Duration
 	crossFS bool
+	// finishing serialises FinishStored per upload id.
+	finishing sync.Map
 }
 
 // New builds the Service and the tusd handler (filestore in
@@ -172,8 +175,9 @@ func New(o Options) (*Service, error) {
 }
 
 // Tus exposes the tusd handler for routing (PostFile, HeadFile, PatchFile,
-// DelFile wrapped in Middleware).
-func (s *Service) Tus() *handler.UnroutedHandler { return s.tus }
+// DelFile wrapped in Middleware); HEAD/PATCH carry the finalise-on-retry
+// override of Handler.
+func (s *Service) Tus() *Handler { return &Handler{UnroutedHandler: s.tus, svc: s} }
 
 // ChunkSize is UPLOAD_CHUNK_SIZE (0 = unlimited).
 func (s *Service) ChunkSize() int64 { return s.o.ChunkSize }
@@ -348,6 +352,12 @@ func (s *Service) parseMetadata(md handler.MetaData) (metadata, *Error) {
 		return m, newErr(CodeNameInvalid, http.StatusBadRequest, "invalid file name", map[string]any{"reason": reason, "name": name, "fields": map[string]string{"filename": reason}})
 	}
 	m.Name, m.Warnings = name, warnings
+	if pick(md, "share") != "" {
+		// uploads into a share (file request) arrive with Step 18a; until then
+		// the key must not be silently ignored (the bytes would land in the
+		// uploader's own folder instead of the share)
+		return m, newErr(CodeValidationFailed, http.StatusBadRequest, "share uploads are not available yet", map[string]any{"fields": map[string]string{"share": "not_implemented"}})
+	}
 	dest, err := fsjail.Clean(pick(md, "path", "dest"))
 	if err != nil {
 		return m, newErr(CodePathInvalid, http.StatusBadRequest, "invalid destination path", map[string]any{"fields": map[string]string{"path": "invalid"}})
@@ -398,6 +408,60 @@ func (s *Service) blocked(name string) bool {
 func (s *Service) sys() (*fsjail.SysDir, error) {
 	return fsjail.OpenSys(s.o.DataDir, SysDir)
 }
+
+// StoredResult describes an upload FinishStored completed.
+type StoredResult struct {
+	Size   int64
+	Header map[string]string
+}
+
+// FinishStored finalises an active upload whose bytes are already fully in
+// the store. tusd runs the pre-finish hook only on the PATCH that writes the
+// last byte; when that hook fails (423 lock conflict, transient error) every
+// later HEAD/PATCH is answered from the store without the hook, so the file
+// would never land and the session would stay active until the cleanup job.
+// The HTTP layer calls this before delegating HEAD/PATCH to tusd. ok is
+// false when there is nothing to do (not active, not ours, incomplete).
+func (s *Service) FinishStored(ctx context.Context, id string) (res StoredResult, ok bool, err error) {
+	p, has := PrincipalFrom(ctx)
+	if !has {
+		return res, false, nil
+	}
+	row, rerr := s.o.Repo.GetUserUploadSession(ctx, p.UserID, id)
+	if rerr != nil || row.State != StateActive {
+		return res, false, nil
+	}
+	up, uerr := s.store.GetUpload(ctx, id)
+	if uerr != nil {
+		return res, false, nil
+	}
+	info, ierr := up.GetInfo(ctx)
+	if ierr != nil || info.SizeIsDeferred || info.Offset != info.Size || info.Size != row.Size {
+		return res, false, nil
+	}
+	mu := s.finishMu(id)
+	mu.Lock()
+	defer mu.Unlock()
+	defer s.finishDone(id)
+	// re-check under the lock: a concurrent request may have finalised it
+	if again, err := s.o.Repo.GetUserUploadSession(ctx, p.UserID, id); err != nil || again.State != StateActive {
+		return res, false, nil
+	}
+	resp, herr := s.preFinish(handler.HookEvent{Context: ctx, Upload: info})
+	if herr != nil {
+		return res, true, herr
+	}
+	res.Size = info.Size
+	res.Header = map[string]string(resp.Header)
+	return res, true, nil
+}
+
+func (s *Service) finishMu(id string) *sync.Mutex {
+	v, _ := s.finishing.LoadOrStore(id, &sync.Mutex{})
+	return v.(*sync.Mutex) //nolint:forcetypeassert // only mutexes are stored
+}
+
+func (s *Service) finishDone(id string) { s.finishing.Delete(id) }
 
 // dropFiles removes the partial upload and its .info (missing = fine).
 func (s *Service) dropFiles(sys *fsjail.SysDir, id string) {
