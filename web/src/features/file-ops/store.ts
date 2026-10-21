@@ -23,6 +23,7 @@ export type FileOpsDialog =
   | { kind: 'deletePermanent'; paths: string[]; resolve: (ok: boolean) => void }
   | { kind: 'uploadPrecheck'; info: UploadPrecheckInfo; resolve: (proceed: boolean) => void }
   | { kind: 'remoteDownload'; dir: string }
+  | { kind: 'share'; item: Item }
   | { kind: 'compress'; paths: string[]; dir: string }
   | { kind: 'extract'; archive: Item; dir: string }
 

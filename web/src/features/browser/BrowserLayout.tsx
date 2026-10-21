@@ -33,6 +33,7 @@ import { isTagColor, recordOpen, type TagColor } from '@/features/meta/api'
 import { useMeta } from '@/features/meta/useMeta'
 import { NoteDialog } from '@/features/meta/NoteDialog'
 import { FileOpsDialogs } from '@/features/file-ops/FileOpsDialogs'
+import { copyFirstShareLink } from '@/features/share/copyLink'
 import { canUndoNow, focusGrid, useFileOpsDialogs, useUndoStore } from '@/features/file-ops/store'
 import { useFileOps } from '@/features/file-ops/useFileOps'
 import { useDownload } from '@/features/download/useDownload'
@@ -621,6 +622,12 @@ export function BrowserLayout({
         uploadInputs.current?.pickFiles()
       },
       remoteDownload: () => openDialog({ kind: 'remoteDownload', dir: path }),
+      share: () => {
+        if (focusItem) openDialog({ kind: 'share', item: focusItem })
+      },
+      copyShareLink: () => {
+        if (focusItem) void copyFirstShareLink(focusItem.path)
+      },
       remoteDownloadEnabled,
       searchHere: () => {
         const dir = focusItem?.isDir ? focusItem.path : path
@@ -1295,6 +1302,7 @@ export function BrowserLayout({
           onOpenLocation={viewerOpenLocation}
           onOpenPath={openViewer}
           onBrowseArchive={(it) => openArchive(it.path)}
+          onShare={(it) => openDialog({ kind: 'share', item: it })}
           restoreFocus={focusGrid}
         />
       ) : null}

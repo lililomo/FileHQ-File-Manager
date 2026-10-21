@@ -1,5 +1,6 @@
 /** Listing API client (SPEC §6.3, §8.3). Types mirror `listing.Item`/`ListResult`. */
 import { api, type Query } from '@/lib/api'
+import { isPublicScope, publicApiPath, publicUrl } from '@/lib/public-scope'
 
 /** `media_metadata` cache (SPEC §4.2); null until the server probed the file. */
 export interface MediaMeta {
@@ -190,7 +191,7 @@ export interface StatResponse extends Item {
 
 export function statItem(path: string, signal?: AbortSignal): Promise<StatResponse> {
   return api<StatResponse>(
-    '/files/stat',
+    isPublicScope() ? publicApiPath('stat') : '/files/stat',
     signal ? { query: { path }, signal } : { query: { path } },
   )
 }
@@ -203,6 +204,12 @@ export interface SignBatchResponse {
 }
 
 export function signThumbs(paths: string[], size: ThumbSize): Promise<SignBatchResponse> {
+  if (isPublicScope())
+    return Promise.resolve({
+      urls: paths.map((path) => ({ path, url: publicUrl('thumb', { path, size }) })),
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      invalid: [],
+    })
   return api<SignBatchResponse>('/files/sign', {
     method: 'POST',
     body: { paths, purpose: 'thumb', size },

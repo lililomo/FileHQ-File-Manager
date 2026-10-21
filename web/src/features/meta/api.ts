@@ -2,6 +2,7 @@
  *  notes and colour tags. Writes accept `paths[]` (batch) or `path`. */
 import type { Item } from '@/features/browser/api'
 import { api } from '@/lib/api'
+import { isPublicScope } from '@/lib/public-scope'
 
 export const TAG_COLORS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'gray'] as const
 export type TagColor = (typeof TAG_COLORS)[number]
@@ -69,5 +70,6 @@ export function listTagged(color: TagColor, signal?: AbortSignal): Promise<Items
 
 /** Records an "open" so Recent reflects reads (viewer, Quick Look). */
 export function recordOpen(path: string): Promise<void> {
+  if (isPublicScope()) return Promise.resolve()
   return api<void>('/me/recent', { method: 'POST', body: { path } })
 }

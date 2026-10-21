@@ -5,6 +5,7 @@
  * Step 17 viewers call `getMediaUrl`, download actions `signDownloadUrl`.
  */
 import { api } from '@/lib/api'
+import { isPublicScope, publicUrl } from '@/lib/public-scope'
 
 export type SignPurpose = 'download' | 'media' | 'inline'
 
@@ -39,6 +40,8 @@ export async function getMediaUrl(
   purpose: Exclude<SignPurpose, 'download'> = 'media',
   opts: { force?: boolean } = {},
 ): Promise<string> {
+  // guests: the token/cookie authorise, nothing to sign
+  if (isPublicScope()) return publicUrl('raw', { path, purpose })
   const k = key(path, purpose)
   if (!opts.force) {
     const hit = cache.get(k)
@@ -60,6 +63,7 @@ export async function getMediaUrl(
 
 /** Fresh, uncached download URL (TTL 5 min, one use case: the click that follows). */
 export async function signDownloadUrl(path: string): Promise<string> {
+  if (isPublicScope()) return publicUrl('download', { path })
   return (await signUrl(path, 'download')).url
 }
 
@@ -93,10 +97,10 @@ export async function fetchSigned(
   init?: RequestInit,
 ): Promise<Response> {
   let url = await getMediaUrl(path, purpose)
-  let res = await fetch(url, { credentials: 'omit', ...init })
+  let res = await fetch(url, { credentials: isPublicScope() ? 'same-origin' : 'omit', ...init })
   if (await isSignatureExpired(res)) {
     url = await getMediaUrl(path, purpose, { force: true })
-    res = await fetch(url, { credentials: 'omit', ...init })
+    res = await fetch(url, { credentials: isPublicScope() ? 'same-origin' : 'omit', ...init })
   }
   return res
 }

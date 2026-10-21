@@ -54,7 +54,8 @@ const row = (page: Page, path: string) =>
 /** Arrow down through an open Radix menu until `testId` has focus. */
 async function arrowTo(page: Page, testId: string) {
   const target = page.getByTestId(testId)
-  for (let i = 0; i < 12; i++) {
+  // Step 18a added "Share" above "Pindah ke…": budget covers the longest menu
+  for (let i = 0; i < 20; i++) {
     if (await target.evaluate((el) => el === document.activeElement)) return
     await page.keyboard.press('ArrowDown')
   }
@@ -109,8 +110,9 @@ test('context menu shows exactly the SPEC §9.5 actions per context', async ({ p
     'compress', // Step 14a
   ])
     await expect(page.getByTestId(`cm-${id}`), id).toBeVisible()
+  // Step 18a: share is live
+  await expect(page.getByTestId('cm-share')).toBeVisible()
   for (const id of [
-    'share',
     'extract', // a.txt is not an archive
     'versions',
     'batchRename',

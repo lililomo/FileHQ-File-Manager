@@ -172,7 +172,8 @@ describe('context-menu matrix (SPEC §9.5)', () => {
 
   it('unavailable actions never reach the flat surfaces either', () => {
     const unavailable = ACTIONS.filter((a) => a.available === false).map((a) => a.id)
-    expect(unavailable).toContain('share')
+    // Step 18a: share is live; the loop below still guards whatever stays unavailable
+    expect(unavailable).not.toContain('share')
     for (const context of ['file', 'folder', 'multi', 'background', 'trash', 'archive'] as const) {
       const flat = ids(
         menuItems(context, ctxWith([item('/a.txt'), item('/b', true)], { selectionCount: 2 })),

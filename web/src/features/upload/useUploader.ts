@@ -11,6 +11,7 @@ import { ApiError } from '@/lib/api'
 import type { Conflict, ConflictPolicy } from '@/features/file-ops/api'
 import { askConflicts, askUploadPrecheck } from '@/features/file-ops/store'
 import { useSessionStore } from '@/stores/session'
+import { isPublicScope, publicBase } from '@/lib/public-scope'
 import {
   useTransfersStore,
   type Transfer,
@@ -148,16 +149,18 @@ class Uploader {
               }
             }
           }
-          const go = await askUploadPrecheck({
-            rejected,
-            accepted: accepted.length,
-            fits: fits.length,
-            needed,
-            free: res.free,
-            limit: res.limit,
-            maxUploadSize: res.maxUploadSize,
-            ...(quotaReason ? { quotaReason } : {}),
-          })
+          const go = isPublicScope()
+            ? true
+            : await askUploadPrecheck({
+                rejected,
+                accepted: accepted.length,
+                fits: fits.length,
+                needed,
+                free: res.free,
+                limit: res.limit,
+                maxUploadSize: res.maxUploadSize,
+                ...(quotaReason ? { quotaReason } : {}),
+              })
           if (!go) return 0
           chosen = fits
         }
@@ -178,7 +181,7 @@ class Uploader {
           }
         }
         let perItem: Record<string, ConflictPolicy> = {}
-        if (conflicts.length > 0) {
+        if (conflicts.length > 0 && !isPublicScope()) {
           const answer = await askConflicts('copy', conflicts)
           if (!answer) return 0
           perItem = answer
@@ -324,7 +327,7 @@ class Uploader {
     const cfgChunk = useSessionStore.getState().config?.chunkSize
     if (cfgChunk && cfgChunk > 0) this.chunkSize = cfgChunk
     const options: UploadOptions = {
-      endpoint: TUS_ENDPOINT,
+      endpoint: isPublicScope() ? `${publicBase()}/upload/tus/` : TUS_ENDPOINT,
       chunkSize: this.chunkSize,
       retryDelays: RETRY_DELAYS,
       parallelUploads: 1,

@@ -1,25 +1,25 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useTranslation } from 'react-i18next'
-import { Hammer } from 'lucide-react'
-import { EmptyState } from '@/components/EmptyState'
-import { PublicLayout } from '@/components/shell/PublicLayout'
+import { splatToPath } from '@/features/browser/path'
+import { PublicPage } from '@/features/public/PublicPage'
 
-/** Public share page placeholder (built in Step 18a). No session required. */
+export interface PublicSearch {
+  /** file open in the viewer, relative to the shared item */
+  view?: string
+}
+
+/** Public share page `/s/<token>[/sub/path]?view=<file>` (SPEC §8.15; no
+ *  session). `<token>` is a 43-char token or a custom slug. */
 export const Route = createFileRoute('/s/$token/$')({
-  component: PublicSharePlaceholder,
+  validateSearch: (search: Record<string, unknown>): PublicSearch => {
+    const out: PublicSearch = {}
+    if (typeof search.view === 'string' && search.view.startsWith('/')) out.view = search.view
+    return out
+  },
+  component: PublicRoute,
 })
 
-function PublicSharePlaceholder() {
-  const { t } = useTranslation()
-  return (
-    <PublicLayout>
-      <h1 className="text-xl font-semibold">{t('publicShare')}</h1>
-      <EmptyState
-        className="mt-6 rounded-lg border border-dashed"
-        icon={Hammer}
-        title={t('placeholder.title', { step: '18a' })}
-        description={t('placeholder.body')}
-      />
-    </PublicLayout>
-  )
+function PublicRoute() {
+  const { token, _splat } = Route.useParams()
+  const { view } = Route.useSearch()
+  return <PublicPage token={token} path={splatToPath(_splat)} viewPath={view} />
 }

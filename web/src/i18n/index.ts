@@ -16,6 +16,7 @@ import idArchive from './id/archive.json'
 import idSearch from './id/search.json'
 import idEditor from './id/editor.json'
 import idViewer from './id/viewer.json'
+import idShare from './id/share.json'
 import enCommon from './en/common.json'
 import enNav from './en/nav.json'
 import enAuth from './en/auth.json'
@@ -31,6 +32,7 @@ import enArchive from './en/archive.json'
 import enSearch from './en/search.json'
 import enEditor from './en/editor.json'
 import enViewer from './en/viewer.json'
+import enShare from './en/share.json'
 
 export const LANGUAGES = ['id', 'en'] as const
 export type Language = (typeof LANGUAGES)[number]
@@ -53,6 +55,7 @@ export const resources = {
     search: idSearch,
     editor: idEditor,
     viewer: idViewer,
+    share: idShare,
   },
   en: {
     common: enCommon,
@@ -70,6 +73,7 @@ export const resources = {
     search: enSearch,
     editor: enEditor,
     viewer: enViewer,
+    share: enShare,
   },
 } as const
 

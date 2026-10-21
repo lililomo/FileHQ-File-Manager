@@ -8,7 +8,6 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { Item } from '@/features/browser/api'
 import { useItemStat } from '@/features/browser/useItemStat'
 import { useDownload } from '@/features/download/useDownload'
@@ -52,6 +51,8 @@ export interface ViewerOverlayProps {
   onOpenPath?: ((path: string) => void) | undefined
   /** archives: open the archive browser (14b) */
   onBrowseArchive?: ((item: Item) => void) | undefined
+  /** Step 18a: share dialog for the shown file (absent on the public page) */
+  onShare?: ((item: Item) => void) | undefined
   /** Called after the overlay unmounts: the opener (grid) takes focus back.
    *  The overlay is URL-driven, so Radix cannot always find the element that
    *  had focus when it opened. */
@@ -73,6 +74,7 @@ export function ViewerOverlay({
   onOpenLocation,
   onOpenPath,
   onBrowseArchive,
+  onShare,
   restoreFocus,
 }: ViewerOverlayProps) {
   const { t } = useTranslation(['viewer', 'files'])
@@ -320,21 +322,15 @@ export function ViewerOverlay({
             >
               <Download aria-hidden="true" />
             </IconButton>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span tabIndex={-1} className="inline-flex">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    disabled
-                    aria-label={t('viewer:header.share')}
-                  >
-                    <Share2 aria-hidden="true" />
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>{t('viewer:header.shareSoon')}</TooltipContent>
-            </Tooltip>
+            {onShare && item ? (
+              <IconButton
+                label={t('viewer:header.share')}
+                onClick={() => onShare(item)}
+                data-testid="viewer-share"
+              >
+                <Share2 aria-hidden="true" />
+              </IconButton>
+            ) : null}
             {editable ? (
               <IconButton
                 label={t('viewer:header.edit')}

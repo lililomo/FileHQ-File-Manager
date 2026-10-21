@@ -1,5 +1,6 @@
 /** Editor API client (SPEC §8.13, §6.3 `files/content`, `me/editor-session`; Step 16a). */
 import { api } from '@/lib/api'
+import { isPublicScope, publicApiPath } from '@/lib/public-scope'
 
 export type EOL = 'lf' | 'crlf' | 'mixed'
 
@@ -33,7 +34,7 @@ export function getContent(
   q: ContentQuery = {},
   signal?: AbortSignal,
 ): Promise<FileContent> {
-  return api<FileContent>('/files/content', {
+  return api<FileContent>(isPublicScope() ? publicApiPath('content') : '/files/content', {
     query: { path, encoding: q.encoding, tail: q.tail },
     ...(signal ? { signal } : {}),
   })

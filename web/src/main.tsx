@@ -27,7 +27,7 @@ declare module '@tanstack/react-router' {
 setApiHandlers({
   onUnauthorized: () => {
     const here = window.location.pathname + window.location.search
-    if (here.startsWith('/login')) return
+    if (here.startsWith('/login') || here.startsWith('/s/')) return
     void router.navigate({ to: '/login', search: { next: here } })
   },
   onPasswordChangeRequired: () => {

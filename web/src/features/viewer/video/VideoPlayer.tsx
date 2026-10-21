@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import type { Item } from '@/features/browser/api'
 import { getMediaInfo, mediaInfoKey, type MediaInfo } from '@/features/viewer/api'
 import { api } from '@/lib/api'
+import { isPublicScope } from '@/lib/public-scope'
 import { formatDuration } from '@/lib/format'
 import { getMediaUrl, isSignatureExpired } from '@/lib/media-url'
 import { pushScope, registerShortcut } from '@/lib/shortcuts'
@@ -41,6 +42,7 @@ interface MediaPosition {
 }
 
 function savePosition(path: string, seconds: number, duration: number): void {
+  if (isPublicScope()) return // guests have no resume store
   // near the end counts as watched: forget the position
   const done = duration > 0 && (seconds >= duration - RESUME_MARGIN_S || seconds / duration > 0.97)
   void api('/me/media-position', {
@@ -85,7 +87,10 @@ export function VideoPlayer({ item, next, onNext, onDownload }: VideoPlayerProps
   }, [item.path])
   const position = useQuery({
     queryKey: ['media-position', item.path],
-    queryFn: () => api<MediaPosition>('/me/media-position', { query: { path: item.path } }),
+    queryFn: () =>
+      isPublicScope()
+        ? Promise.resolve({ seconds: 0, updatedAt: null } as unknown as MediaPosition)
+        : api<MediaPosition>('/me/media-position', { query: { path: item.path } }),
     staleTime: 0,
     gcTime: 0,
   })

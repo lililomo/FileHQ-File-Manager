@@ -1,4 +1,5 @@
 import { api } from '@/lib/api'
+import { isPublicScope, publicApiPath } from '@/lib/public-scope'
 
 export type ZipMethod = 'store' | 'deflate'
 
@@ -11,7 +12,7 @@ export interface ZipResponse {
 
 /** POST /files/zip → signed streaming URL (SPEC §8.9). */
 export function createZip(paths: string[], opts: { name?: string; method?: ZipMethod } = {}) {
-  return api<ZipResponse>('/files/zip', {
+  return api<ZipResponse>(isPublicScope() ? publicApiPath('zip') : '/files/zip', {
     method: 'POST',
     body: {
       paths,

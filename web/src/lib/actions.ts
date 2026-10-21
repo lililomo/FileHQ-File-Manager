@@ -154,6 +154,9 @@ export interface ActionContext {
   browseArchive?: () => void
   /** Step 17b: append the selected audio files to the music player queue. */
   addToPlaylist?: () => void
+  /** Step 18a: share dialog for the focused item; copy its first active public link. */
+  share?: () => void
+  copyShareLink?: () => void
   /** Archive browser only (context "archive"): selected members. */
   extractEntries?: () => void
   downloadEntry?: () => void
@@ -262,18 +265,16 @@ export const ACTIONS: ActionDef[] = [
     labelKey: 'share',
     group: 'share',
     icon: Share2,
-    available: false,
-    isApplicable: one,
-    run: noop,
+    isApplicable: (c) => one(c) && !!c.share,
+    run: (c) => c.share?.(),
   },
   {
     id: 'copyShareLink',
     labelKey: 'copyShareLink',
     group: 'share',
     icon: Link2,
-    available: false,
-    isApplicable: (c) => one(c) && c.selection[0]!.shared !== 'none',
-    run: noop,
+    isApplicable: (c) => one(c) && c.selection[0]!.shared !== 'none' && !!c.copyShareLink,
+    run: (c) => c.copyShareLink?.(),
   },
   // --- metadata (10b) ---
   {

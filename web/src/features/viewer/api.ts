@@ -1,5 +1,6 @@
 /** Viewer API client (SPEC §6.3 `GET /files/media-info`). */
 import { api } from '@/lib/api'
+import { isPublicScope, publicApiPath } from '@/lib/public-scope'
 
 export interface ExifInfo {
   make?: string
@@ -69,7 +70,8 @@ export function getMediaInfo(
   signal?: AbortSignal,
 ): Promise<MediaInfo> {
   const query = { path, include_gps: includeGps ? 1 : undefined }
-  return api<MediaInfo>('/files/media-info', signal ? { query, signal } : { query })
+  const route = isPublicScope() ? publicApiPath('media-info') : '/files/media-info'
+  return api<MediaInfo>(route, signal ? { query, signal } : { query })
 }
 
 export const mediaInfoKey = (path: string, includeGps: boolean) =>

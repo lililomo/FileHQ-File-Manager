@@ -10,6 +10,7 @@ import { PrecheckDialog } from '@/features/upload/PrecheckDialog'
 import { RemoteDownloadDialog } from '@/features/remote-download/RemoteDownloadDialog'
 import { CompressDialog } from '@/features/archive/CompressDialog'
 import { ExtractDialog } from '@/features/archive/ExtractDialog'
+import { ShareDialog } from '@/features/share/ShareDialog'
 import { focusGrid, useFileOpsDialogs } from './store'
 import type { FileOps } from './useFileOps'
 
@@ -105,6 +106,8 @@ export function FileOpsDialogs({ ops }: { ops: FileOps }) {
           onCloseAutoFocus={returnFocus}
         />
       )
+    case 'share':
+      return <ShareDialog item={dialog.item} onClose={close} onCloseAutoFocus={returnFocus} />
     case 'remoteDownload':
       return (
         <RemoteDownloadDialog dir={dialog.dir} onClose={close} onCloseAutoFocus={returnFocus} />
