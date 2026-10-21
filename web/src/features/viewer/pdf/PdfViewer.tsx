@@ -48,6 +48,28 @@ interface Engine {
   passwordCb?: ((password: string) => void) | undefined
 }
 
+/** Outline entries scroll like pdf.js' `PDFLinkService.goToDestination`
+ *  but without its follow-up `textLayer.div.focus()`: that focus lands once
+ *  the destination page's text layer has rendered and would steal the focus
+ *  from a find bar (Ctrl+F) opened in the meantime. */
+async function scrollToDest(eng: Engine | null, dest: OutlineItem['dest']): Promise<void> {
+  const doc = eng?.viewer.pdfDocument
+  if (!eng || !doc || !dest) return
+  try {
+    const explicit = typeof dest === 'string' ? await doc.getDestination(dest) : dest
+    if (!Array.isArray(explicit) || explicit.length === 0) return
+    const ref: unknown = explicit[0]
+    let pageNumber = 0
+    if (typeof ref === 'number') pageNumber = ref + 1
+    else if (ref && typeof ref === 'object')
+      pageNumber = (await doc.getPageIndex(ref as { num: number; gen: number })) + 1
+    if (pageNumber < 1 || pageNumber > doc.numPages) return
+    eng.viewer.scrollPageIntoView({ pageNumber, destArray: explicit })
+  } catch {
+    /* unresolvable destination: stay where we are */
+  }
+}
+
 // pdf.js setters live outside the component (React Compiler would otherwise
 // flag writes to ref-derived objects)
 function setViewerPage(v: PdfjsPDFViewer, n: number) {
@@ -258,9 +280,7 @@ function PdfDocument({ item, onDownload }: PdfViewerProps) {
     containerRef.current?.focus()
   }, [])
   const goToDest = useCallback((dest: OutlineItem['dest']) => {
-    const eng = engine.current
-    if (!eng || !dest) return
-    void eng.linkService.goToDestination(dest)
+    void scrollToDest(engine.current, dest)
   }, [])
   const toggleFullscreen = useCallback(() => {
     const el = rootRef.current
