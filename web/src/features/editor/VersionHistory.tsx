@@ -176,7 +176,7 @@ export function VersionHistoryDialog({
         >
           <DialogHeader>
             <DialogTitle>{t('versions.titleFor', { name })}</DialogTitle>
-            <DialogDescription>{t('versions.title')}</DialogDescription>
+            <DialogDescription className="sr-only">{t('versions.title')}</DialogDescription>
           </DialogHeader>
           {path ? (
             <VersionList

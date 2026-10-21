@@ -179,7 +179,8 @@
     "readOnly": "A read-only file cannot be saved",
     "pathCopied": "Path copied",
     "created": "{{name}} created",
-    "restoredReload": "File restored to version {{no}}; the tab was reloaded."
+    "restoredReload": "File restored to version {{no}}; the tab was reloaded.",
+    "gone": "{{name}} no longer exists on the server; tab closed"
   },
   "versions": {
     "title": "Version history",

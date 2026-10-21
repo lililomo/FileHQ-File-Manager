@@ -95,9 +95,13 @@ func (s *Service) normalizeContent(q *ContentQuery) error {
 		return err
 	}
 	q.Path = string(scope)
-	for i, e := range q.Ext {
-		q.Ext[i] = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(e), "."))
+	ext := q.Ext[:0]
+	for _, e := range q.Ext {
+		if e = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(e), ".")); e != "" {
+			ext = append(ext, e) // an empty entry would become the glob "*." (review D)
+		}
 	}
+	q.Ext = ext
 	if q.MinSize < 0 || q.MaxSize < 0 || (q.MaxSize > 0 && q.MinSize > q.MaxSize) {
 		return validationErr("size range is not valid", map[string]any{"minSize": "<= maxSize"})
 	}

@@ -3,11 +3,13 @@ package archive
 import (
 	"archive/tar"
 	"archive/zip"
+	"bytes"
 	"compress/bzip2"
 	"compress/flate"
 	"context"
 	"errors"
 	"fmt"
+	"hash"
 	"hash/crc32"
 	"io"
 	"io/fs"
@@ -323,46 +325,89 @@ func newSevenZipSource(f *os.File, size int64, password string) (*sevenZipSource
 	return src, nil
 }
 
-// detectEncrypted opens the archive WITHOUT a password and tries to read the
-// first regular member: encrypted headers fail at open, encrypted bodies at
-// the first read ("aes7z: no password set").
+// detectEncrypted reads the first non-empty member whole (CRC check) up to
+// sevenZipProbeCRC bytes; bigger members only lend their first
+// sevenZipProbeBytes bytes (decode error, comparison with the password).
+const (
+	sevenZipProbeCRC   = 4 << 20
+	sevenZipProbeBytes = 64 << 10
+)
+
+// detectEncrypted opens the archive WITHOUT a password and decodes the head
+// of the first non-empty member (review D, deterministic): an encrypted
+// header fails at open; an encrypted body is decrypted with an empty key
+// into garbage, which the decompressor rejects, which the member CRC
+// rejects when the member fits the probe, and which differs from the bytes
+// the real password yields otherwise. Empty members carry no stream and
+// can never tell. bodgit itself tries the empty password (aes7z derives a
+// key from it), so its error text varies with the random IV — the verdict
+// never depends on it.
 func (s *sevenZipSource) detectEncrypted() bool {
-	r, err := sevenzip.NewReader(s.f, s.size)
+	plain, err := sevenzip.NewReader(s.f, s.size)
 	if err != nil {
+		// reader() already opened the archive with the password, so a
+		// failure without one means the header itself is encrypted
 		s.hdrEnc = true
 		return true
 	}
-	for _, zf := range r.File {
-		if zf.FileInfo().IsDir() {
+	for i, zf := range plain.File {
+		fi := zf.FileInfo()
+		if fi.IsDir() || fi.Size() == 0 {
 			continue
 		}
-		rc, err := zf.Open()
-		if err != nil {
+		if fi.Size() <= sevenZipProbeCRC {
+			whole, ok := sevenZipHead(zf, fi.Size())
+			if !ok {
+				return true
+			}
+			return zf.CRC32 != 0 && crc32.ChecksumIEEE(whole) != zf.CRC32
+		}
+		head, ok := sevenZipHead(zf, sevenZipProbeBytes)
+		if !ok {
 			return true
 		}
-		var probe [1]byte
-		_, rerr := rc.Read(probe[:])
-		_ = rc.Close()
-		return rerr != nil && !errors.Is(rerr, io.EOF)
+		if s.password != "" {
+			if r, err := sevenzip.NewReaderWithPassword(s.f, s.size, s.password); err == nil && i < len(r.File) {
+				if real, ok := sevenZipHead(r.File[i], sevenZipProbeBytes); ok && !bytes.Equal(head, real) {
+					return true
+				}
+			}
+		}
+		return false
 	}
 	return false
+}
+
+// sevenZipHead decodes up to limit bytes of a member; ok=false on any
+// decode error.
+func sevenZipHead(zf *sevenzip.File, limit int64) ([]byte, bool) {
+	rc, err := zf.Open()
+	if err != nil {
+		return nil, false
+	}
+	defer func() { _ = rc.Close() }()
+	buf, err := io.ReadAll(io.LimitReader(rc, limit))
+	if err != nil {
+		return nil, false
+	}
+	return buf, true
 }
 
 func (s *sevenZipSource) reader() (*sevenzip.Reader, error) {
 	r, err := sevenzip.NewReaderWithPassword(s.f, s.size, s.password)
 	if err != nil {
 		switch {
-		case isPasswordErr(err):
+		case isEncryptionErr(err), isPasswordErr(err), s.password == "" && isEncryptedHeaderErr(err):
+			// -mhe=on: the header itself is AES-encrypted. bodgit flags the
+			// folder's encryption on its ReadError (review D: deterministic,
+			// the decode error text depends on the random IV); the text
+			// matches stay as a fallback. The signature was already verified
+			// by Detect, so this means "password required/wrong", not
+			// "corrupt" (review C).
 			if s.password == "" {
 				return nil, ErrPasswordRequired
 			}
 			return nil, ErrPasswordWrong
-		case s.password == "" && isEncryptedHeaderErr(err):
-			// -mhe=on: the header itself is AES-encrypted; without a password
-			// bodgit cannot parse it ("unexpected id"). The signature was
-			// already verified by Detect, so a parse failure here means
-			// "password required" rather than "corrupt" (review C).
-			return nil, ErrPasswordRequired
 		case s.password != "":
 			// a wrong password on encrypted headers surfaces as a parse error
 			// (same mapping as the 7-Zip CLI "can't open as archive" case)
@@ -371,6 +416,14 @@ func (s *sevenZipSource) reader() (*sevenzip.Reader, error) {
 		return nil, corruptErr("not a valid 7z file")
 	}
 	return r, nil
+}
+
+// isEncryptionErr reports bodgit's hint that encryption was involved in a
+// failed open/read (sevenzip.ReadError.Encrypted) — set from the folder's
+// coders, independent of what the garbage decryption produced.
+func isEncryptionErr(err error) bool {
+	var re *sevenzip.ReadError
+	return errors.As(err, &re) && re.Encrypted
 }
 
 // isEncryptedHeaderErr matches the error bodgit/sevenzip reports when the
@@ -407,28 +460,45 @@ func (s *sevenZipSource) entry(zf *sevenzip.File) Entry {
 		e.Open = func() (io.ReadCloser, error) {
 			rc, err := zf.Open()
 			if err != nil {
-				if isPasswordErr(err) || s.password != "" || s.enc {
+				switch {
+				case s.enc && s.password == "":
+					return nil, ErrPasswordRequired
+				case isEncryptionErr(err), isPasswordErr(err), s.password != "", s.enc:
 					return nil, ErrPasswordWrong
 				}
 				return nil, corruptErr("cannot read 7z entry")
 			}
-			return &passwordAwareReader{rc: rc, enc: s.password != ""}, nil
+			return &passwordAwareReader{rc: rc, enc: s.enc || s.password != "", crc: zf.CRC32, h: crc32.NewIEEE()}, nil
 		}
 	}
 	return e
 }
 
 // passwordAwareReader maps a decode failure on a password-protected stream
-// to ARCHIVE_PASSWORD_WRONG (bodgit reports it as an LZMA/checksum error).
+// to ARCHIVE_PASSWORD_WRONG (bodgit reports it as an LZMA/checksum error)
+// and verifies the member CRC at EOF (review D): bodgit does not, so a
+// wrong key on a Copy-method folder — or a damaged member — would
+// otherwise extract silently as garbage.
 type passwordAwareReader struct {
 	rc  io.ReadCloser
 	enc bool
+	crc uint32
+	h   hash.Hash32
 }
 
 func (p *passwordAwareReader) Read(b []byte) (int, error) {
 	n, err := p.rc.Read(b)
-	if err != nil && !errors.Is(err, io.EOF) && (p.enc || isPasswordErr(err)) {
+	if n > 0 && p.h != nil {
+		_, _ = p.h.Write(b[:n])
+	}
+	if err != nil && !errors.Is(err, io.EOF) && (p.enc || isEncryptionErr(err) || isPasswordErr(err)) {
 		return n, ErrPasswordWrong
+	}
+	if errors.Is(err, io.EOF) && p.crc != 0 && p.h != nil && p.h.Sum32() != p.crc {
+		if p.enc {
+			return n, ErrPasswordWrong
+		}
+		return n, corruptErr("7z entry checksum mismatch")
 	}
 	return n, err
 }

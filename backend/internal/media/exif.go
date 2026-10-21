@@ -403,6 +403,12 @@ func isoLocate(b []byte, id uint32) (uint64, uint64, bool) {
 	if version == 1 || version == 2 {
 		idxSize = int(b[5] & 0xF)
 	}
+	if offSize == 0 && lenSize == 0 {
+		// extents without offset or length locate nothing; refusing them also
+		// bounds the extent loop, which would otherwise spin over up to
+		// 4096 × 65535 zero-byte extents (review D)
+		return 0, 0, false
+	}
 	p := 6
 	var count uint32
 	if version < 2 {

@@ -401,7 +401,7 @@ export function SearchPage({ params }: { params: SearchParams }) {
                 <span>
                   {t('search:results.countIn', {
                     n: formatNumber(names.total, lang),
-                    ms: names.tookMs,
+                    ms: Math.max(1, names.tookMs), // sub-millisecond answers read as "0 ms" (review D)
                   })}
                 </span>
                 {names.truncated ? (

@@ -37,6 +37,7 @@ export function InfoCard({
   onBrowseArchive?: (() => void) | undefined
 }) {
   const { t, i18n } = useTranslation(['viewer', 'files'])
+  const { t: tf } = useTranslation('files') // typeLabel keys live in the files namespace (review D)
   const lang = i18n.resolvedLanguage ?? 'id'
   const office = OFFICE_EXT.has((item.ext || '').toLowerCase())
   const message =
@@ -57,8 +58,8 @@ export function InfoCard({
             {item.name}
           </div>
           <div className="text-xs text-text-muted">
-            {typeLabel(t as unknown as Parameters<typeof typeLabel>[0], item)} ·{' '}
-            {formatBytes(item.size, lang)} · {formatDateTimeFull(item.mtime, lang)}
+            {typeLabel(tf, item)} · {formatBytes(item.size, lang)} ·{' '}
+            {formatDateTimeFull(item.mtime, lang)}
           </div>
         </div>
         <p className="text-sm text-text-muted">{message}</p>

@@ -98,7 +98,7 @@
     "zoomAuto": "Automatic",
     "rotate": "Rotate",
     "sidebar": "Sidebar",
-    "thumbnails": "Page thumbnails",
+    "thumbnails": "Pages",
     "outline": "Outline",
     "noOutline": "This PDF has no outline.",
     "search": "Find text",
@@ -122,7 +122,8 @@
     "invalid": "This file is not a valid PDF or is damaged.",
     "retry": "Retry",
     "toolbar": "PDF controls",
-    "document": "PDF document"
+    "document": "PDF document",
+    "thumbnailsLong": "Page thumbnails"
   },
   "audio": {
     "title": "Music player",
@@ -220,5 +221,6 @@
     "folderItems_one": "Contains {{n}} item",
     "folderItems_other": "Contains {{n}} items",
     "folderUnknown": "The item count has not been computed yet."
-  }
+  },
+  "renderError": "This file could not be rendered"
 }

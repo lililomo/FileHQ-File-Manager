@@ -131,6 +131,14 @@ export class WorkspaceController {
         this.store.patch(path, { status: 'binary', error: { code: e.code, message: e.message } })
         return
       }
+      if (e instanceof ApiError && e.code === 'NOT_FOUND' && !tab?.etag && !tab?.dirty) {
+        // a tab restored from the session (never loaded in this app run)
+        // whose file is gone: SPEC §8.13 restores tabs only for files that
+        // still exist (review D) — drop it instead of parking an error tab
+        toast.message(i18n.t('editor:toast.gone', { name: tab?.name ?? path.split('/').pop() }))
+        this.closeNow(path)
+        return
+      }
       const code = e instanceof ApiError ? e.code : 'NETWORK'
       this.store.patch(path, { status: 'error', error: { code, message: errorMessage(e) } })
       return

@@ -24,8 +24,15 @@ const SANITIZE = {
     'base',
     'svg',
     'math',
+    // review D: no inline media or image maps from documents either
+    'audio',
+    'video',
+    'source',
+    'track',
+    'map',
+    'area',
   ],
-  FORBID_ATTR: ['style', 'srcset', 'formaction', 'xlink:href'],
+  FORBID_ATTR: ['style', 'srcset', 'formaction', 'xlink:href', 'usemap'],
   ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z0-9+.-]|[a-z0-9+.-]+(?:[^a-z0-9+.:-]|$))/i,
   ADD_ATTR: ['target'],
 } as const

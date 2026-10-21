@@ -74,7 +74,9 @@ export async function highlightLines(text: string, language: string): Promise<st
   if (!load || text.length > HIGHLIGHT_MAX_CHARS) return null
   const [hljs, lang] = await Promise.all([hljsCore(), load()])
   if (!hljs.getLanguage(language)) hljs.registerLanguage(language, lang.default)
-  const html = hljs.highlight(text, { language, ignoreIllegals: true }).value
+  // CRLF / CR files split into the same lines as the plain path (review D)
+  const normalized = text.replace(/\r\n?/g, '\n')
+  const html = hljs.highlight(normalized, { language, ignoreIllegals: true }).value
   const clean = DOMPurify.sanitize(html, { ALLOWED_TAGS: ['span'], ALLOWED_ATTR: ['class'] })
   return splitLines(clean)
 }

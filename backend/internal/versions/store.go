@@ -325,6 +325,15 @@ func (s *Store) Restore(ctx context.Context, j *fsjail.Jail, userID, id string) 
 	} else if _, mkerr := j.Lstat(p.Dir()); mkerr != nil {
 		return nil, &Error{Code: "NOT_FOUND", Message: "folder of the version no longer exists", Status: http.StatusNotFound, Details: map[string]any{"path": string(p.Dir())}}
 	}
+	if s.o.Quota != nil && v.Size > oldSize {
+		// the restored bytes count like any write: refuse before touching
+		// the file when the quota is full (review D)
+		rsv, qerr := s.o.Quota.Reserve(ctx, j, userID, v.Size-oldSize)
+		if qerr != nil {
+			return nil, qerr
+		}
+		rsv.Release()
+	}
 	n, err := files.WriteAtomic(j, p, blob, mode)
 	if err != nil {
 		return nil, err

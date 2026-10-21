@@ -28,6 +28,9 @@ export interface InfoPanelProps {
  *  `exif.show_gps`, remembered for this session only). */
 export function InfoPanel({ item, onClose, onOpenLocation }: InfoPanelProps) {
   const { t, i18n } = useTranslation(['viewer', 'files'])
+  // typeLabel resolves `type.*` keys in the files namespace (review D: with
+  // the viewer-default `t` the raw key "type.fallback" leaked into the panel)
+  const { t: tf } = useTranslation('files')
   const lang = i18n.resolvedLanguage ?? 'id'
   const gpsPref = usePref<boolean>('exif.show_gps', false)
   const [showGps, setShowGps] = useState(gpsPref)
@@ -43,7 +46,7 @@ export function InfoPanel({ item, onClose, onOpenLocation }: InfoPanelProps) {
   const isImage = mi ? mi.kind === 'image' || mi.kind === 'svg' : item.category === 'image'
 
   const general: [string, string][] = [
-    [t('viewer:info.type'), typeLabel(t as unknown as Parameters<typeof typeLabel>[0], item)],
+    [t('viewer:info.type'), typeLabel(tf, item)],
     [t('viewer:info.size'), formatBytes(item.size, lang)],
   ]
   if (width && height) general.push([t('viewer:info.dimensions'), `${width} × ${height}`])
@@ -64,7 +67,8 @@ export function InfoPanel({ item, onClose, onOpenLocation }: InfoPanelProps) {
 
   return (
     <aside
-      className="flex w-80 shrink-0 flex-col border-l border-border bg-surface"
+      // narrow screens: the panel covers the viewer instead of squeezing it (review D)
+      className="flex w-80 shrink-0 flex-col border-l border-border bg-surface max-sm:absolute max-sm:inset-0 max-sm:z-10 max-sm:w-full max-sm:border-l-0"
       aria-label={t('viewer:info.title')}
       data-testid="viewer-info"
     >
@@ -172,7 +176,11 @@ type LooseT = (key: string, opts?: Record<string, unknown>) => string
 
 function exifRows(t: LooseT, ex: ExifInfo, lang: string): [string, string][] {
   const rows: [string, string][] = []
-  const camera = [ex.make, ex.model].filter(Boolean).join(' ')
+  // many cameras repeat the make inside the model ("Canon" + "Canon EOS R6")
+  const camera =
+    ex.make && ex.model && ex.model.toLowerCase().startsWith(ex.make.toLowerCase())
+      ? ex.model
+      : [ex.make, ex.model].filter(Boolean).join(' ')
   if (camera) rows.push([t('viewer:info.camera'), camera])
   if (ex.lens) rows.push([t('viewer:info.lens'), ex.lens])
   if (ex.dateTimeOriginal || ex.dateTime)

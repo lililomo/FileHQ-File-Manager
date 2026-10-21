@@ -33,30 +33,39 @@ function entries(v: JsonValue): [string | number, JsonValue][] {
   return []
 }
 
-/** Visible rows: the root plus the children of every expanded container. */
+/** Visible rows: the root plus the children of every expanded container.
+ *  Iterative (explicit stack, document order): a pathologically nested
+ *  document must not blow the call stack (review D). */
 export function flatten(root: JsonValue, expanded: ReadonlySet<string>): JsonRow[] {
   const out: JsonRow[] = []
-  const walk = (value: JsonValue, ptr: string, key: string | number | null, depth: number) => {
+  const stack: { value: JsonValue; ptr: string; key: string | number | null; depth: number }[] = [
+    { value: root, ptr: '', key: null, depth: 0 },
+  ]
+  while (stack.length) {
+    const { value, ptr, key, depth } = stack.pop()!
     const container = isContainer(value)
     const kids = container ? entries(value) : []
     out.push({ ptr, key, value, depth, container, size: kids.length })
     if (container && expanded.has(ptr)) {
-      for (const [k, v] of kids) walk(v, childPtr(ptr, k), k, depth + 1)
+      for (let i = kids.length - 1; i >= 0; i--) {
+        const [k, v] = kids[i]!
+        stack.push({ value: v, ptr: childPtr(ptr, k), key: k, depth: depth + 1 })
+      }
     }
   }
-  walk(root, '', null, 0)
   return out
 }
 
 /** Pointers of every container up to `depth` levels (initial expansion). */
 export function expandToDepth(root: JsonValue, depth: number): Set<string> {
   const out = new Set<string>()
-  const walk = (value: JsonValue, ptr: string, d: number) => {
-    if (!isContainer(value) || d >= depth) return
+  const stack: [JsonValue, string, number][] = [[root, '', 0]]
+  while (stack.length) {
+    const [value, ptr, d] = stack.pop()!
+    if (!isContainer(value) || d >= depth) continue
     out.add(ptr)
-    for (const [k, v] of entries(value)) walk(v, childPtr(ptr, k), d + 1)
+    for (const [k, v] of entries(value)) stack.push([v, childPtr(ptr, k), d + 1])
   }
-  walk(root, '', 0)
   return out
 }
 
@@ -73,20 +82,27 @@ export function allContainers(root: JsonValue, limit = 50_000): Set<string> {
   return out
 }
 
-/** Pointers whose key contains `query` (case-insensitive), in document order. */
+/** Pointers whose key contains `query` (case-insensitive), in document order
+ *  (iterative, see flatten). */
 export function searchKeys(root: JsonValue, query: string, limit = 1000): string[] {
   const q = query.trim().toLowerCase()
   if (!q) return []
   const out: string[] = []
-  const walk = (value: JsonValue, ptr: string) => {
-    for (const [k, v] of entries(value)) {
-      if (out.length >= limit) return
-      const p = childPtr(ptr, k)
-      if (typeof k === 'string' && k.toLowerCase().includes(q)) out.push(p)
-      if (isContainer(v)) walk(v, p)
+  // pre-order walk with an explicit stack of (children, cursor)
+  const stack: { kids: [string | number, JsonValue][]; i: number; ptr: string }[] = [
+    { kids: entries(root), i: 0, ptr: '' },
+  ]
+  while (stack.length && out.length < limit) {
+    const top = stack[stack.length - 1]!
+    if (top.i >= top.kids.length) {
+      stack.pop()
+      continue
     }
+    const [k, v] = top.kids[top.i++]!
+    const p = childPtr(top.ptr, k)
+    if (typeof k === 'string' && k.toLowerCase().includes(q)) out.push(p)
+    if (isContainer(v)) stack.push({ kids: entries(v), i: 0, ptr: p })
   }
-  walk(root, '')
   return out
 }
 

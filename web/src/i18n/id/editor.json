@@ -179,7 +179,8 @@
     "readOnly": "File hanya-baca tidak bisa disimpan",
     "pathCopied": "Path disalin",
     "created": "{{name}} dibuat",
-    "restoredReload": "File dipulihkan ke versi {{no}}; tab dimuat ulang."
+    "restoredReload": "File dipulihkan ke versi {{no}}; tab dimuat ulang.",
+    "gone": "{{name}} tidak ada lagi di server; tab ditutup"
   },
   "versions": {
     "title": "Riwayat versi",

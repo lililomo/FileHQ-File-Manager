@@ -98,7 +98,7 @@
     "zoomAuto": "Otomatis",
     "rotate": "Putar",
     "sidebar": "Sidebar",
-    "thumbnails": "Thumbnail halaman",
+    "thumbnails": "Halaman",
     "outline": "Daftar isi",
     "noOutline": "PDF ini tidak memiliki daftar isi.",
     "search": "Cari teks",
@@ -122,7 +122,8 @@
     "invalid": "File ini bukan PDF yang valid atau rusak.",
     "retry": "Coba lagi",
     "toolbar": "Kontrol PDF",
-    "document": "Dokumen PDF"
+    "document": "Dokumen PDF",
+    "thumbnailsLong": "Thumbnail halaman"
   },
   "audio": {
     "title": "Pemutar musik",
@@ -220,5 +221,6 @@
     "folderItems_one": "Berisi {{n}} item",
     "folderItems_other": "Berisi {{n}} item",
     "folderUnknown": "Jumlah isi belum dihitung."
-  }
+  },
+  "renderError": "Tampilan file ini gagal dirender"
 }

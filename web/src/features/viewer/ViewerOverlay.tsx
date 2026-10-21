@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { FileIcon } from '@/components/file-icon/FileIcon'
 import { toIconCategory } from '@/components/file-icon/categories'
 import { EmptyState } from '@/components/EmptyState'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
@@ -363,13 +364,31 @@ export function ViewerOverlay({
             </IconButton>
           </div>
         </header>
-        <div className="flex min-h-0 flex-1">
+        <div className="relative flex min-h-0 flex-1">
           <div
             ref={contentRef}
             tabIndex={-1}
             className="flex min-h-0 min-w-0 flex-1 flex-col outline-none"
           >
-            <div className="min-h-0 flex-1">{body}</div>
+            <div className="min-h-0 flex-1">
+              <ErrorBoundary
+                resetKey={path}
+                fallback={() => (
+                  <EmptyState
+                    title={t('viewer:renderError')}
+                    description={item?.name ?? path}
+                    className="h-full"
+                    action={
+                      <Button variant="outline" onClick={download} disabled={!item}>
+                        {t('viewer:header.download')}
+                      </Button>
+                    }
+                  />
+                )}
+              >
+                {body}
+              </ErrorBoundary>
+            </div>
             {kind === 'image' && siblings.list.length > 1 ? (
               <Filmstrip items={siblings.list} activeIndex={index} onSelect={onNavigate} />
             ) : null}

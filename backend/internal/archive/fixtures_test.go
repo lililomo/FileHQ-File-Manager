@@ -170,9 +170,16 @@ func run7zRaw(t *testing.T, dir, stdin string, args ...string) []byte {
 // (-mhe=on when encryptNames).
 func sevenZipFixture(t *testing.T, name, password string, encryptNames bool, files map[string][]byte) []byte {
 	t.Helper()
+	return sevenZipFixtureArgs(t, name, password, encryptNames, nil, files)
+}
+
+// sevenZipFixtureArgs is sevenZipFixture with extra `7z a` switches (e.g.
+// -m0=Copy).
+func sevenZipFixtureArgs(t *testing.T, name, password string, encryptNames bool, extra []string, files map[string][]byte) []byte {
+	t.Helper()
 	have7z(t)
 	dir := t.TempDir()
-	args := []string{"a", "-t7z", "-bd", "-y"}
+	args := append([]string{"a", "-t7z", "-bd", "-y"}, extra...)
 	if password != "" {
 		args = append(args, "-p")
 		if encryptNames {

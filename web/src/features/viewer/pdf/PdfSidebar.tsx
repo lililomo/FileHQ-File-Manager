@@ -176,8 +176,11 @@ export function PdfSidebar({
     >
       <Tabs defaultValue="thumbs" className="flex min-h-0 flex-1 flex-col">
         <TabsList className="m-1 grid grid-cols-2">
-          <TabsTrigger value="thumbs">{t('pdf.thumbnails')}</TabsTrigger>
-          <TabsTrigger value="outline" data-testid="pdf-tab-outline">
+          {/* review D: the 176 px sidebar clipped the long labels */}
+          <TabsTrigger value="thumbs" className="min-w-0 truncate" title={t('pdf.thumbnailsLong')}>
+            {t('pdf.thumbnails')}
+          </TabsTrigger>
+          <TabsTrigger value="outline" className="min-w-0 truncate" data-testid="pdf-tab-outline">
             {t('pdf.outline')}
           </TabsTrigger>
         </TabsList>

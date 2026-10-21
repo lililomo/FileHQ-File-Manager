@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { FileIcon } from '@/components/file-icon/FileIcon'
 import { toIconCategory } from '@/components/file-icon/categories'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { IconButton } from '@/components/ui/icon-button'
 import type { Item } from '@/features/browser/api'
 import { ItemFacts, ItemHeader } from '@/features/browser/ItemDetails'
@@ -147,12 +148,21 @@ export function QuickLook({
           </IconButton>
         </header>
         <div className="min-h-0 flex-1">
-          <CompactBody
-            key={item.path}
-            item={item}
-            onDownload={() => void dl.downloadFile(item)}
-            {...meta}
-          />
+          <ErrorBoundary
+            resetKey={item.path}
+            fallback={() => (
+              <p className="p-6 text-center text-sm text-text-muted" role="alert">
+                {t('viewer:renderError')}
+              </p>
+            )}
+          >
+            <CompactBody
+              key={item.path}
+              item={item}
+              onDownload={() => void dl.downloadFile(item)}
+              {...meta}
+            />
+          </ErrorBoundary>
         </div>
       </DialogContent>
     </Dialog>

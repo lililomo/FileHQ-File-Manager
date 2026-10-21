@@ -134,7 +134,6 @@ type contentPutRequest struct {
 	EOL      string `json:"eol"`
 	Force    bool   `json:"force"`
 	Create   bool   `json:"create"`
-	Mode     string `json:"mode,omitempty"`
 }
 
 // handleContentPut: PUT /files/content with If-Match (SPEC §8.13
