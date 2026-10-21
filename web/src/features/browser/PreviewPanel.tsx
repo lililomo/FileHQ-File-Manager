@@ -1,4 +1,4 @@
-import { Download, Pencil, Share2, X } from 'lucide-react'
+import { Download, Eye, Pencil, Share2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
@@ -6,8 +6,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { formatBytes, formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { Item } from './api'
+import { opensInViewer } from '@/features/viewer/viewers'
 import { ItemFacts, ItemHeader } from './ItemDetails'
 import { useItemStat } from './useItemStat'
+import { Thumb } from './views/Thumb'
 
 export interface PreviewPanelProps {
   items: Item[]
@@ -18,6 +20,8 @@ export interface PreviewPanelProps {
   overlay?: boolean
   /** Step 12b: download the selection (single file → signed URL, else zip). */
   onDownload?: (() => void) | undefined
+  /** Step 17a: open the single selected file in the viewer overlay. */
+  onOpen?: ((item: Item) => void) | undefined
 }
 
 /** Right-hand Preview/Details panel (SPEC §9.3, PROMPT 7b task 8). */
@@ -27,6 +31,7 @@ export function PreviewPanel({
   onClose,
   overlay = false,
   onDownload,
+  onOpen,
 }: PreviewPanelProps) {
   const { t, i18n } = useTranslation('files')
   const lang = i18n.resolvedLanguage ?? 'id'
@@ -84,8 +89,25 @@ export function PreviewPanel({
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {single ? (
           <div className="space-y-4">
+            {single.thumb && !single.isDir ? (
+              <div className="flex justify-center rounded-md bg-surface-2 p-2">
+                <Thumb item={single} box={256} className="rounded" />
+              </div>
+            ) : null}
             <ItemHeader item={single} />
             <div className="flex flex-wrap gap-1">
+              {onOpen && opensInViewer(single) ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="gap-1"
+                  onClick={() => onOpen(single)}
+                  data-testid="preview-open"
+                >
+                  <Eye aria-hidden="true" />
+                  {t('preview.open')}
+                </Button>
+              ) : null}
               {downloadButton}
               {quick(t('preview.edit'), Pencil)}
               {quick(t('preview.share'), Share2)}

@@ -141,21 +141,18 @@ export const SHORTCUTS: ShortcutDef[] = [
     allowInInput: true,
     labelKey: 'editorFormat',
   },
-  // --- viewer (Step 17) ---
-  { id: 'viewerPrev', keys: 'ArrowLeft', scope: 'viewer', labelKey: 'viewerPrev', planned: true },
-  { id: 'viewerNext', keys: 'ArrowRight', scope: 'viewer', labelKey: 'viewerNext', planned: true },
-  { id: 'viewerZoomIn', keys: '+', scope: 'viewer', labelKey: 'viewerZoomIn', planned: true },
-  { id: 'viewerZoomOut', keys: '-', scope: 'viewer', labelKey: 'viewerZoomOut', planned: true },
-  { id: 'viewerFit', keys: '0', scope: 'viewer', labelKey: 'viewerFit', planned: true },
-  { id: 'viewerOriginal', keys: '1', scope: 'viewer', labelKey: 'viewerOriginal', planned: true },
-  { id: 'viewerRotate', keys: 'R', scope: 'viewer', labelKey: 'viewerRotate', planned: true },
-  {
-    id: 'viewerFullscreen',
-    keys: 'F',
-    scope: 'viewer',
-    labelKey: 'viewerFullscreen',
-    planned: true,
-  },
+  // --- viewer (Step 17a) ---
+  { id: 'viewerPrev', keys: 'ArrowLeft', scope: 'viewer', labelKey: 'viewerPrev' },
+  { id: 'viewerNext', keys: 'ArrowRight', scope: 'viewer', labelKey: 'viewerNext' },
+  { id: 'viewerZoomIn', keys: '+', alt: ['='], scope: 'viewer', labelKey: 'viewerZoomIn' },
+  { id: 'viewerZoomOut', keys: '-', scope: 'viewer', labelKey: 'viewerZoomOut' },
+  { id: 'viewerFit', keys: '0', scope: 'viewer', labelKey: 'viewerFit' },
+  { id: 'viewerOriginal', keys: '1', scope: 'viewer', labelKey: 'viewerOriginal' },
+  { id: 'viewerRotate', keys: 'R', scope: 'viewer', labelKey: 'viewerRotate' },
+  { id: 'viewerRotateLeft', keys: 'Shift+R', scope: 'viewer', labelKey: 'viewerRotateLeft' },
+  { id: 'viewerFullscreen', keys: 'F', scope: 'viewer', labelKey: 'viewerFullscreen' },
+  { id: 'viewerInfo', keys: 'I', scope: 'viewer', labelKey: 'viewerInfo' },
+  { id: 'viewerSlideshow', keys: 'Space', scope: 'viewer', labelKey: 'viewerSlideshow' },
   { id: 'videoPlay', keys: 'Space', scope: 'video', labelKey: 'videoPlay', planned: true },
   {
     id: 'videoSeek',
@@ -302,6 +299,7 @@ interface Binding {
 }
 
 const bindings = new Map<string, Binding>() // key: `${scope}:${id}`
+const MODAL_SCOPES: ReadonlySet<ShortcutScope> = new Set(['dialog', 'viewer'])
 const scopeStack: ShortcutScope[] = ['global']
 let installed = false
 
@@ -312,9 +310,16 @@ function compile(def: ShortcutDef): Binding['combos'] {
 function onKeyDown(e: KeyboardEvent): void {
   if (e.defaultPrevented) return
   const editable = isEditableTarget(e.target)
-  const top = scopeStack[scopeStack.length - 1]!
-  // dialog scope swallows everything except global
-  const active: ShortcutScope[] = top === 'dialog' ? ['global', 'dialog'] : [...scopeStack]
+  // a modal scope (dialog, viewer) hides everything below it except global:
+  // Delete/Backspace must not reach the file browser behind an overlay
+  let from = 0
+  for (let i = scopeStack.length - 1; i > 0; i--) {
+    if (MODAL_SCOPES.has(scopeStack[i]!)) {
+      from = i
+      break
+    }
+  }
+  const active: ShortcutScope[] = from > 0 ? ['global', ...scopeStack.slice(from)] : [...scopeStack]
   for (const b of bindings.values()) {
     if (!active.includes(b.def.scope)) continue
     if (editable && !b.def.allowInInput) continue

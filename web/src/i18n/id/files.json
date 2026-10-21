@@ -312,7 +312,8 @@
     "multi_other": "{{n}} item dipilih",
     "multiSize": "Total {{size}}",
     "loadedOnly": "(hanya item yang sudah dimuat)",
-    "empty": "Pilih satu item untuk melihat detailnya."
+    "empty": "Pilih satu item untuk melihat detailnya.",
+    "open": "Buka"
   },
   "props": {
     "title": "Properties",
@@ -434,7 +435,10 @@
     "videoJKL": "Mundur 10 s / jeda / maju 10 s",
     "videoMute": "Bisukan",
     "videoVolume": "Volume",
-    "videoPercent": "Lompat ke persen"
+    "videoPercent": "Lompat ke persen",
+    "viewerRotateLeft": "Putar kiri (viewer)",
+    "viewerInfo": "Panel info (viewer)",
+    "viewerSlideshow": "Slideshow / Quick Look (viewer)"
   },
   "palette": {
     "title": "Command palette",

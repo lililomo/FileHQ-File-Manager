@@ -15,6 +15,7 @@ import idRemote from './id/remote.json'
 import idArchive from './id/archive.json'
 import idSearch from './id/search.json'
 import idEditor from './id/editor.json'
+import idViewer from './id/viewer.json'
 import enCommon from './en/common.json'
 import enNav from './en/nav.json'
 import enAuth from './en/auth.json'
@@ -29,6 +30,7 @@ import enRemote from './en/remote.json'
 import enArchive from './en/archive.json'
 import enSearch from './en/search.json'
 import enEditor from './en/editor.json'
+import enViewer from './en/viewer.json'
 
 export const LANGUAGES = ['id', 'en'] as const
 export type Language = (typeof LANGUAGES)[number]
@@ -50,6 +52,7 @@ export const resources = {
     archive: idArchive,
     search: idSearch,
     editor: idEditor,
+    viewer: idViewer,
   },
   en: {
     common: enCommon,
@@ -66,6 +69,7 @@ export const resources = {
     archive: enArchive,
     search: enSearch,
     editor: enEditor,
+    viewer: enViewer,
   },
 } as const
 

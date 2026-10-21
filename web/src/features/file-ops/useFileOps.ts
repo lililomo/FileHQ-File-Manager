@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import type { Item, ListResponse } from '@/features/browser/api'
 import { joinPath, splitPath } from '@/features/browser/path'
 import { announce } from '@/lib/announce'
+import { invalidateMediaUrl } from '@/lib/media-url'
 import { ApiError } from '@/lib/api'
 import { formatBytes, formatNumber } from '@/lib/format'
 import { useClipboardStore } from '@/stores/clipboard'
@@ -194,6 +195,8 @@ export function useFileOps(): FileOps {
         const set = new Set(paths)
         for (const d of new Set(sources))
           patchLists(qc, d, (items) => items.filter((it) => !set.has(it.path)))
+        // signed viewer URLs of the old paths would only 404 (Step 12b note)
+        for (const p of paths) invalidateMediaUrl(p)
       }
       // retry with per-item answers until the server stops reporting conflicts
       const run = async (): Promise<OpResponse | null> => {
@@ -278,6 +281,7 @@ export function useFileOps(): FileOps {
       )
       try {
         const res = await renameItem(path, newName)
+        invalidateMediaUrl(path)
         invalidate([dir])
         done(t('fileops:toast.renamed', { name: newName }), res)
         return res
@@ -317,6 +321,7 @@ export function useFileOps(): FileOps {
         patchLists(qc, d, (items) => items.filter((it) => !set.has(it.path)))
       try {
         const res = await deleteItems(paths)
+        for (const p of paths) invalidateMediaUrl(p)
         invalidate(dirs)
         done(lt(labelKey, { count: paths.length, n: n(paths.length) }), res)
         return res
@@ -351,6 +356,7 @@ export function useFileOps(): FileOps {
         patchLists(qc, d, (items) => items.filter((it) => !set.has(it.path)))
       try {
         const res = await deletePermanentItems(paths)
+        for (const p of paths) invalidateMediaUrl(p)
         invalidate(dirs)
         const msg = t('fileops:toast.deletedPermanent', { count: res.deleted, n: n(res.deleted) })
         toast.success(msg)

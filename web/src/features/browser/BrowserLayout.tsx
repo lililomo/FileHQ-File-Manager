@@ -1,6 +1,8 @@
 import { useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { ArchiveBrowser } from '@/features/archive/ArchiveBrowser'
+import { ViewerOverlay } from '@/features/viewer/ViewerOverlay'
+import { opensInViewer, viewerFor } from '@/features/viewer/viewers'
 import { EditorModal } from '@/features/editor/EditorModal'
 import { isEditableByName } from '@/features/editor/languages'
 import { FolderOpen, FolderPlus, Upload } from 'lucide-react'
@@ -125,11 +127,14 @@ export function BrowserLayout({
   path,
   selectName,
   archivePath,
+  viewPath,
 }: {
   path: string
   selectName?: string | undefined
   /** `?archive=<path>`: the archive browser overlay (Step 14b) is open on this archive. */
   archivePath?: string | undefined
+  /** `?view=<path>`: the viewer overlay (Step 17a) is open on this file. */
+  viewPath?: string | undefined
 }) {
   const { t, i18n } = useTranslation(['files', 'fileops', 'errors', 'common', 'meta'])
   const navigate = useNavigate()
@@ -138,6 +143,8 @@ export function BrowserLayout({
   const previewOverlay = useMediaQuery('(max-width: 1279px)')
   const [editing, setEditing] = useState(false)
   const [quickLook, setQuickLook] = useState<Item | null>(null)
+  // Quick Look of an image/PDF is the viewer overlay at 80 % (SPEC §8.14)
+  const [quickView, setQuickView] = useState<Item | null>(null)
   const [editorPath, setEditorPath] = useState<string | null>(null)
   const [properties, setProperties] = useState<PropertiesTarget | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
@@ -439,6 +446,56 @@ export function BrowserLayout({
     () => void navigate({ to: '/files/$', params: { _splat: pathToSplat(path) }, search: {} }),
     [navigate, path],
   )
+  // --- viewer overlay (Step 17a): `?view=<path>` is a history entry so Back closes it ---
+  const viewerPushed = useRef(false)
+  const openViewer = useCallback(
+    (file: string) => {
+      viewerPushed.current = true
+      void navigate({
+        to: '/files/$',
+        params: { _splat: pathToSplat(path) },
+        search: { view: file },
+      })
+    },
+    [navigate, path],
+  )
+  const viewerNavigate = useCallback(
+    (item: Item) =>
+      void navigate({
+        to: '/files/$',
+        params: { _splat: pathToSplat(path) },
+        search: { view: item.path },
+        replace: true,
+      }),
+    [navigate, path],
+  )
+  const closeViewer = useCallback(() => {
+    if (viewerPushed.current) {
+      viewerPushed.current = false
+      window.history.back()
+      return
+    }
+    // deep link: nothing to go back to inside the app
+    void navigate({ to: '/files/$', params: { _splat: pathToSplat(path) }, search: {} })
+  }, [navigate, path])
+  const viewerOpenLocation = useCallback(
+    (item: Item) => {
+      viewerPushed.current = false
+      void navigate({
+        to: '/files/$',
+        params: { _splat: pathToSplat(parentPath(item.path) ?? ROOT) },
+        search: { select: item.name },
+      })
+    },
+    [navigate],
+  )
+  const viewerEdit = useCallback(
+    (item: Item) => {
+      closeViewer()
+      setEditorPath(item.path)
+    },
+    [closeViewer],
+  )
   const onOpen = useCallback(
     (item: Item) => {
       if (item.isDir || (item.isSymlink && !item.broken && item.type === 'dir')) {
@@ -451,18 +508,26 @@ export function BrowserLayout({
         recordOpen(item.path).catch(() => {})
         return
       }
+      if (opensInViewer(item)) {
+        // SPEC §8.14: images and PDFs open in the viewer overlay (it records the open)
+        openViewer(item.path)
+        return
+      }
       if (isEditableByName(item.name, item.mime, item.category)) {
         // SPEC §8.13: text and code open in the editor (modal; maximize → /editor)
         setEditorPath(item.path)
         recordOpen(item.path).catch(() => {})
         return
       }
-      toast(t('files:viewer.notYet', { name: item.name }))
-      // Recent reflects opens (SPEC §8.7); the viewers of Step 17 keep calling this.
-      recordOpen(item.path).catch(() => {})
+      // no viewer yet (audio/video/text arrive in 17b): the overlay shows the info card
+      openViewer(item.path)
     },
-    [go, t, openArchive],
+    [go, openArchive, openViewer],
   )
+  const onQuickLook = useCallback((item: Item) => {
+    if (!item.isDir && viewerFor(item) !== 'archive' && opensInViewer(item)) setQuickView(item)
+    else setQuickLook(item)
+  }, [])
 
   // --- file operations (Step 9b) ---
   const openNew = useCallback(
@@ -720,6 +785,7 @@ export function BrowserLayout({
     selItems,
   ])
   useDialogScope(!!quickLook || !!properties || !!archivePath || !!editorPath)
+  // the viewer pushes its own modal scope
 
   // --- action registry context (palette, toolbar, context menu) ---
   const actionCtx = useMemo<ActionContext>(
@@ -770,7 +836,7 @@ export function BrowserLayout({
         else if (focusItem) setProperties({ items: [focusItem] })
       },
       quickLook: () => {
-        if (focusItem) setQuickLook(focusItem)
+        if (focusItem) onQuickLook(focusItem)
       },
       focusFilter: () => filterRef.current?.focus(),
       open: () => {
@@ -804,6 +870,7 @@ export function BrowserLayout({
       openHelp,
       focusItem,
       onOpen,
+      onQuickLook,
       fileOps,
       meta,
       selPaths,
@@ -982,7 +1049,7 @@ export function BrowserLayout({
       isFetchingNextPage: listing.isFetchingNextPage,
       fetchNextPage: () => void listing.fetchNextPage(),
       onOpen,
-      onQuickLook: setQuickLook,
+      onQuickLook,
       selection,
       onSelectionChange: setSelection,
       activeIndex,
@@ -1170,6 +1237,7 @@ export function BrowserLayout({
             onClose={togglePreview}
             overlay={previewOverlay}
             onDownload={selItems.length ? () => void dl.download(selItems) : undefined}
+            onOpen={onOpen}
           />
         ) : null}
       </div>
@@ -1185,6 +1253,33 @@ export function BrowserLayout({
       />
       <NoteDialog item={noteTarget} onClose={() => setNoteTarget(null)} onSave={saveNote} />
       {archivePath ? <ArchiveBrowser archivePath={archivePath} onClose={closeArchive} /> : null}
+      {viewPath ? (
+        <ViewerOverlay
+          path={viewPath}
+          items={filtered}
+          paging={{
+            hasNextPage: listing.hasNextPage,
+            isFetchingNextPage: listing.isFetchingNextPage,
+            fetchNextPage: () => void listing.fetchNextPage(),
+          }}
+          onClose={closeViewer}
+          onNavigate={viewerNavigate}
+          onEdit={viewerEdit}
+          onOpenLocation={viewerOpenLocation}
+          restoreFocus={focusGrid}
+        />
+      ) : null}
+      {quickView ? (
+        <ViewerOverlay
+          path={quickView.path}
+          items={filtered}
+          paging={{ hasNextPage: false, isFetchingNextPage: false, fetchNextPage: () => {} }}
+          onClose={() => setQuickView(null)}
+          onNavigate={() => {}}
+          quickLook
+          restoreFocus={focusGrid}
+        />
+      ) : null}
       <EditorModal path={editorPath} onClose={() => setEditorPath(null)} />
       <QuickLookDialog
         item={quickLook}

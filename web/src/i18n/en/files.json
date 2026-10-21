@@ -312,7 +312,8 @@
     "multi_other": "{{n}} items selected",
     "multiSize": "Total {{size}}",
     "loadedOnly": "(loaded items only)",
-    "empty": "Select one item to see its details."
+    "empty": "Select one item to see its details.",
+    "open": "Open"
   },
   "props": {
     "title": "Properties",
@@ -434,7 +435,10 @@
     "videoJKL": "Back 10 s / pause / forward 10 s",
     "videoMute": "Mute",
     "videoVolume": "Volume",
-    "videoPercent": "Jump to percent"
+    "videoPercent": "Jump to percent",
+    "viewerRotateLeft": "Rotate left (viewer)",
+    "viewerInfo": "Info panel (viewer)",
+    "viewerSlideshow": "Slideshow / Quick Look (viewer)"
   },
   "palette": {
     "title": "Command palette",
