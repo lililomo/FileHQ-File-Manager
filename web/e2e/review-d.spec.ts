@@ -121,6 +121,18 @@ test.beforeEach(async ({ page }) => {
 
 test.afterEach(async ({ page }) => {
   await apiPut(page, '/me/editor-session', { tabs: [], activePath: null })
+  // the compress/copy tasks and their notification must not leak into
+  // tasks.spec, which counts task rows and the unread badge from a clean state
+  const token = await csrfToken(page.request)
+  const headers = { 'X-CSRF-Token': token, Origin: ORIGIN }
+  const list = (await (await page.request.get('/api/v1/tasks?limit=200')).json()) as {
+    items: { id: string; state: string }[]
+  }
+  for (const t of list.items) {
+    if (t.state === 'queued' || t.state === 'running') continue
+    await page.request.delete(`/api/v1/tasks/${encodeURIComponent(t.id)}`, { headers })
+  }
+  await page.request.post('/api/v1/notifications/read', { data: { all: true }, headers })
 })
 
 test('a file name that is an XSS payload is text on every surface', async ({ page }) => {
@@ -208,6 +220,9 @@ test('a file name that is an XSS payload is text on every surface', async ({ pag
   await expect(page.getByTestId('notifications-unread')).toHaveText('1', { timeout: 60_000 })
   await page.getByTestId('notifications-bell').click()
   await expect(page.getByTestId('notification-row').first()).toContainText(DIR_NAME)
+  // leave no unread notification behind: tasks.spec expects a clean badge
+  await page.getByTestId('notifications-read-all').click()
+  await expect(page.getByTestId('notifications-unread')).toHaveCount(0)
   await page.keyboard.press('Escape')
   await expectNoXss(page)
   // transfer panel: upload a payload-named file through the real chooser
