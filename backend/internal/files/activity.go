@@ -37,6 +37,9 @@ const (
 	ActDownload    = "download"
 	ActRemoteDL    = "remote_download"
 	ActReplace     = "replace"
+	ActShareCreate = "share_create"
+	ActShareUpdate = "share_update"
+	ActShareDelete = "share_delete"
 )
 
 // RecentActions feed the Recent page (SPEC §8.7): opened, edited, uploaded,

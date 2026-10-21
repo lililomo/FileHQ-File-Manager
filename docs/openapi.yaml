@@ -35,6 +35,10 @@ tags:
     description: Pencarian nama (walk) dan isi (ripgrep / fallback Go), replace in files dengan pratinjau, riwayat (SPEC §8.12)
   - name: versions
     description: Versi pre-image file (SPEC §8.13; Step 15 minimal — content/download tiba di Step 16b)
+  - name: shares
+    description: Link publik milik user (SPEC §8.15, §6.3 Shares; Step 18a)
+  - name: public
+    description: API tamu di balik /s/<token> — tanpa sesi, otorisasi = token/slug + cookie unlock (SPEC §6.6)
 
 paths:
   /healthz:
@@ -2644,6 +2648,468 @@ paths:
         "204": { description: Deleted }
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+  /api/v1/shares:
+    post:
+      tags: [shares]
+      summary: Create a public link (SPEC §8.15; mode users arrives in Step 18b)
+      operationId: sharesCreate
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShareInput" }
+      responses:
+        "201":
+          description: "`share` plus `url` (the link; also available later through `share.url`)"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  share: { $ref: "#/components/schemas/Share" }
+                  url: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { description: "PUBLIC_SHARES_ENABLED off (reason feature_disabled) or PASSWORD_CHANGE_REQUIRED", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { description: "ALREADY_EXISTS: slug taken", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    get:
+      tags: [shares]
+      summary: List the caller's shares, newest first (cursor; filters mode/status)
+      operationId: sharesList
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: mode, in: query, schema: { type: string, enum: [public, users] } }
+        - { name: status, in: query, schema: { type: string, enum: [active, disabled, expired, broken] } }
+      responses:
+        "200":
+          description: One page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SharePage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/shares/by-path:
+    get:
+      tags: [shares]
+      summary: Shares of one item of the caller (badge / dialog)
+      operationId: sharesByPath
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Share" } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/shares/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [shares]
+      summary: One share of the caller (another owner's id → 404)
+      operationId: sharesGet
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: Share, content: { application/json: { schema: { type: object, properties: { share: { $ref: "#/components/schemas/Share" } } } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [shares]
+      summary: Update protection/options; `password:null` removes the password, `disabled` toggles the link
+      operationId: sharesUpdate
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShareInput" }
+      responses:
+        "200": { description: Updated share, content: { application/json: { schema: { type: object, properties: { share: { $ref: "#/components/schemas/Share" } } } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { description: "FORBIDDEN: disabled by an administrator", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [shares]
+      summary: Delete a share (access logs cascade)
+      operationId: sharesDelete
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/shares/{id}/disable:
+    post:
+      tags: [shares]
+      summary: Disable a link temporarily (reason manual)
+      operationId: sharesDisable
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Share, content: { application/json: { schema: { type: object, properties: { share: { $ref: "#/components/schemas/Share" } } } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/shares/{id}/enable:
+    post:
+      tags: [shares]
+      summary: Enable a link again (also after a Recycle Bin restore; admin_revoked/owner_disabled → 403)
+      operationId: sharesEnable
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Share, content: { application/json: { schema: { type: object, properties: { share: { $ref: "#/components/schemas/Share" } } } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/shares/{id}/regenerate-token:
+    post:
+      tags: [shares]
+      summary: Replace the token (old link stops working; a custom slug is dropped)
+      operationId: sharesRegenerateToken
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Share + url, content: { application/json: { schema: { type: object, properties: { share: { $ref: "#/components/schemas/Share" }, url: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/shares/{id}/access-logs:
+    get:
+      tags: [shares]
+      summary: Access journal of a share (IP truncated to /24 or /48), newest first
+      operationId: sharesAccessLogs
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: One page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareAccessLogPage" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/public/shares/{token}:
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string }, description: "43-char token or custom slug" }
+    get:
+      tags: [public]
+      summary: Guest metadata of a link (SPEC §6.6). Before an unlock only the password state is revealed; counts one view per visitor per day (cookie fm_pv)
+      operationId: publicShareMeta
+      security: []
+      responses:
+        "200": { description: Meta, content: { application/json: { schema: { $ref: "#/components/schemas/PublicShareMeta" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { description: "SHARE_EXPIRED / SHARE_DISABLED (reason manual|owner_disabled|item_trashed|admin_revoked|broken|locked)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/public/shares/{token}/unlock:
+    post:
+      tags: [public]
+      summary: Verify the link password; sets cookie fm_share_<id> for /s/<token> and the API path (1 h). Limits 10/10 min per link+IP, 30/10 min per IP; 50 failures/h lock the link for an hour
+      operationId: publicShareUnlock
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [password], properties: { password: { type: string } } }
+      responses:
+        "204": { description: Unlocked (Set-Cookie) }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { description: SHARE_PASSWORD_WRONG, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/public/shares/{token}/list:
+    get:
+      tags: [public]
+      summary: Read-only listing inside a shared folder (`path` relative to it; nothing above it exists; dotfiles hidden)
+      operationId: publicShareList
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: path, in: query, schema: { type: string, default: "/" } }
+        - { name: sort, in: query, schema: { type: string } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc] } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: Listing, content: { application/json: { schema: { $ref: "#/components/schemas/ListResponse" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { description: SHARE_PASSWORD_REQUIRED, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "hide_listing", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/public/shares/{token}/stat:
+    get:
+      tags: [public]
+      summary: Item + stat inside the share (`path` relative; "/" = the shared item)
+      operationId: publicShareStat
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: path, in: query, schema: { type: string, default: "/" } }
+      responses:
+        "200": { description: Item, content: { application/json: { schema: { $ref: "#/components/schemas/StatResponse" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+  /api/v1/public/shares/{token}/content:
+    get:
+      tags: [public]
+      summary: Decoded text of a file inside the share (≤ 1 MB, read-only)
+      operationId: publicShareContent
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: path, in: query, schema: { type: string, default: "/" } }
+        - { name: encoding, in: query, schema: { type: string } }
+      responses:
+        "200": { description: Content, content: { application/json: { schema: { $ref: "#/components/schemas/FileContent" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+  /api/v1/public/shares/{token}/media-info:
+    get:
+      tags: [public]
+      summary: Viewer metadata of a file inside the share (never GPS; subtitles with public URLs)
+      operationId: publicShareMediaInfo
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: path, in: query, schema: { type: string, default: "/" } }
+      responses:
+        "200": { description: Media info, content: { application/json: { schema: { $ref: "#/components/schemas/MediaInfo" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+  /api/v1/public/shares/{token}/thumb:
+    get:
+      tags: [public]
+      summary: Thumbnail of an item inside the share (owner's pipeline; symlinks refused)
+      operationId: publicShareThumb
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: path, in: query, schema: { type: string, default: "/" } }
+        - { name: size, in: query, schema: { type: integer, enum: [128, 256, 512], default: 256 } }
+      responses:
+        "200": { description: image/webp }
+        "202": { description: Rendering (Retry-After) }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+  /api/v1/public/shares/{token}/raw:
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string } }
+      - { name: path, in: query, schema: { type: string, default: "/" } }
+      - { name: purpose, in: query, schema: { type: string, enum: [media, inline], default: media } }
+      - { name: variant, in: query, schema: { type: string, enum: [preview, thumb] } }
+    head:
+      tags: [public]
+      summary: Headers of raw content (same parameters as GET)
+      operationId: publicShareRawHead
+      security: []
+      responses:
+        "200": { description: Headers }
+    get:
+      tags: [public]
+      summary: Inline/media content of a file inside the share (Range; inline policy of ADR-06; `variant` = preview 2048 px / thumb 512)
+      operationId: publicShareRaw
+      security: []
+      responses:
+        "200": { description: Content }
+        "206": { description: Partial content }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/public/shares/{token}/download:
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string } }
+      - { name: path, in: query, schema: { type: string, default: "/" } }
+    head:
+      tags: [public]
+      summary: Headers of a download (not counted)
+      operationId: publicShareDownloadHead
+      security: []
+      responses:
+        "200": { description: Headers }
+    get:
+      tags: [public]
+      summary: Attachment download of one file; counts against maxDownloads (once per download, Range continuations excluded); preview-only links → 403
+      operationId: publicShareDownload
+      security: []
+      responses:
+        "200": { description: Content }
+        "206": { description: Partial content }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { description: "preview_only", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { description: "SHARE_LIMIT_REACHED / SHARE_EXPIRED / SHARE_DISABLED", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/public/shares/{token}/zip:
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [public]
+      summary: Prepare a zip of paths inside a shared folder (`["/"]` = everything) → `{url}` valid 10 minutes
+      operationId: publicShareZipCreate
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [paths], properties: { paths: { type: array, items: { type: string } }, name: { type: string } } }
+      responses:
+        "200": { description: "`url`, `name`, `count`", content: { application/json: { schema: { type: object, properties: { url: { type: string }, name: { type: string }, count: { type: integer } } } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+    head:
+      tags: [public]
+      summary: Headers of a zip stream
+      operationId: publicShareZipHead
+      security: []
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Headers }
+    get:
+      tags: [public]
+      summary: Stream the prepared zip (counts as one download)
+      operationId: publicShareZipGet
+      security: []
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: application/zip }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+  /api/v1/public/shares/{token}/subtitle:
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string } }
+      - { name: path, in: query, required: true, schema: { type: string } }
+    head:
+      tags: [public]
+      summary: Headers of a subtitle
+      operationId: publicShareSubtitleHead
+      security: []
+      responses:
+        "200": { description: Headers }
+    get:
+      tags: [public]
+      summary: Sidecar subtitle inside the share as sanitised WebVTT
+      operationId: publicShareSubtitle
+      security: []
+      responses:
+        "200": { description: text/vtt }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+  /api/v1/public/shares/{token}/upload/precheck:
+    post:
+      tags: [public]
+      summary: File request precheck (folder = the shared one; conflicts become renames)
+      operationId: publicShareUploadPrecheck
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [files], properties: { files: { type: array, items: { $ref: "#/components/schemas/UploadPrecheckItem" } } } }
+      responses:
+        "200": { description: Verdicts, content: { application/json: { schema: { $ref: "#/components/schemas/UploadPrecheckResponse" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { description: "upload_disabled", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+  /api/v1/public/shares/{token}/upload/tus:
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [public]
+      summary: Create a file-request upload (tus creation; as the owner, into the shared folder, policy rename, owner quota; `Location` points at the public endpoint)
+      operationId: publicShareTusCreate
+      security: []
+      responses:
+        "201": { description: Upload created }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+    options:
+      tags: [public]
+      summary: tus capability discovery
+      operationId: publicShareTusOptions
+      security: []
+      responses:
+        "200": { description: Protocol headers }
+  /api/v1/public/shares/{token}/upload/tus/{id}:
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string } }
+      - { name: id, in: path, required: true, schema: { type: string } }
+    head:
+      tags: [public]
+      summary: Offset of a file-request upload (ids of other shares look non-existent)
+      operationId: publicShareTusHead
+      security: []
+      responses:
+        "200": { description: "`Upload-Offset`" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [public]
+      summary: Append a chunk (≤ UPLOAD_CHUNK_SIZE); the last chunk lands the file
+      operationId: publicShareTusPatch
+      security: []
+      responses:
+        "204": { description: Chunk stored }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "423": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [public]
+      summary: Abort a file-request upload
+      operationId: publicShareTusDelete
+      security: []
+      responses:
+        "204": { description: Aborted }
+        "404": { $ref: "#/components/responses/Error" }
+    options:
+      tags: [public]
+      summary: tus capability discovery
+      operationId: publicShareTusIdOptions
+      security: []
+      responses:
+        "200": { description: Protocol headers }
 components:
   securitySchemes:
     cookieAuth:
@@ -2656,6 +3122,94 @@ components:
       in: header
       name: X-CSRF-Token
   schemas:
+    Share:
+      type: object
+      description: Owner view of a share (SPEC §6.3). `url` is empty when the stored token can no longer be decrypted.
+      properties:
+        id: { type: string }
+        path: { type: string }
+        name: { type: string }
+        isDir: { type: boolean }
+        mode: { type: string, enum: [public, users] }
+        slug: { type: [string, "null"] }
+        hasPassword: { type: boolean }
+        expiresAt: { type: [string, "null"] }
+        maxDownloads: { type: [integer, "null"] }
+        downloadCount: { type: integer }
+        viewCount: { type: integer }
+        allowDownload: { type: boolean }
+        allowUpload: { type: boolean }
+        hideOwner: { type: boolean }
+        hideListing: { type: boolean }
+        note: { type: [string, "null"] }
+        disabledAt: { type: [string, "null"] }
+        disabledReason: { type: [string, "null"], enum: [manual, owner_disabled, item_trashed, admin_revoked, null] }
+        brokenAt: { type: [string, "null"] }
+        lastAccessAt: { type: [string, "null"] }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+        url: { type: string }
+        status: { type: string, enum: [active, disabled, expired, broken] }
+    ShareInput:
+      type: object
+      description: "Create: `path` + options. PATCH: any subset; `password: null` removes the password, `expiresInDays: 0` or `expiresAt: null` = no expiry (when allowed), `disabled` toggles."
+      properties:
+        path: { type: string }
+        mode: { type: string, enum: [public, users], default: public }
+        slug: { type: [string, "null"], pattern: "^[a-z0-9][a-z0-9-]{2,63}$" }
+        password: { type: [string, "null"], minLength: 4, maxLength: 128 }
+        expiresAt: { type: [string, "null"] }
+        expiresInDays: { type: [integer, "null"], minimum: 0, maximum: 3650 }
+        maxDownloads: { type: [integer, "null"], minimum: 0 }
+        allowDownload: { type: boolean, default: true }
+        allowUpload: { type: boolean, default: false }
+        hideOwner: { type: boolean, default: false }
+        hideListing: { type: boolean, default: false }
+        note: { type: [string, "null"], maxLength: 500 }
+        disabled: { type: boolean }
+    SharePage:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Share" } }
+        nextCursor: { type: [string, "null"] }
+    ShareAccessLogPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              at: { type: string }
+              ipTrunc: { type: string }
+              action: { type: string, enum: [view, list, download, zip, unlock_ok, unlock_fail, upload, denied] }
+              path: { type: [string, "null"] }
+              userId: { type: [string, "null"] }
+              userAgent: { type: string }
+        nextCursor: { type: [string, "null"] }
+    PublicShareMeta:
+      type: object
+      description: Guest metadata. Locked links (password not yet given) only carry `isDir`, `passwordRequired`, `unlocked`, the policy flags and `expiresAt`.
+      properties:
+        name: { type: string }
+        isDir: { type: boolean }
+        size: { type: integer }
+        mime: { type: [string, "null"] }
+        category: { type: string }
+        mtime: { type: string }
+        itemCount: { type: [integer, "null"] }
+        owner: { type: string }
+        note: { type: [string, "null"] }
+        allowDownload: { type: boolean }
+        allowUpload: { type: boolean }
+        hideListing: { type: boolean }
+        expiresAt: { type: [string, "null"] }
+        passwordRequired: { type: boolean }
+        unlocked: { type: boolean }
+        downloadLimitReached: { type: boolean }
+        maxDownloads: { type: [integer, "null"] }
+        downloadCount: { type: integer }
     UploadPrecheckRequest:
       type: object
       required: [path, files]

@@ -628,7 +628,9 @@ func (s *Service) delete(ctx context.Context, j *fsjail.Jail, userID string, pat
 		if err != nil {
 			return res, err
 		}
-		// shares → disabled item_trashed arrives with the shares table (18a)
+		if s.TrashHook != nil {
+			s.TrashHook.Trashed(ctx, userID, string(p))
+		}
 		s.logActivity(ctx, s.repo, userID, action, string(p), "", map[string]any{"op": ActDelete, "trashId": row.ID, "size": row.SizeBytes, "isDir": info.IsDir}, batchID)
 		s.changed(ctx, userID, p, info.IsDir)
 		res.Results = append(res.Results, ItemResult{Path: string(p), Status: "ok", IsDir: info.IsDir, TrashID: row.ID})
@@ -716,6 +718,9 @@ func (s *Service) Undo(ctx context.Context, j *fsjail.Jail, userID, token string
 				break
 			}
 			s.logActivity(ctx, s.repo, userID, ActRestore, string(p), "", map[string]any{"trashId": t.ID, "undo": true}, info.BatchID)
+			if s.TrashHook != nil {
+				s.TrashHook.Restored(ctx, userID, string(p))
+			}
 			s.changed(ctx, userID, p, false)
 			res.Results = append(res.Results, ItemResult{Path: string(p), Status: "ok", TrashID: t.ID})
 		}

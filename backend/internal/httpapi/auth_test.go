@@ -34,6 +34,7 @@ import (
 	"kppbwi.app/filemanager/internal/quota"
 	"kppbwi.app/filemanager/internal/remotedl"
 	"kppbwi.app/filemanager/internal/search"
+	"kppbwi.app/filemanager/internal/share"
 	"kppbwi.app/filemanager/internal/sse"
 	"kppbwi.app/filemanager/internal/tasks"
 	"kppbwi.app/filemanager/internal/trash"
@@ -89,6 +90,7 @@ type authEnv struct {
 	archive  *archive.Service
 	search   *search.Service
 	versions *versions.Store
+	share    *share.Service
 }
 
 type notifyFunc func(ctx context.Context, userID, typ, title, body, link string) error
@@ -164,7 +166,20 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 			env.listing.Invalidate(userID, "", dir)
 		}
 	}})
-	env.listing = listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize, Meta: env.meta})
+	env.share = share.New(share.Options{Repo: store, AppSecret: cfg.AppSecret, BaseURL: cfg.AppBaseURL, PublicEnabled: cfg.PublicSharesEnabled,
+		AllowNoExpiry: cfg.ShareAllowNoExpiry, RequirePassword: cfg.ShareRequirePassword, DefaultExpiryDays: cfg.ShareDefaultExpiryDays, Logger: logger, Now: clock.Now,
+		Invalidate: func(userID string, dir fsjail.VPath) {
+			if env.listing != nil {
+				env.listing.Invalidate(userID, "", dir)
+			}
+		},
+		Notify: func(ctx context.Context, userID, typ, title, body, link string) {
+			if env.notify != nil {
+				_, _ = env.notify.Create(ctx, userID, typ, title, body, link)
+			}
+		}})
+	env.share.RegisterRefs()
+	env.listing = listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize, Meta: listing.MultiMeta(env.meta, env.share)})
 	env.files = files.New(files.Options{Repo: store, Locks: env.locks, Trash: env.trash, Logger: logger, Quota: env.quota, Now: clock.Now, BlockedExtensions: cfg.BlockedExtensions,
 		SyncMaxEntries: syncMaxEntries,
 		Invalidate:     func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) }})
@@ -190,6 +205,7 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 			return err
 		}), Quota: env.quota, OpenJail: env.trash.OpenJail, ErrorCode: files.TaskErrorCode, NotifyMinDuration: &zero, ItemDelay: itemDelay})
 	files.RegisterTasks(env.tasks, env.files)
+	env.files.TrashHook = env.share
 	// Remote downloads (Step 13): loopback only when a test asks for it
 	// (httptest servers); in-task retries without backoff.
 	remoteGuard := netguard.New(netguard.Policy{AllowLoopback: remoteLoopback})
@@ -232,13 +248,16 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 		Repo: store, Quota: env.quota, Files: env.files, Locks: env.locks, OpenJail: upload.OpenJailFunc(env.trash.OpenJail),
 		Versions: env.versions, EditorMaxFileSize: cfg.EditorMaxFileSize,
 		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) },
-		Publish:    env.events.Publish, RequestID: RequestIDFrom, Logger: logger, Now: clock.Now})
+		OnShareUpload: func(_ context.Context, p upload.Principal, path fsjail.VPath, size int64) {
+			env.share.RecordUpload(p.ShareID, p.UserID, p.IP, p.UserAgent, string(p.ShareDest), string(path), size)
+		},
+		Publish: env.events.Publish, RequestID: RequestIDFrom, Logger: logger, Now: clock.Now})
 	if err != nil {
 		t.Fatal(err)
 	}
 	env.dl = download.NewLimiter(0)
 	env.handler = New(Options{Cfg: cfg, Logger: logger, Version: "test", Store: store, Auth: svc, Listing: env.listing, Locks: env.locks, Files: env.files, Quota: env.quota, Meta: env.meta,
-		Tasks: env.tasks, Events: env.events, Notify: env.notify, Upload: env.upload, Downloads: env.dl, Remote: env.remote, Archives: env.archive, Search: env.search, Versions: env.versions,
+		Tasks: env.tasks, Events: env.events, Notify: env.notify, Upload: env.upload, Downloads: env.dl, Remote: env.remote, Archives: env.archive, Search: env.search, Versions: env.versions, Share: env.share,
 		Assets: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("spa")) })})
 	return env
 }

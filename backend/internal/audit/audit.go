@@ -15,19 +15,24 @@ import (
 
 // Action names (SPEC §8.16). Keep in sync with the admin audit filter UI.
 const (
-	ActionSeedAdmin       = "system.seed_admin"
-	ActionLogin           = "auth.login"
-	ActionLoginFailed     = "auth.login_failed"
-	ActionAccountLocked   = "auth.account_locked"
-	ActionLogout          = "auth.logout"
-	ActionPasswordChanged = "auth.password_changed"
-	ActionHomeProvisioned = "user.home_provisioned"
-	ActionHomeReused      = "user.home_reused"
-	ActionRevokeSessions  = "user.revoke_sessions"
-	ActionDeletePermanent = "file.delete_permanent"
-	ActionTrashEmpty      = "trash.empty"
-	ActionQuotaDrift      = "quota.drift"
-	ActionRemoteDownload  = "remote_download.created"
+	ActionSeedAdmin           = "system.seed_admin"
+	ActionLogin               = "auth.login"
+	ActionLoginFailed         = "auth.login_failed"
+	ActionAccountLocked       = "auth.account_locked"
+	ActionLogout              = "auth.logout"
+	ActionPasswordChanged     = "auth.password_changed"
+	ActionHomeProvisioned     = "user.home_provisioned"
+	ActionHomeReused          = "user.home_reused"
+	ActionRevokeSessions      = "user.revoke_sessions"
+	ActionDeletePermanent     = "file.delete_permanent"
+	ActionTrashEmpty          = "trash.empty"
+	ActionQuotaDrift          = "quota.drift"
+	ActionRemoteDownload      = "remote_download.created"
+	ActionShareCreate         = "share.create"
+	ActionShareUpdate         = "share.update"
+	ActionShareDelete         = "share.delete"
+	ActionSharePublicAccess   = "share.public_access"
+	ActionSharePasswordFailed = "share.password_failed"
 )
 
 // Entry is one audit event. Details must never contain secrets; keys that

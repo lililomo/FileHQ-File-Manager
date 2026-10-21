@@ -175,6 +175,53 @@ type Setting struct {
 	UpdatedBy *string `json:"updated_by"`
 }
 
+type Share struct {
+	ID             string  `json:"id"`
+	OwnerUserID    string  `json:"owner_user_id"`
+	Path           string  `json:"path"`
+	IsDir          int64   `json:"is_dir"`
+	Mode           string  `json:"mode"`
+	TokenHash      *string `json:"token_hash"`
+	Slug           *string `json:"slug"`
+	PasswordHash   *string `json:"password_hash"`
+	ExpiresAt      *string `json:"expires_at"`
+	MaxDownloads   *int64  `json:"max_downloads"`
+	DownloadCount  int64   `json:"download_count"`
+	ViewCount      int64   `json:"view_count"`
+	AllowDownload  int64   `json:"allow_download"`
+	AllowUpload    int64   `json:"allow_upload"`
+	AllowReshare   int64   `json:"allow_reshare"`
+	HideOwner      int64   `json:"hide_owner"`
+	HideListing    int64   `json:"hide_listing"`
+	Note           *string `json:"note"`
+	TokenEnc       []byte  `json:"token_enc"`
+	DisabledAt     *string `json:"disabled_at"`
+	DisabledReason *string `json:"disabled_reason"`
+	BrokenAt       *string `json:"broken_at"`
+	LastAccessAt   *string `json:"last_access_at"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
+}
+
+type ShareAccessLog struct {
+	ID        int64   `json:"id"`
+	ShareID   string  `json:"share_id"`
+	At        string  `json:"at"`
+	IpTrunc   string  `json:"ip_trunc"`
+	Action    string  `json:"action"`
+	UserID    *string `json:"user_id"`
+	UserAgent string  `json:"user_agent"`
+	Path      *string `json:"path"`
+}
+
+type ShareRecipient struct {
+	ShareID         string  `json:"share_id"`
+	RecipientUserID string  `json:"recipient_user_id"`
+	Permission      string  `json:"permission"`
+	Note            *string `json:"note"`
+	CreatedAt       string  `json:"created_at"`
+}
+
 type Task struct {
 	ID              string  `json:"id"`
 	UserID          *string `json:"user_id"`

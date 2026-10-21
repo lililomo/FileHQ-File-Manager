@@ -47,7 +47,7 @@ func (s *Service) preCreate(ev handler.HookEvent) (handler.HTTPResponse, handler
 	if s.o.MaxUploadSize > 0 && size > s.o.MaxUploadSize {
 		return s.createErr(ctx, newErr(CodePayloadTooLarge, http.StatusRequestEntityTooLarge, "file exceeds MAX_UPLOAD_SIZE", map[string]any{"reason": "too_large", "size": size, "max": s.o.MaxUploadSize}))
 	}
-	m, perr := s.parseMetadata(ev.Upload.MetaData)
+	m, perr := s.parseMetadata(ev.Upload.MetaData, p)
 	if perr != nil {
 		return s.createErr(ctx, perr)
 	}
@@ -78,7 +78,7 @@ func (s *Service) preCreate(ev handler.HookEvent) (handler.HTTPResponse, handler
 	now := s.now()
 	id := db.NewID()
 	params := sqlc.InsertUploadSessionParams{
-		ID: id, UserID: p.UserID, DestDir: string(m.Dest), Filename: m.Name, RelativePath: joinSegments(m.RelPath),
+		ID: id, UserID: p.UserID, ShareID: nilIfEmpty(p.ShareID), DestDir: string(m.Dest), Filename: m.Name, RelativePath: joinSegments(m.RelPath),
 		Size: size, ConflictPolicy: string(m.Policy), LastModified: m.LastModified,
 		CreatedAt: db.FormatTime(now), UpdatedAt: db.FormatTime(now), ExpiresAt: db.FormatTime(now.Add(s.ttl)),
 	}
@@ -359,6 +359,11 @@ func (s *Service) finishSkipped(ctx context.Context, sys *fsjail.SysDir, row sql
 // afterChange invalidates caches, records the activity and notifies the
 // user's open tabs (file.changed, SPEC §6.4).
 func (s *Service) afterChange(ctx context.Context, userID string, row sqlc.UploadSession, res *FinalizeResult) {
+	if row.ShareID != nil && s.o.OnShareUpload != nil {
+		if p, ok := PrincipalFrom(ctx); ok && p.ShareID == *row.ShareID {
+			s.o.OnShareUpload(ctx, p, res.Path, res.Size)
+		}
+	}
 	if s.o.Files != nil {
 		s.o.Files.RecordActivity(ctx, userID, files.ActUpload, string(res.Path), "", map[string]any{"size": res.Size, "result": res.Status, "relativePath": row.RelativePath})
 	}
@@ -421,4 +426,11 @@ func joinSegments(segs []string) string {
 		out += seg
 	}
 	return out
+}
+
+func nilIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

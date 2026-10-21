@@ -23,6 +23,7 @@ type Querier interface {
 	CountLoginAttemptsByIPSince(ctx context.Context, arg CountLoginAttemptsByIPSinceParams) (int64, error)
 	CountMediaMetadata(ctx context.Context, userID string) (int64, error)
 	CountPinsInDir(ctx context.Context, arg CountPinsInDirParams) (int64, error)
+	CountShareAccessLogs(ctx context.Context, arg CountShareAccessLogsParams) (int64, error)
 	CountTaskLogs(ctx context.Context, taskID string) (int64, error)
 	CountTasksByState(ctx context.Context) ([]CountTasksByStateRow, error)
 	CountTrashActive(ctx context.Context, userID string) (int64, error)
@@ -58,6 +59,9 @@ type Querier interface {
 	DeleteSearchHistory(ctx context.Context, userID string) (int64, error)
 	DeleteSearchHistoryDuplicate(ctx context.Context, arg DeleteSearchHistoryDuplicateParams) (int64, error)
 	DeleteSetting(ctx context.Context, key string) error
+	DeleteShare(ctx context.Context, arg DeleteShareParams) (int64, error)
+	DeleteShareAccessLogsBefore(ctx context.Context, at string) (int64, error)
+	DeleteSharesPrefix(ctx context.Context, arg DeleteSharesPrefixParams) (int64, error)
 	DeleteTrashItemRow(ctx context.Context, arg DeleteTrashItemRowParams) error
 	DeleteUploadSessionsBefore(ctx context.Context, before string) (int64, error)
 	DeleteUserTask(ctx context.Context, arg DeleteUserTaskParams) (int64, error)
@@ -76,6 +80,10 @@ type Querier interface {
 	GetQuotaUsage(ctx context.Context, userID string) (QuotaUsage, error)
 	GetSession(ctx context.Context, id string) (Session, error)
 	GetSetting(ctx context.Context, key string) (Setting, error)
+	GetShare(ctx context.Context, arg GetShareParams) (Share, error)
+	GetShareByID(ctx context.Context, id string) (Share, error)
+	GetShareBySlug(ctx context.Context, slug *string) (Share, error)
+	GetShareByTokenHash(ctx context.Context, tokenHash *string) (Share, error)
 	GetTask(ctx context.Context, id string) (Task, error)
 	GetTrashItem(ctx context.Context, arg GetTrashItemParams) (TrashItem, error)
 	GetUploadSession(ctx context.Context, id string) (UploadSession, error)
@@ -84,6 +92,8 @@ type Querier interface {
 	GetUserTask(ctx context.Context, arg GetUserTaskParams) (Task, error)
 	GetUserUploadSession(ctx context.Context, arg GetUserUploadSessionParams) (UploadSession, error)
 	HardDeleteUser(ctx context.Context, id string) error
+	IncrementShareDownload(ctx context.Context, arg IncrementShareDownloadParams) (int64, error)
+	IncrementShareView(ctx context.Context, arg IncrementShareViewParams) error
 	InsertActivity(ctx context.Context, arg InsertActivityParams) (int64, error)
 	InsertAudit(ctx context.Context, arg InsertAuditParams) (int64, error)
 	InsertFileVersion(ctx context.Context, arg InsertFileVersionParams) error
@@ -91,6 +101,11 @@ type Querier interface {
 	// In-app notifications (SPEC 4.2 notifications, 8.16). ASCII comments only.
 	InsertNotification(ctx context.Context, arg InsertNotificationParams) error
 	InsertSearchHistory(ctx context.Context, arg InsertSearchHistoryParams) (SearchHistory, error)
+	// Sharing (SPEC 4.2 shares / share_access_logs, 8.15, 6.6). Comments are
+	// ASCII only (sqlc 1.31 offset bug). Prefix matching follows refs.sql:
+	// prefix = path || '/', prefix_len = len(prefix), from_pos = len(path) + 1.
+	InsertShare(ctx context.Context, arg InsertShareParams) (Share, error)
+	InsertShareAccessLog(ctx context.Context, arg InsertShareAccessLogParams) error
 	// Task engine persistence (SPEC 4.2 tasks / task_logs, 7.3). Comments are
 	// ASCII only (sqlc 1.31 offset bug). Every per-user query filters on user_id
 	// so another user's id answers "not found".
@@ -134,6 +149,12 @@ type Querier interface {
 	ListRecentActivity(ctx context.Context, arg ListRecentActivityParams) ([]ActivityLog, error)
 	ListSearchHistory(ctx context.Context, arg ListSearchHistoryParams) ([]SearchHistory, error)
 	ListSettings(ctx context.Context) ([]Setting, error)
+	ListShareAccessLogs(ctx context.Context, arg ListShareAccessLogsParams) ([]ShareAccessLog, error)
+	ListSharesByOwner(ctx context.Context, arg ListSharesByOwnerParams) ([]Share, error)
+	ListSharesByOwnerPath(ctx context.Context, arg ListSharesByOwnerPathParams) ([]Share, error)
+	ListSharesForCheck(ctx context.Context, arg ListSharesForCheckParams) ([]ListSharesForCheckRow, error)
+	ListSharesInDir(ctx context.Context, arg ListSharesInDirParams) ([]ListSharesInDirRow, error)
+	ListSharesUnderPath(ctx context.Context, arg ListSharesUnderPathParams) ([]Share, error)
 	ListTaskLogs(ctx context.Context, arg ListTaskLogsParams) ([]TaskLog, error)
 	ListTasksByState(ctx context.Context, state string) ([]Task, error)
 	ListTrashByBatch(ctx context.Context, arg ListTrashByBatchParams) ([]TrashItem, error)
@@ -157,12 +178,17 @@ type Querier interface {
 	RewriteFileTags(ctx context.Context, arg RewriteFileTagsParams) (int64, error)
 	RewriteFileVersions(ctx context.Context, arg RewriteFileVersionsParams) (int64, error)
 	RewritePins(ctx context.Context, arg RewritePinsParams) (int64, error)
+	RewriteSharesPath(ctx context.Context, arg RewriteSharesPathParams) (int64, error)
 	SetHomeProvisioned(ctx context.Context, arg SetHomeProvisionedParams) error
 	SetMediaMetadataExif(ctx context.Context, arg SetMediaMetadataExifParams) error
 	SetMediaThumbState(ctx context.Context, arg SetMediaThumbStateParams) error
 	SetMustChangePassword(ctx context.Context, arg SetMustChangePasswordParams) error
 	SetQuotaDirty(ctx context.Context, arg SetQuotaDirtyParams) error
 	SetQuotaUsage(ctx context.Context, arg SetQuotaUsageParams) error
+	SetShareBroken(ctx context.Context, arg SetShareBrokenParams) error
+	SetShareDisabled(ctx context.Context, arg SetShareDisabledParams) (int64, error)
+	SetShareEnabled(ctx context.Context, arg SetShareEnabledParams) (int64, error)
+	SetShareToken(ctx context.Context, arg SetShareTokenParams) (int64, error)
 	SetTaskCancelRequested(ctx context.Context, arg SetTaskCancelRequestedParams) (int64, error)
 	SetTaskFinal(ctx context.Context, arg SetTaskFinalParams) error
 	SetTaskRunning(ctx context.Context, arg SetTaskRunningParams) error
@@ -176,7 +202,9 @@ type Querier interface {
 	SumQuotaUsed(ctx context.Context) (interface{}, error)
 	SumTrashBytes(ctx context.Context, userID string) (interface{}, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
+	TouchShareAccess(ctx context.Context, arg TouchShareAccessParams) error
 	TouchUploadSession(ctx context.Context, arg TouchUploadSessionParams) error
+	UpdateShare(ctx context.Context, arg UpdateShareParams) (Share, error)
 	UpdateTaskProgress(ctx context.Context, arg UpdateTaskProgressParams) error
 	UpdateTrashItemSize(ctx context.Context, arg UpdateTrashItemSizeParams) error
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error

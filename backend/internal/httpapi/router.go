@@ -4,6 +4,7 @@ package httpapi
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -24,6 +25,7 @@ import (
 	"kppbwi.app/filemanager/internal/quota"
 	"kppbwi.app/filemanager/internal/remotedl"
 	"kppbwi.app/filemanager/internal/search"
+	"kppbwi.app/filemanager/internal/share"
 	"kppbwi.app/filemanager/internal/sse"
 	"kppbwi.app/filemanager/internal/tasks"
 	"kppbwi.app/filemanager/internal/thumbs"
@@ -67,6 +69,7 @@ type Options struct {
 	Archives    *archive.Service    // compress/extract tasks (Step 14a); nil disables /archives
 	Search      *search.Service     // name/content search + replace (Step 15); nil disables /search
 	Versions    *versions.Store     // file versions (Step 15 minimal); nil disables /versions
+	Share       *share.Service      // public links (Step 18a); nil disables /shares and /public/shares
 }
 
 // Server holds dependencies shared by handlers.
@@ -100,6 +103,7 @@ type Server struct {
 	archives    *archive.Service
 	search      *search.Service
 	versions    *versions.Store
+	shares      *share.Service
 }
 
 // New builds the router. The returned handler is safe for http.Server.
@@ -131,6 +135,7 @@ func New(o Options) http.Handler {
 		archives: o.Archives,
 		search:   o.Search,
 		versions: o.Versions,
+		shares:   o.Share,
 	}
 	s.warnings = o.Warnings
 	if s.dlLimit == nil {
@@ -171,8 +176,8 @@ func New(o Options) http.Handler {
 	r.Get("/readyz", s.handleReadyz)
 
 	r.Route("/api/v1", func(api chi.Router) {
-		api.Use(TimeoutExcept(APITimeout, EventsPath, TusPrefix, DownloadPath, RawPath, ZipPath, EntryContentPath, ContentSearchPath))
-		api.Use(MaxBytes(JSONBodyLimit, TusPrefix, ContentPath))
+		api.Use(TimeoutExcept(APITimeout, EventsPath, TusPrefix, DownloadPath, RawPath, ZipPath, EntryContentPath, ContentSearchPath, PublicSharePrefix))
+		api.Use(MaxBytes(JSONBodyLimit, TusPrefix, ContentPath, PublicShareTusMarker))
 		api.NotFound(func(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, r, CodeNotFound, 0, "endpoint not found", nil)
 		})
@@ -183,7 +188,13 @@ func New(o Options) http.Handler {
 	})
 
 	if s.assets != nil {
-		r.NotFound(s.assets.ServeHTTP)
+		// public share pages (/s/<token>) never leak the link through Referer
+		r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/s/") {
+				w.Header().Set("Referrer-Policy", "no-referrer")
+			}
+			s.assets.ServeHTTP(w, r)
+		})
 	}
 	return r
 }
@@ -210,6 +221,8 @@ func (s *Server) mountAPI(api chi.Router) {
 		s.mountEditor(api)
 		s.mountSubtitle(api)
 		s.mountMediaPosition(api)
+		s.mountShares(api)
+		s.mountPublicShares(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": s.cfg.AppName})

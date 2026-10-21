@@ -42,6 +42,7 @@ import (
 	"kppbwi.app/filemanager/internal/remotedl"
 	"kppbwi.app/filemanager/internal/scheduler"
 	"kppbwi.app/filemanager/internal/search"
+	"kppbwi.app/filemanager/internal/share"
 	"kppbwi.app/filemanager/internal/sse"
 	"kppbwi.app/filemanager/internal/tasks"
 	"kppbwi.app/filemanager/internal/thumbs"
@@ -313,7 +314,26 @@ func runServe(envFile string, noMigrate bool) int {
 			listingSvc.Invalidate(userID, "", dir)
 		}
 	}})
-	listingSvc = listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize, Meta: listing.MultiMeta(metaSvc, mediaSvc)})
+	// Public links (Step 18a, SPEC §8.15): badge annotation runs between item
+	// metadata and media; the trash hook disables links of deleted items.
+	var notifySvc *notify.Service
+	shareSvc := share.New(share.Options{
+		Repo: store, AppSecret: cfg.AppSecret, BaseURL: cfg.AppBaseURL, PublicEnabled: cfg.PublicSharesEnabled,
+		AllowNoExpiry: cfg.ShareAllowNoExpiry, RequirePassword: cfg.ShareRequirePassword, DefaultExpiryDays: cfg.ShareDefaultExpiryDays,
+		Logger: logger,
+		Invalidate: func(userID string, dir fsjail.VPath) {
+			if listingSvc != nil {
+				listingSvc.Invalidate(userID, "", dir)
+			}
+		},
+		Notify: func(ctx context.Context, userID, typ, title, body, link string) {
+			if notifySvc != nil {
+				_, _ = notifySvc.Create(ctx, userID, typ, title, body, link)
+			}
+		},
+	})
+	shareSvc.RegisterRefs()
+	listingSvc = listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize, Meta: listing.MultiMeta(metaSvc, shareSvc, mediaSvc)})
 	locks := fsjail.NewLockManager()
 	signer := download.NewSigner(cfg.AppSecret, nil)
 	quotaSvc := quota.New(store, logger, nil)
@@ -347,13 +367,14 @@ func runServe(envFile string, noMigrate bool) int {
 
 	// Task engine, SSE broker and notifications (Step 11, SPEC §7, §6.4).
 	broker := sse.New(nil)
-	notifySvc := notify.New(store, broker, logger, nil)
+	notifySvc = notify.New(store, broker, logger, nil)
 	engine := tasks.New(tasks.Options{
 		Repo: store, Logger: logger, MaxPerUser: cfg.TaskMaxPerUser, MaxGlobal: cfg.TaskMaxGlobal,
 		Events: broker, Notify: notifyAdapter{notifySvc}, Quota: quotaSvc, OpenJail: trashStore.OpenJail,
 		ErrorCode: files.TaskErrorCode, ItemDelay: devItemDelay(cfg),
 	})
 	files.RegisterTasks(engine, filesSvc)
+	filesSvc.TrashHook = shareSvc
 
 	// Resumable uploads (Step 12a, SPEC §6.5): tusd handler + hooks share the
 	// quota, locks, listing cache and thumbnail invalidation of the file ops.
@@ -402,6 +423,9 @@ func runServe(envFile string, noMigrate bool) int {
 			if err := thumbsSvc.Invalidate(ctx, userID, p, isDir); err != nil {
 				logger.Warn("thumbnail invalidation failed", slog.String("path", string(p)), slog.String("error", err.Error()))
 			}
+		},
+		OnShareUpload: func(_ context.Context, p upload.Principal, path fsjail.VPath, size int64) {
+			shareSvc.RecordUpload(p.ShareID, p.UserID, p.IP, p.UserAgent, string(p.ShareDest), string(path), size)
 		},
 		Publish:   broker.Publish,
 		RequestID: httpapi.RequestIDFrom,
@@ -469,6 +493,7 @@ func runServe(envFile string, noMigrate bool) int {
 		Archives:    archiveSvc,
 		Search:      searchSvc,
 		Versions:    versionsSvc,
+		Share:       shareSvc,
 		Warnings: func() []string {
 			var out []string
 			for _, tool := range thumbsSvc.MissingTools() {
@@ -489,7 +514,7 @@ func runServe(envFile string, noMigrate bool) int {
 	defer stop()
 	go authSvc.RunMaintenance(ctx)
 	jobs := scheduler.New(cfg.TZDefault, logger, nil)
-	if err := registerJobs(jobs, cfg, trashStore, quotaSvc, filesSvc, auditRec, engine, uploadSvc, remoteSvc, archiveSvc, logger); err != nil {
+	if err := registerJobs(jobs, cfg, trashStore, quotaSvc, filesSvc, auditRec, engine, uploadSvc, remoteSvc, archiveSvc, shareSvc, logger); err != nil {
 		logger.Error("scheduler setup failed", slog.String("error", err.Error()))
 		return exitConfig
 	}
@@ -537,7 +562,7 @@ func runServe(envFile string, noMigrate bool) int {
 // clean_uploads hourly (abandoned tus uploads, Step 12a), purge_trash 03:00 (expired Recycle Bin items), recalc_quota 03:30 (every
 // account, bounded to one hour) and prune_logs 04:00 (activity journal
 // older than ACTIVITY_RETENTION_DAYS). Step 19b exposes RunNow for admins.
-func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *trash.Store, quotaSvc *quota.Service, filesSvc *files.Service, auditRec *audit.Recorder, engine *tasks.Engine, uploadSvc *upload.Service, remoteSvc *remotedl.Service, archiveSvc *archive.Service, logger *slog.Logger) error {
+func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *trash.Store, quotaSvc *quota.Service, filesSvc *files.Service, auditRec *audit.Recorder, engine *tasks.Engine, uploadSvc *upload.Service, remoteSvc *remotedl.Service, archiveSvc *archive.Service, shareSvc *share.Service, logger *slog.Logger) error {
 	if err := jobs.Add(scheduler.Job{Name: "clean_uploads", Every: time.Hour, Timeout: 15 * time.Minute, Run: func(ctx context.Context) error {
 		res, err := uploadSvc.CleanExpired(ctx)
 		if res.Expired > 0 || res.Orphans > 0 {
@@ -590,10 +615,24 @@ func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *tra
 	}}); err != nil {
 		return err
 	}
+	if err := jobs.Add(scheduler.Job{Name: "check_shares", At: "02:30", Timeout: 30 * time.Minute, Run: func(ctx context.Context) error {
+		n, err := shareSvc.CheckBroken(ctx, share.OpenJailFunc(trashStore.OpenJail))
+		if n > 0 {
+			logger.Info("share broken flags updated", slog.Int("rows", n))
+		}
+		return err
+	}}); err != nil {
+		return err
+	}
 	return jobs.Add(scheduler.Job{Name: "prune_logs", At: "04:00", Timeout: 15 * time.Minute, Run: func(ctx context.Context) error {
 		n, err := filesSvc.PruneActivity(ctx, time.Duration(cfg.ActivityRetentionDays)*24*time.Hour)
 		if n > 0 {
 			logger.Info("activity journal pruned", slog.Int64("rows", n), slog.Int("retentionDays", cfg.ActivityRetentionDays))
+		}
+		if m, perr := shareSvc.PruneAccessLogs(ctx, time.Duration(cfg.ActivityRetentionDays)*24*time.Hour); perr != nil {
+			return perr
+		} else if m > 0 {
+			logger.Info("share access logs pruned", slog.Int64("rows", m))
 		}
 		return err
 	}})

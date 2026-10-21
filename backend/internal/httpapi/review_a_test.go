@@ -297,6 +297,9 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		{http.MethodPost, "/api/v1/archives/add"},
 		{http.MethodPost, "/api/v1/archives/remove-entries"},
 		{http.MethodPost, "/api/v1/archives/remove-entry"},
+		{http.MethodGet, "/api/v1/shares"},
+		{http.MethodPost, "/api/v1/shares"},
+		{http.MethodGet, "/api/v1/shares/by-path"},
 	}
 	for _, b := range blocked {
 		var body any
@@ -388,6 +391,24 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		// and their URLs come from the gated GET /files/media-info
 		"GET /api/v1/me/media-position": true, "PUT /api/v1/me/media-position": true,
 		"GET /api/v1/files/subtitle": true,
+		// Step 18a: owner share routes (gated above); the guest API is public by
+		// design (token/slug + unlock cookie, no session, SPEC §6.6)
+		"POST /api/v1/shares": true, "GET /api/v1/shares": true, "GET /api/v1/shares/by-path": true,
+		"GET /api/v1/shares/{id}": true, "PATCH /api/v1/shares/{id}": true, "DELETE /api/v1/shares/{id}": true,
+		"POST /api/v1/shares/{id}/disable": true, "POST /api/v1/shares/{id}/enable": true,
+		"POST /api/v1/shares/{id}/regenerate-token": true, "GET /api/v1/shares/{id}/access-logs": true,
+		"GET /api/v1/public/shares/{token}": true, "POST /api/v1/public/shares/{token}/unlock": true,
+		"GET /api/v1/public/shares/{token}/list": true, "GET /api/v1/public/shares/{token}/stat": true,
+		"GET /api/v1/public/shares/{token}/content": true, "GET /api/v1/public/shares/{token}/media-info": true,
+		"GET /api/v1/public/shares/{token}/thumb": true,
+		"GET /api/v1/public/shares/{token}/raw":   true, "HEAD /api/v1/public/shares/{token}/raw": true,
+		"GET /api/v1/public/shares/{token}/download": true, "HEAD /api/v1/public/shares/{token}/download": true,
+		"GET /api/v1/public/shares/{token}/zip": true, "HEAD /api/v1/public/shares/{token}/zip": true, "POST /api/v1/public/shares/{token}/zip": true,
+		"GET /api/v1/public/shares/{token}/subtitle": true, "HEAD /api/v1/public/shares/{token}/subtitle": true,
+		"POST /api/v1/public/shares/{token}/upload/precheck": true,
+		"POST /api/v1/public/shares/{token}/upload/tus":      true, "OPTIONS /api/v1/public/shares/{token}/upload/tus": true,
+		"HEAD /api/v1/public/shares/{token}/upload/tus/{id}": true, "PATCH /api/v1/public/shares/{token}/upload/tus/{id}": true,
+		"DELETE /api/v1/public/shares/{token}/upload/tus/{id}": true, "OPTIONS /api/v1/public/shares/{token}/upload/tus/{id}": true,
 	}
 	// the signed endpoints reject cookie-only access: no signature → 403
 	for _, p := range []string{"/api/v1/files/thumb?path=/x&size=128", "/api/v1/files/download?path=/x", "/api/v1/files/raw?path=/x&purpose=media", "/api/v1/files/zip?token=x", "/api/v1/archives/entry-content?path=/x&inner=a", "/api/v1/files/subtitle?path=/x.srt&purpose=media"} {

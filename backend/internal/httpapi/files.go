@@ -293,7 +293,7 @@ func (s *Server) handleFilesStat(w http.ResponseWriter, r *http.Request) {
 		"stat":          it.StatView(),
 		"warnings":      nameWarnings(p),
 		"versionsCount": 0,
-		"shares":        []any{},
+		"shares":        s.sharesForStat(r, u.ID, p),
 	}
 	if s.files != nil && !it.IsDir {
 		if info, lerr := j.Lstat(p); lerr == nil {

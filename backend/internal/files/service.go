@@ -76,6 +76,9 @@ type Service struct {
 	// TestHook, when set, runs after locks are taken and before the
 	// filesystem is touched (concurrency tests).
 	TestHook func(op string)
+	// TrashHook observes delete-to-trash and restore (Step 18a: shares are
+	// disabled with reason item_trashed and offered for reactivation).
+	TrashHook TrashHook
 }
 
 // New builds a Service.
@@ -337,4 +340,13 @@ func TrashKind(name string, isDir bool) string {
 		return "file"
 	}
 	return "other"
+}
+
+// TrashHook is notified when items move to the Recycle Bin and back
+// (Step 18a shares: disable on trash, report ids to reactivate on restore).
+type TrashHook interface {
+	Trashed(ctx context.Context, userID, path string)
+	// Restored returns the ids of shares that were disabled by the deletion
+	// of path (or an ancestor) so the client can offer to enable them.
+	Restored(ctx context.Context, userID, path string) []string
 }

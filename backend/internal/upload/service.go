@@ -63,6 +63,13 @@ const (
 type Principal struct {
 	UserID   string
 	Username string
+	// File request (Step 18a): the guest uploads as the share owner into the
+	// shared folder; the conflict policy is always rename and the client
+	// destination is ignored. IP/UserAgent feed the share access log.
+	ShareID   string
+	ShareDest fsjail.VPath
+	IP        string
+	UserAgent string
 }
 
 type ctxKey int
@@ -108,6 +115,9 @@ type Options struct {
 	OnChange func(ctx context.Context, userID string, path fsjail.VPath, isDir bool)
 	// Publish sends an SSE event to the user (file.changed).
 	Publish func(userID, name string, data any)
+	// OnShareUpload runs after a file-request upload landed (access log +
+	// owner notification, Step 18a).
+	OnShareUpload func(ctx context.Context, p Principal, path fsjail.VPath, size int64)
 	// RequestID returns the request id for error envelopes ("" when none).
 	RequestID  func(ctx context.Context) string
 	Logger     *slog.Logger
@@ -341,7 +351,7 @@ func splitRelative(rel string) ([]string, *Error) {
 	return segs, nil
 }
 
-func (s *Service) parseMetadata(md handler.MetaData) (metadata, *Error) {
+func (s *Service) parseMetadata(md handler.MetaData, p Principal) (metadata, *Error) {
 	var m metadata
 	name := pick(md, "filename", "name")
 	if name == "" {
@@ -358,6 +368,24 @@ func (s *Service) parseMetadata(md handler.MetaData) (metadata, *Error) {
 		return m, newErr(CodeNameInvalid, http.StatusBadRequest, "invalid file name", map[string]any{"reason": reason, "name": name, "fields": map[string]string{"filename": reason}})
 	}
 	m.Name, m.Warnings = name, warnings
+	if p.ShareID != "" {
+		// file request: the destination is the shared folder, conflicts always
+		// rename (a guest can never overwrite), only relativePath/lastModified
+		// are taken from the client
+		m.Dest = p.ShareDest
+		segs, perr := splitRelative(pick(md, "relativePath", "relPath"))
+		if perr != nil {
+			return m, perr
+		}
+		m.RelPath = segs
+		m.Policy = files.PolicyRename
+		if raw := pick(md, "lastModified"); raw != "" {
+			if ms, err := strconv.ParseInt(raw, 10, 64); err == nil && ms >= 0 {
+				m.LastModified = &ms
+			}
+		}
+		return m, nil
+	}
 	if pick(md, "share") != "" {
 		// uploads into a share (file request) arrive with Step 18a; until then
 		// the key must not be silently ignored (the bytes would land in the
@@ -476,4 +504,17 @@ func (s *Service) dropFiles(sys *fsjail.SysDir, id string) {
 			s.logger.Warn("upload cleanup failed", slog.String("id", id), slog.String("error", err.Error()))
 		}
 	}
+}
+
+// OwnedActiveShare reports whether id is an active upload of the share
+// (file request): the row belongs to the owner and carries the share id.
+func (s *Service) OwnedActiveShare(ctx context.Context, ownerID, shareID, id string) (bool, error) {
+	row, err := s.o.Repo.GetUserUploadSession(ctx, ownerID, id)
+	if err != nil {
+		if db.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return row.State == StateActive && row.ShareID != nil && *row.ShareID == shareID, nil
 }

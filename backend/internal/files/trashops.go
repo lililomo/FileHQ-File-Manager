@@ -123,6 +123,9 @@ func (s *Service) RestoreFromTrash(ctx context.Context, j *fsjail.Jail, userID s
 		if r.Status != "skipped" {
 			s.logActivity(ctx, s.repo, userID, ActRestore, string(p.dst), p.row.OriginalPath, map[string]any{"trashId": p.row.ID, "status": r.Status, "size": r.Size, "isDir": r.IsDir}, "")
 			s.changed(ctx, userID, p.dst, r.IsDir)
+			if s.TrashHook != nil {
+				out.ReactivateShares = append(out.ReactivateShares, s.TrashHook.Restored(ctx, userID, string(p.dst))...)
+			}
 			if r.To != "" && fsjail.VPath(r.To) != p.dst {
 				s.invalidateDir(userID, fsjail.VPath(r.To).Dir())
 			}

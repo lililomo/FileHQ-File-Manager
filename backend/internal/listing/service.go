@@ -168,7 +168,7 @@ func (s *Service) List(ctx context.Context, j *fsjail.Jail, req ListRequest) (*L
 		for i := range infos {
 			items = append(items, FromInfo(infos[i]))
 		}
-		if s.meta != nil {
+		if s.meta != nil && req.Scope == "" {
 			if err := s.meta.Annotate(ctx, req.UserID, req.Dir, items); err != nil {
 				return nil, err
 			}

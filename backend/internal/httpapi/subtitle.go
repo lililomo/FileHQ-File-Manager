@@ -104,6 +104,12 @@ func (s *Server) handleFilesSubtitle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer release()
+	s.writeSubtitle(w, r, j, info)
+}
+
+// writeSubtitle converts and streams one sidecar (shared with the public
+// share route, Step 18a).
+func (s *Server) writeSubtitle(w http.ResponseWriter, r *http.Request, j *fsjail.Jail, info fsjail.Info) {
 	if info.Size > media.MaxSubtitleBytes {
 		WriteError(w, r, CodeFileTooLarge, 0, "subtitle file too large", map[string]any{"limit": media.MaxSubtitleBytes})
 		return
@@ -127,7 +133,7 @@ func (s *Server) handleFilesSubtitle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var vtt string
-	if strings.HasSuffix(strings.ToLower(p.Path), ".srt") {
+	if strings.HasSuffix(strings.ToLower(info.Name), ".srt") {
 		vtt = media.SRTToVTT(text)
 	} else {
 		vtt = media.SanitizeVTT(text)
