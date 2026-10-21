@@ -1,0 +1,123 @@
+/** JSON tree model for the JSON viewer (SPEC §8.14 JsonViewer): nodes are
+ *  addressed by JSON Pointer, the visible rows are a flat list of the
+ *  expanded part (so the view can be virtualised), key search walks the
+ *  whole document once. Pure functions, unit-tested. */
+
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [k: string]: JsonValue }
+
+export interface JsonRow {
+  /** JSON Pointer ("" = root) */
+  ptr: string
+  /** property name or array index; null for the root */
+  key: string | number | null
+  value: JsonValue
+  depth: number
+  container: boolean
+  /** number of children (containers) */
+  size: number
+}
+
+export function isContainer(v: JsonValue): v is JsonValue[] | { [k: string]: JsonValue } {
+  return v !== null && typeof v === 'object'
+}
+
+const esc = (k: string | number) => String(k).replace(/~/g, '~0').replace(/\//g, '~1')
+
+export function childPtr(ptr: string, key: string | number): string {
+  return `${ptr}/${esc(key)}`
+}
+
+function entries(v: JsonValue): [string | number, JsonValue][] {
+  if (Array.isArray(v)) return v.map((x, i) => [i, x])
+  if (isContainer(v)) return Object.entries(v)
+  return []
+}
+
+/** Visible rows: the root plus the children of every expanded container. */
+export function flatten(root: JsonValue, expanded: ReadonlySet<string>): JsonRow[] {
+  const out: JsonRow[] = []
+  const walk = (value: JsonValue, ptr: string, key: string | number | null, depth: number) => {
+    const container = isContainer(value)
+    const kids = container ? entries(value) : []
+    out.push({ ptr, key, value, depth, container, size: kids.length })
+    if (container && expanded.has(ptr)) {
+      for (const [k, v] of kids) walk(v, childPtr(ptr, k), k, depth + 1)
+    }
+  }
+  walk(root, '', null, 0)
+  return out
+}
+
+/** Pointers of every container up to `depth` levels (initial expansion). */
+export function expandToDepth(root: JsonValue, depth: number): Set<string> {
+  const out = new Set<string>()
+  const walk = (value: JsonValue, ptr: string, d: number) => {
+    if (!isContainer(value) || d >= depth) return
+    out.add(ptr)
+    for (const [k, v] of entries(value)) walk(v, childPtr(ptr, k), d + 1)
+  }
+  walk(root, '', 0)
+  return out
+}
+
+/** Every container pointer (expand all), bounded so a huge document stays usable. */
+export function allContainers(root: JsonValue, limit = 50_000): Set<string> {
+  const out = new Set<string>()
+  const stack: [JsonValue, string][] = [[root, '']]
+  while (stack.length && out.size < limit) {
+    const [v, p] = stack.pop()!
+    if (!isContainer(v)) continue
+    out.add(p)
+    for (const [k, c] of entries(v)) if (isContainer(c)) stack.push([c, childPtr(p, k)])
+  }
+  return out
+}
+
+/** Pointers whose key contains `query` (case-insensitive), in document order. */
+export function searchKeys(root: JsonValue, query: string, limit = 1000): string[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return []
+  const out: string[] = []
+  const walk = (value: JsonValue, ptr: string) => {
+    for (const [k, v] of entries(value)) {
+      if (out.length >= limit) return
+      const p = childPtr(ptr, k)
+      if (typeof k === 'string' && k.toLowerCase().includes(q)) out.push(p)
+      if (isContainer(v)) walk(v, p)
+    }
+  }
+  walk(root, '')
+  return out
+}
+
+/** Pointers of the ancestors of `ptr` (to expand so it becomes visible). */
+export function ancestors(ptr: string): string[] {
+  const out = ['']
+  const parts = ptr.split('/').slice(1)
+  let cur = ''
+  for (let i = 0; i < parts.length - 1; i++) {
+    cur += `/${parts[i]}`
+    out.push(cur)
+  }
+  return out
+}
+
+/** JSONPath-style display of a pointer: `$.a[0]["b c"]`. */
+export function displayPath(ptr: string): string {
+  if (!ptr) return '$'
+  return (
+    '$' +
+    ptr
+      .split('/')
+      .slice(1)
+      .map((raw) => raw.replace(/~1/g, '/').replace(/~0/g, '~'))
+      .map((k) =>
+        /^\d+$/.test(k)
+          ? `[${k}]`
+          : /^[A-Za-z_$][\w$]*$/.test(k)
+            ? `.${k}`
+            : `[${JSON.stringify(k)}]`,
+      )
+      .join('')
+  )
+}

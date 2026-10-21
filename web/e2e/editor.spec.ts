@@ -73,8 +73,12 @@ test('Monaco is a separate chunk: the file browser never loads it', async ({ pag
   await page.goto('/files/edt')
   await expect(page.getByRole('grid')).toBeVisible()
   expect(urls.filter((u) => /editor\.api|\/vs-|monaco|\.worker-/.test(u))).toEqual([])
-  // opening a text file brings the editor (modal) and its chunk
+  // opening a text file shows the read-only viewer (Step 17b) — still no Monaco
   await page.getByRole('row', { name: /a\.txt/ }).dblclick()
+  await expect(page.getByTestId('code-viewer')).toBeVisible()
+  expect(urls.filter((u) => /editor\.api|\/vs-|monaco|\.worker-/.test(u))).toEqual([])
+  // "Edit" brings the editor (modal) and its chunk
+  await page.getByTestId('viewer-edit').click()
   await expect(page.getByTestId('editor-modal')).toBeVisible()
   await expect(page.locator('.monaco-editor .view-lines')).toBeVisible({ timeout: 30_000 })
   expect(urls.some((u) => /editor\.api|\/vs-/.test(u))).toBeTruthy()

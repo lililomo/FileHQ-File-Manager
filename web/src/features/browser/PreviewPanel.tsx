@@ -6,7 +6,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { formatBytes, formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { Item } from './api'
-import { opensInViewer } from '@/features/viewer/viewers'
+import { TextHead } from '@/features/viewer/text/TextHead'
+import { opensInViewer, viewerFor } from '@/features/viewer/viewers'
 import { ItemFacts, ItemHeader } from './ItemDetails'
 import { useItemStat } from './useItemStat'
 import { Thumb } from './views/Thumb'
@@ -23,6 +24,8 @@ export interface PreviewPanelProps {
   /** Step 17a: open the single selected file in the viewer overlay. */
   onOpen?: ((item: Item) => void) | undefined
 }
+
+const TEXT_KINDS: ReadonlySet<string> = new Set(['text', 'html', 'markdown', 'json', 'table'])
 
 /** Right-hand Preview/Details panel (SPEC §9.3, PROMPT 7b task 8). */
 export function PreviewPanel({
@@ -92,6 +95,11 @@ export function PreviewPanel({
             {single.thumb && !single.isDir ? (
               <div className="flex justify-center rounded-md bg-surface-2 p-2">
                 <Thumb item={single} box={256} className="rounded" />
+              </div>
+            ) : !single.isDir && TEXT_KINDS.has(viewerFor(single)) ? (
+              // Step 17b: the same compact text preview as Quick Look
+              <div className="h-56 overflow-hidden rounded-md border border-border">
+                <TextHead path={single.path} etag={single.etag} lines={40} />
               </div>
             ) : null}
             <ItemHeader item={single} />

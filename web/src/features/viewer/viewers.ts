@@ -1,11 +1,21 @@
 /** MIME/extension → viewer registry (SPEC §8.14 "Pemetaan MIME → viewer").
- *  Step 17a implements `image` and `pdf`; the other kinds are mapped already
- *  so navigation groups files of a kind together, but render the info card
- *  until Step 17b adds their viewers. */
+ *  Step 17a: `image`, `pdf`; Step 17b: `audio` (global player), `video`,
+ *  `text`, `html` (source only until 23e), `markdown`, `table`, `json`.
+ *  `archive` opens the archive browser (14b); `info` is the card. */
 import type { Item } from '@/features/browser/api'
 
 export type ViewerKind =
-  'image' | 'pdf' | 'audio' | 'video' | 'text' | 'markdown' | 'table' | 'json' | 'archive' | 'info'
+  | 'image'
+  | 'pdf'
+  | 'audio'
+  | 'video'
+  | 'text'
+  | 'html'
+  | 'markdown'
+  | 'table'
+  | 'json'
+  | 'archive'
+  | 'info'
 
 export type ViewerItem = Pick<Item, 'name' | 'mime' | 'category' | 'ext' | 'isDir'>
 
@@ -43,12 +53,17 @@ const IMAGE_MIMES: ReadonlySet<string> = new Set([
   'image/heif',
 ])
 
-/** Viewers that exist in this build (SPEC §8.14; text kinds arrive in 17b-3). */
+/** Kinds "Buka" sends to the viewer overlay (SPEC §8.14). */
 export const IMPLEMENTED_VIEWERS: ReadonlySet<ViewerKind> = new Set([
   'image',
   'pdf',
   'audio',
   'video',
+  'text',
+  'html',
+  'markdown',
+  'table',
+  'json',
 ])
 
 function extOf(item: ViewerItem): string {
@@ -71,6 +86,14 @@ export function viewerFor(item: ViewerItem): ViewerKind {
   if (ext === 'csv' || ext === 'tsv' || mime === 'text/csv' || mime === 'text/tab-separated-values')
     return 'table'
   if (ext === 'json' || mime === 'application/json') return 'json'
+  if (
+    ext === 'html' ||
+    ext === 'htm' ||
+    ext === 'xhtml' ||
+    mime === 'text/html' ||
+    mime === 'application/xhtml+xml'
+  )
+    return 'html'
   if (
     item.category === 'text' ||
     item.category === 'code' ||

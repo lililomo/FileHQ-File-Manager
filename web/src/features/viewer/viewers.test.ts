@@ -37,12 +37,17 @@ describe('viewerFor (SPEC §8.14 MIME → viewer)', () => {
     expect(viewerFor(file('bin', null, 'other', ''))).toBe('info')
     expect(viewerFor({ ...file('x.jpg', null, 'image'), isDir: true })).toBe('info')
   })
-  it('image, pdf, audio and video open in the overlay (17b-2)', () => {
+  it('html is source-only (17b) and Office/archives do not open in the overlay', () => {
+    expect(viewerFor(file('index.html', 'text/html', 'code'))).toBe('html')
+    expect(viewerFor(file('a.xhtml', null, 'code'))).toBe('html')
     expect(opensInViewer(file('a.jpg', null, 'image'))).toBe(true)
     expect(opensInViewer(file('a.pdf', null, 'pdf'))).toBe(true)
     expect(opensInViewer(file('a.mp3', null, 'audio'))).toBe(true)
     expect(opensInViewer(file('a.mkv', null, 'video'))).toBe(true)
-    expect(opensInViewer(file('a.txt', 'text/plain', 'text'))).toBe(false)
+    expect(opensInViewer(file('a.txt', 'text/plain', 'text'))).toBe(true)
+    expect(opensInViewer(file('d.tsv', null, 'text'))).toBe(true)
+    expect(opensInViewer(file('w.docx', null, 'document'))).toBe(false)
+    expect(opensInViewer(file('a.zip', 'application/zip', 'archive'))).toBe(false)
   })
   it('sibling navigation stays within one kind', () => {
     expect(sameViewerKind(file('a.jpg', null, 'image'), file('b.png', null, 'image'))).toBe(true)

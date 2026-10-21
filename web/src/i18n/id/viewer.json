@@ -81,8 +81,7 @@
     "download": "Download",
     "office": "Pratinjau dokumen Office belum tersedia. Unduh untuk membukanya.",
     "archive": "File arsip. Lihat isinya di browser arsip atau unduh.",
-    "browseArchive": "Lihat isi arsip",
-    "comingSoon": "Viewer teks, Markdown, CSV dan JSON hadir di Step 17b-3."
+    "browseArchive": "Lihat isi arsip"
   },
   "pdf": {
     "loading": "Memuat PDF…",

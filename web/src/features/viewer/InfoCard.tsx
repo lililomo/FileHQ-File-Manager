@@ -1,4 +1,4 @@
-import { Download } from 'lucide-react'
+import { Download, FolderSearch } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { FileIcon } from '@/components/file-icon/FileIcon'
 import { toIconCategory } from '@/components/file-icon/categories'
@@ -8,21 +8,43 @@ import { typeLabel } from '@/features/browser/columns'
 import { formatBytes, formatDateTimeFull } from '@/lib/format'
 import type { ViewerKind } from './viewers'
 
+const OFFICE_EXT = new Set([
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'ppt',
+  'pptx',
+  'odt',
+  'ods',
+  'odp',
+  'rtf',
+])
+
 /** Fallback body of the overlay (SPEC §8.14 "InfoCard"): icon, name,
- *  type, size, date and a download button — for kinds without a viewer
- *  (Office, unknown binaries) and, until Step 17b, audio/video/text. */
+ *  type, size, date and a download button — Office documents (no preview
+ *  until a later step), archives (button to the archive browser) and
+ *  unknown types. */
 export function InfoCard({
   item,
   kind,
   onDownload,
+  onBrowseArchive,
 }: {
   item: Item
   kind: ViewerKind
   onDownload: () => void
+  onBrowseArchive?: (() => void) | undefined
 }) {
   const { t, i18n } = useTranslation(['viewer', 'files'])
   const lang = i18n.resolvedLanguage ?? 'id'
-  const pending = kind !== 'info' && kind !== 'image' && kind !== 'pdf'
+  const office = OFFICE_EXT.has((item.ext || '').toLowerCase())
+  const message =
+    kind === 'archive'
+      ? t('viewer:card.archive')
+      : office
+        ? t('viewer:card.office')
+        : t('viewer:card.unsupported')
   return (
     <div
       className="flex h-full w-full items-center justify-center p-6"
@@ -39,13 +61,19 @@ export function InfoCard({
             {formatBytes(item.size, lang)} · {formatDateTimeFull(item.mtime, lang)}
           </div>
         </div>
-        <p className="text-sm text-text-muted">
-          {pending ? t('viewer:card.comingSoon') : t('viewer:card.unsupported')}
-        </p>
-        <Button variant="primary" onClick={onDownload} data-testid="viewer-card-download">
-          <Download aria-hidden="true" />
-          {t('viewer:card.download')}
-        </Button>
+        <p className="text-sm text-text-muted">{message}</p>
+        <div className="flex flex-wrap justify-center gap-2">
+          {kind === 'archive' && onBrowseArchive ? (
+            <Button variant="outline" onClick={onBrowseArchive} data-testid="viewer-card-archive">
+              <FolderSearch aria-hidden="true" />
+              {t('viewer:card.browseArchive')}
+            </Button>
+          ) : null}
+          <Button variant="primary" onClick={onDownload} data-testid="viewer-card-download">
+            <Download aria-hidden="true" />
+            {t('viewer:card.download')}
+          </Button>
+        </div>
       </div>
     </div>
   )

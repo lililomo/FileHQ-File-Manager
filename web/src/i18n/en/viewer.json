@@ -81,8 +81,7 @@
     "download": "Download",
     "office": "Office documents have no preview yet. Download to open it.",
     "archive": "Archive file. Browse its contents in the archive browser or download it.",
-    "browseArchive": "Browse archive",
-    "comingSoon": "Text, Markdown, CSV and JSON viewers arrive in Step 17b-3."
+    "browseArchive": "Browse archive"
   },
   "pdf": {
     "loading": "Loading PDF…",

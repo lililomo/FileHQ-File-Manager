@@ -15,7 +15,6 @@ import { isEditableByName } from '@/features/editor/languages'
 import { recordOpen } from '@/features/meta/api'
 import { announce } from '@/lib/announce'
 import { pushScope, registerShortcut } from '@/lib/shortcuts'
-import { cn } from '@/lib/utils'
 import { Filmstrip } from './image/Filmstrip'
 import { ImageViewer } from './image/ImageViewer'
 import { InfoCard } from './InfoCard'
@@ -25,11 +24,17 @@ import { useSiblingNav, type SiblingNavPaging } from './useSiblingNav'
 import { sameViewerKind, viewerFor } from './viewers'
 import { usePlayerStore } from '@/stores/player'
 
-// pdf.js and Video.js are lazy chunks (SPEC §8.14, §1.6)
+// pdf.js, Video.js and the text viewers are lazy chunks (SPEC §8.14, §1.6)
 const PdfViewer = lazy(() => import('./pdf/PdfViewer').then((m) => ({ default: m.PdfViewer })))
 const VideoPlayer = lazy(() =>
   import('./video/VideoPlayer').then((m) => ({ default: m.VideoPlayer })),
 )
+const CodeViewer = lazy(() => import('./text/CodeViewer').then((m) => ({ default: m.CodeViewer })))
+const MarkdownViewer = lazy(() =>
+  import('./text/MarkdownViewer').then((m) => ({ default: m.MarkdownViewer })),
+)
+const CsvViewer = lazy(() => import('./text/CsvViewer').then((m) => ({ default: m.CsvViewer })))
+const JsonViewer = lazy(() => import('./text/JsonTree').then((m) => ({ default: m.JsonViewer })))
 
 export interface ViewerOverlayProps {
   /** virtual path of the file being viewed (`?view=`) */
@@ -42,18 +47,14 @@ export interface ViewerOverlayProps {
   onNavigate: (item: Item) => void
   onEdit?: ((item: Item) => void) | undefined
   onOpenLocation?: ((item: Item) => void) | undefined
-  /** Quick Look (SPEC §8.14): 80 % dialog, no folder navigation, Space closes. */
-  quickLook?: boolean
+  /** a relative link inside a Markdown file (opens that file in the viewer) */
+  onOpenPath?: ((path: string) => void) | undefined
+  /** archives: open the archive browser (14b) */
+  onBrowseArchive?: ((item: Item) => void) | undefined
   /** Called after the overlay unmounts: the opener (grid) takes focus back.
    *  The overlay is URL-driven, so Radix cannot always find the element that
    *  had focus when it opened. */
   restoreFocus?: (() => void) | undefined
-}
-
-const noPaging: SiblingNavPaging = {
-  hasNextPage: false,
-  isFetchingNextPage: false,
-  fetchNextPage: () => {},
 }
 
 /** Full-screen viewer shell (SPEC §8.14 "Kerangka overlay", PROMPT 17a task 1):
@@ -69,7 +70,8 @@ export function ViewerOverlay({
   onNavigate,
   onEdit,
   onOpenLocation,
-  quickLook = false,
+  onOpenPath,
+  onBrowseArchive,
   restoreFocus,
 }: ViewerOverlayProps) {
   const { t } = useTranslation(['viewer', 'files'])
@@ -83,7 +85,7 @@ export function ViewerOverlay({
   const item: Item | null = listed ?? (stat.data as Item | undefined) ?? null
   const kind = item ? viewerFor(item) : 'info'
   const same = useCallback((it: Item) => !it.isDir && !!item && sameViewerKind(it, item), [item])
-  const siblings = useSiblingNav(quickLook ? [] : items, path, same, quickLook ? noPaging : paging)
+  const siblings = useSiblingNav(items, path, same, paging)
   const index = siblings.index
   const total = siblings.total
   const goTo = useCallback(
@@ -119,10 +121,9 @@ export function ViewerOverlay({
         if (next) onNavigate(next)
       }),
       registerShortcut('viewerInfo', () => setInfoOpen((o) => !o)),
-      ...(quickLook ? [registerShortcut('viewerSlideshow', onClose)] : []),
     ]
     return () => offs.forEach((off) => off())
-  }, [prev, next, onNavigate, quickLook, onClose])
+  }, [prev, next, onNavigate])
 
   // audio plays in the global player (SPEC §8.14: survives route changes):
   // the folder's audio files become the playlist, the overlay hands over to
@@ -201,58 +202,55 @@ export function ViewerOverlay({
         onGoTo={goTo}
         nextItem={next}
         onDownload={download}
-        slideshow={!quickLook}
+        slideshow
       />
     )
-  } else if (kind === 'pdf') {
-    body = (
-      <Suspense
-        fallback={
-          <div
-            className="flex h-full items-center justify-center text-sm text-text-muted"
-            aria-busy="true"
-          >
-            {t('viewer:pdf.loading')}
-          </div>
-        }
-      >
-        <PdfViewer item={item} onDownload={download} />
-      </Suspense>
-    )
-  } else if (kind === 'video') {
-    body = (
-      <Suspense
-        fallback={
-          <div
-            className="flex h-full items-center justify-center text-sm text-text-muted"
-            aria-busy="true"
-          >
-            {t('viewer:video.loading')}
-          </div>
-        }
-      >
-        <VideoPlayer item={item} next={next} onNext={onNavigate} onDownload={download} />
-      </Suspense>
-    )
-  } else if (kind === 'audio') {
-    body = (
-      <div className="flex h-full items-center justify-center text-sm text-text-muted">
-        {t('viewer:audio.starting')}
-      </div>
-    )
   } else {
-    body = <InfoCard item={item} kind={kind} onDownload={download} />
+    body = (
+      <Suspense
+        fallback={
+          <div
+            className="flex h-full items-center justify-center text-sm text-text-muted"
+            aria-busy="true"
+          >
+            {kind === 'pdf' ? t('viewer:pdf.loading') : t('viewer:text.loading')}
+          </div>
+        }
+      >
+        {kind === 'pdf' ? (
+          <PdfViewer item={item} onDownload={download} />
+        ) : kind === 'video' ? (
+          <VideoPlayer item={item} next={next} onNext={onNavigate} onDownload={download} />
+        ) : kind === 'text' ? (
+          <CodeViewer item={item} />
+        ) : kind === 'html' ? (
+          <CodeViewer item={item} note={t('viewer:text.htmlNote')} />
+        ) : kind === 'markdown' ? (
+          <MarkdownViewer item={item} onOpenPath={onOpenPath} />
+        ) : kind === 'table' ? (
+          <CsvViewer item={item} />
+        ) : kind === 'json' ? (
+          <JsonViewer item={item} />
+        ) : kind === 'audio' ? (
+          <div className="flex h-full items-center justify-center text-sm text-text-muted">
+            {t('viewer:audio.starting')}
+          </div>
+        ) : (
+          <InfoCard
+            item={item}
+            kind={kind}
+            onDownload={download}
+            onBrowseArchive={onBrowseArchive ? () => onBrowseArchive(item) : undefined}
+          />
+        )}
+      </Suspense>
+    )
   }
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent
-        className={cn(
-          'flex flex-col gap-0 overflow-hidden p-0',
-          quickLook
-            ? 'h-[80vh] w-[80vw] max-w-[80vw] sm:max-w-[80vw]'
-            : 'inset-0 top-0 left-0 h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none border-0 sm:max-w-none',
-        )}
+        className="inset-0 top-0 left-0 flex h-dvh w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:max-w-none"
         showCloseButton={false}
         onOpenAutoFocus={(e) => {
           e.preventDefault()
@@ -264,7 +262,7 @@ export function ViewerOverlay({
           const target = e.target as HTMLElement | null
           if (target?.closest?.('[data-escape-local]')) e.preventDefault()
         }}
-        data-testid={quickLook ? 'quick-look' : 'viewer-overlay'}
+        data-testid="viewer-overlay"
         data-kind={kind}
       >
         <DialogTitle className="sr-only">{item?.name ?? t('viewer:title')}</DialogTitle>
@@ -283,7 +281,7 @@ export function ViewerOverlay({
             >
               {item?.name ?? ''}
             </span>
-            {!quickLook && index >= 0 ? (
+            {index >= 0 ? (
               <span
                 className="shrink-0 text-xs text-text-muted tabular"
                 data-testid="viewer-position"
@@ -292,28 +290,26 @@ export function ViewerOverlay({
               </span>
             ) : null}
           </div>
-          {!quickLook ? (
-            <div className="flex items-center gap-0.5">
-              <IconButton
-                label={t('viewer:header.prev')}
-                shortcut="←"
-                disabled={!prev}
-                onClick={() => prev && onNavigate(prev)}
-                data-testid="viewer-prev"
-              >
-                <ChevronLeft aria-hidden="true" />
-              </IconButton>
-              <IconButton
-                label={t('viewer:header.next')}
-                shortcut="→"
-                disabled={!next}
-                onClick={() => next && onNavigate(next)}
-                data-testid="viewer-next"
-              >
-                <ChevronRight aria-hidden="true" />
-              </IconButton>
-            </div>
-          ) : null}
+          <div className="flex items-center gap-0.5">
+            <IconButton
+              label={t('viewer:header.prev')}
+              shortcut="←"
+              disabled={!prev}
+              onClick={() => prev && onNavigate(prev)}
+              data-testid="viewer-prev"
+            >
+              <ChevronLeft aria-hidden="true" />
+            </IconButton>
+            <IconButton
+              label={t('viewer:header.next')}
+              shortcut="→"
+              disabled={!next}
+              onClick={() => next && onNavigate(next)}
+              data-testid="viewer-next"
+            >
+              <ChevronRight aria-hidden="true" />
+            </IconButton>
+          </div>
           <div className="flex items-center gap-0.5">
             <IconButton
               label={t('viewer:header.download')}
@@ -374,7 +370,7 @@ export function ViewerOverlay({
             className="flex min-h-0 min-w-0 flex-1 flex-col outline-none"
           >
             <div className="min-h-0 flex-1">{body}</div>
-            {!quickLook && kind === 'image' && siblings.list.length > 1 ? (
+            {kind === 'image' && siblings.list.length > 1 ? (
               <Filmstrip items={siblings.list} activeIndex={index} onSelect={onNavigate} />
             ) : null}
           </div>

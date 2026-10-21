@@ -267,8 +267,10 @@ test('deep link ?view= opens the overlay; the preview panel offers "Buka"; axe c
   await page.keyboard.press('Escape')
   await expect(overlay(page)).toBeHidden()
 
-  // a text file still opens in the editor, not the viewer
+  // a text file opens in the read-only text viewer (Step 17b); "Edit" → editor
   await page.getByRole('row', { name: /e-catatan\.txt/ }).dblclick()
+  await expect(overlay(page).getByTestId('code-viewer')).toContainText('bukan gambar')
+  await page.getByTestId('viewer-edit').click()
   await expect(page.getByTestId('editor-modal')).toBeVisible()
   await expect(overlay(page)).toHaveCount(0)
   expect(cspErrors).toEqual([])

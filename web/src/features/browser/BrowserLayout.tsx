@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { ArchiveBrowser } from '@/features/archive/ArchiveBrowser'
-import { ViewerOverlay } from '@/features/viewer/ViewerOverlay'
+import { QuickLook } from '@/features/viewer/QuickLook'
 import { usePlayerStore } from '@/stores/player'
-import { opensInViewer, viewerFor } from '@/features/viewer/viewers'
+import { ViewerOverlay } from '@/features/viewer/ViewerOverlay'
+import { opensInViewer } from '@/features/viewer/viewers'
 import { EditorModal } from '@/features/editor/EditorModal'
 import { isEditableByName } from '@/features/editor/languages'
 import { FolderOpen, FolderPlus, Upload } from 'lucide-react'
@@ -73,7 +74,6 @@ import { MOBILE_COLUMNS, normalizeColumns, orderedVisible, type ColumnsPref } fr
 import { BrowserContextMenu } from './ContextMenu'
 import { DetailsView } from './DetailsView'
 import { InlineRename } from './InlineRename'
-import { QuickLookDialog } from './ItemDialogs'
 import { PropertiesDialog, type PropertiesTarget } from '@/features/properties/PropertiesDialog'
 import { PreviewPanel } from './PreviewPanel'
 import { QuickFilter } from './QuickFilter'
@@ -143,9 +143,8 @@ export function BrowserLayout({
   const isMobile = useIsMobile()
   const previewOverlay = useMediaQuery('(max-width: 1279px)')
   const [editing, setEditing] = useState(false)
+  // Quick Look (Space): compact viewers in a light modal (SPEC §8.14, Step 17b)
   const [quickLook, setQuickLook] = useState<Item | null>(null)
-  // Quick Look of an image/PDF is the viewer overlay at 80 % (SPEC §8.14)
-  const [quickView, setQuickView] = useState<Item | null>(null)
   const [editorPath, setEditorPath] = useState<string | null>(null)
   const [properties, setProperties] = useState<PropertiesTarget | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
@@ -510,25 +509,32 @@ export function BrowserLayout({
         return
       }
       if (opensInViewer(item)) {
-        // SPEC §8.14: images, PDFs, audio and video open in the viewer overlay (it records the open)
+        // SPEC §8.14: every kind with a viewer opens in the overlay (it records
+        // the open); text/code is read-only there and "Edit" opens the editor
         openViewer(item.path)
         return
       }
       if (isEditableByName(item.name, item.mime, item.category)) {
-        // SPEC §8.13: text and code open in the editor (modal; maximize → /editor)
+        // text formats without a viewer kind (e.g. unknown extensions with a
+        // text MIME) still go to the editor
         setEditorPath(item.path)
         recordOpen(item.path).catch(() => {})
         return
       }
-      // no viewer yet (text kinds arrive in 17b-3): the overlay shows the info card
+      // Office documents and unknown types: the overlay shows the info card
       openViewer(item.path)
     },
     [go, openArchive, openViewer],
   )
-  const onQuickLook = useCallback((item: Item) => {
-    if (!item.isDir && viewerFor(item) !== 'archive' && opensInViewer(item)) setQuickView(item)
-    else setQuickLook(item)
-  }, [])
+  const onQuickLook = useCallback((item: Item) => setQuickLook(item), [])
+  const quickLookMove = useCallback(
+    (item: Item) => {
+      useSelectionStore.getState().set(tabId, selectOnly(item.path))
+      const i = filtered.findIndex((it) => it.path === item.path)
+      if (i >= 0) setActiveIndex(i)
+    },
+    [tabId, filtered],
+  )
 
   // --- file operations (Step 9b) ---
   const openNew = useCallback(
@@ -798,8 +804,8 @@ export function BrowserLayout({
     fileOps,
     selItems,
   ])
-  useDialogScope(!!quickLook || !!properties || !!archivePath || !!editorPath)
-  // the viewer pushes its own modal scope
+  useDialogScope(!!properties || !!archivePath || !!editorPath)
+  // the viewer and Quick Look push their own modal scope (`viewer`)
 
   // --- action registry context (palette, toolbar, context menu) ---
   const actionCtx = useMemo<ActionContext>(
@@ -1280,29 +1286,26 @@ export function BrowserLayout({
           onNavigate={viewerNavigate}
           onEdit={viewerEdit}
           onOpenLocation={viewerOpenLocation}
-          restoreFocus={focusGrid}
-        />
-      ) : null}
-      {quickView ? (
-        <ViewerOverlay
-          path={quickView.path}
-          items={filtered}
-          paging={{ hasNextPage: false, isFetchingNextPage: false, fetchNextPage: () => {} }}
-          onClose={() => setQuickView(null)}
-          onNavigate={() => {}}
-          quickLook
+          onOpenPath={openViewer}
+          onBrowseArchive={(it) => openArchive(it.path)}
           restoreFocus={focusGrid}
         />
       ) : null}
       <EditorModal path={editorPath} onClose={() => setEditorPath(null)} />
-      <QuickLookDialog
-        item={quickLook}
-        onClose={() => setQuickLook(null)}
-        onNoteSave={saveNote}
-        onToggleFavorite={(it) => void meta.toggleFavorite([it])}
-        onTogglePin={(it) => void meta.togglePin([it])}
-        onSetTag={(it, c) => void meta.setTag([it.path], c)}
-      />
+      {quickLook ? (
+        <QuickLook
+          key={quickLook.path}
+          item={quickLook}
+          items={filtered}
+          onClose={() => setQuickLook(null)}
+          onMove={quickLookMove}
+          onNoteSave={saveNote}
+          onToggleFavorite={(it) => void meta.toggleFavorite([it])}
+          onTogglePin={(it) => void meta.togglePin([it])}
+          onSetTag={(it, c) => void meta.setTag([it.path], c)}
+          restoreFocus={focusGrid}
+        />
+      ) : null}
       <PropertiesDialog
         target={properties}
         onClose={() => setProperties(null)}
