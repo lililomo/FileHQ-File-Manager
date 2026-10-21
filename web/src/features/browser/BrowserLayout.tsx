@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { ArchiveBrowser } from '@/features/archive/ArchiveBrowser'
 import { QuickLook } from '@/features/viewer/QuickLook'
 import { usePlayerStore } from '@/stores/player'
+import { setMiniPlayerSlot } from '@/features/viewer/audio/miniPlayerSlot'
 import { ViewerOverlay } from '@/features/viewer/ViewerOverlay'
 import { opensInViewer } from '@/features/viewer/viewers'
 import { EditorModal } from '@/features/editor/EditorModal'
@@ -1261,6 +1262,12 @@ export function BrowserLayout({
           />
         ) : null}
       </div>
+      {/* the persistent mini-player (AppShell) renders here, above the status bar (SPEC §8.14) */}
+      <div
+        ref={setMiniPlayerSlot}
+        className="shrink-0 empty:hidden"
+        data-testid="mini-player-slot"
+      />
       <StatusBar
         total={filter ? filtered.length : total}
         selectedCount={selCount}

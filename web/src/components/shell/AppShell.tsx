@@ -8,6 +8,7 @@ import { UploadInputs, type UploadInputsHandle } from '@/features/upload/UploadI
 import { uploader } from '@/features/upload/useUploader'
 import { useUploaderEffects } from '@/features/upload/useUploaderEffects'
 import { MiniPlayer } from '@/features/viewer/audio/MiniPlayer'
+import { useMiniPlayerSlot } from '@/features/viewer/audio/miniPlayerSlot'
 import { cn } from '@/lib/utils'
 import { usePlayerStore } from '@/stores/player'
 import { GlobalOverlays } from './GlobalOverlays'
@@ -23,6 +24,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pickAgain = useCallback(() => pickRef.current?.pickFiles(), [])
   useUploaderEffects(pickAgain)
   const playerShown = usePlayerStore((s) => s.index >= 0)
+  // in the browser's slot the mini-player sits above the 28 px status bar
+  const playerInSlot = !!useMiniPlayerSlot()
   return (
     <div className="flex h-dvh flex-col bg-bg text-text">
       <a
@@ -45,7 +48,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div
         className={cn(
           'pointer-events-none fixed right-3 z-40 flex flex-col items-end gap-2 [&>*]:pointer-events-auto',
-          playerShown ? 'bottom-17' : 'bottom-3',
+          playerShown ? (playerInSlot ? 'bottom-24' : 'bottom-17') : 'bottom-3',
         )}
       >
         <TransferPanel onPickAgain={pickAgain} />

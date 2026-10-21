@@ -212,6 +212,10 @@ test('music: plays across folder changes and dialogs, Media Session, playlist ne
   const mini = page.getByTestId('mini-player')
   await expect(mini).toBeVisible()
   await expect(mini.getByTestId('mini-player-title')).toHaveText('Lagu Satu')
+  // on the browser page the mini-player sits above the status bar (PROMPT 17b)
+  const miniBox = await mini.boundingBox()
+  const statusBox = await page.getByTestId('status-bar').boundingBox()
+  expect(miniBox && statusBox && miniBox.y + miniBox.height <= statusBox.y + 1).toBeTruthy()
   await page.getByTestId(`crumb-${DIR}`).click() // up to /media (in-app navigation)
   const videoDir = page.locator(`[role="row"][data-path="${DIR}/video"]`)
   await expect(videoDir).toBeVisible()
@@ -263,7 +267,11 @@ test('"Tambah ke playlist" from the context menu appends the selection', async (
   const mini = page.getByTestId('mini-player')
   await expect(mini).toBeVisible()
   await expect(mini.getByTestId('mini-player-title')).toHaveText('02-dua.mp3')
-  await mini.getByTestId('mini-player-close').click()
+  // logout empties the player: nothing of this user's queue survives the session
+  await page.getByTestId('user-menu').click()
+  await page.getByTestId('logout').click()
+  await expect(page).toHaveURL(/\/login/)
+  await expect(page.getByTestId('mini-player')).toHaveCount(0)
 })
 
 test('video: Video.js chunk on demand, 206 seek, SRT subtitle as VTT, PiP, resume prompt', async ({

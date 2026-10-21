@@ -14,6 +14,7 @@ import { NoteCell } from '@/features/browser/NoteCell'
 import type { TagColor } from '@/features/meta/api'
 import { recordOpen } from '@/features/meta/api'
 import { getMediaUrl } from '@/lib/media-url'
+import { usePlayerStore } from '@/stores/player'
 import { formatNumber } from '@/lib/format'
 import { pushScope, registerShortcut } from '@/lib/shortcuts'
 import { ImageViewer } from './image/ImageViewer'
@@ -253,6 +254,8 @@ function MediaPreview({ item, video }: { item: Item; video: boolean }) {
         src={src}
         controls
         autoPlay
+        // one sound at a time: the global player pauses while the preview plays
+        onPlay={() => usePlayerStore.getState().setPlaying(false)}
         className="w-full max-w-md"
         data-testid="quick-look-audio"
       />

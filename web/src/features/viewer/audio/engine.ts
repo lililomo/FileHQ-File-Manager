@@ -6,6 +6,7 @@
 import { getMediaInfo } from '@/features/viewer/api'
 import { getMediaUrl, isSignatureExpired } from '@/lib/media-url'
 import { usePrefsStore } from '@/stores/prefs'
+import { useSessionStore } from '@/stores/session'
 import { currentTrack, usePlayerStore, type RepeatMode, type Track } from '@/stores/player'
 
 /** MIME used for `canPlayType` by extension (the listing MIME may be generic). */
@@ -256,6 +257,16 @@ export function startAudioEngine(): () => void {
   if (started || typeof window === 'undefined') return () => {}
   started = true
   installSessionHandlers()
+  // the queue holds paths of the signed-in user and the element keeps
+  // playing on its own: logout, session expiry (401) or another user signing
+  // in on the same tab empties the player (SPEC §10.4 session boundary)
+  let userID = useSessionStore.getState().user?.id ?? null
+  const unsubSession = useSessionStore.subscribe((s) => {
+    const id = s.user?.id ?? null
+    if (id === userID) return
+    userID = id
+    usePlayerStore.getState().clear()
+  })
   // persisted preferences (SPEC §8.18 audio.volume/repeat/shuffle)
   const prefs = usePrefsStore.getState().prefs
   const vol = prefs['audio.volume']
@@ -299,6 +310,7 @@ export function startAudioEngine(): () => void {
   })
   return () => {
     unsub()
+    unsubSession()
     started = false
   }
 }
