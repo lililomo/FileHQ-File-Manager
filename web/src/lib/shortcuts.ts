@@ -154,39 +154,22 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'viewerInfo', keys: 'I', scope: 'viewer', labelKey: 'viewerInfo' },
   { id: 'viewerSlideshow', keys: 'Space', scope: 'viewer', labelKey: 'viewerSlideshow' },
   { id: 'viewerFind', keys: 'Ctrl+F', scope: 'viewer', labelKey: 'viewerFind' },
-  { id: 'videoPlay', keys: 'Space', scope: 'video', labelKey: 'videoPlay', planned: true },
-  {
-    id: 'videoSeek',
-    keys: 'ArrowLeft',
-    alt: ['ArrowRight'],
-    scope: 'video',
-    labelKey: 'videoSeek',
-    planned: true,
-  },
-  {
-    id: 'videoJKL',
-    keys: 'J',
-    alt: ['K', 'L'],
-    scope: 'video',
-    labelKey: 'videoJKL',
-    planned: true,
-  },
-  { id: 'videoMute', keys: 'M', scope: 'video', labelKey: 'videoMute', planned: true },
-  {
-    id: 'videoVolume',
-    keys: 'ArrowUp',
-    alt: ['ArrowDown'],
-    scope: 'video',
-    labelKey: 'videoVolume',
-    planned: true,
-  },
+  // --- video player (Step 17b; scope pushed above `viewer`) ---
+  { id: 'videoPlay', keys: 'Space', alt: ['K'], scope: 'video', labelKey: 'videoPlay' },
+  { id: 'videoBack', keys: 'ArrowLeft', scope: 'video', labelKey: 'videoBack' },
+  { id: 'videoForward', keys: 'ArrowRight', scope: 'video', labelKey: 'videoForward' },
+  { id: 'videoBack10', keys: 'J', scope: 'video', labelKey: 'videoBack10' },
+  { id: 'videoForward10', keys: 'L', scope: 'video', labelKey: 'videoForward10' },
+  { id: 'videoFullscreen', keys: 'F', scope: 'video', labelKey: 'videoFullscreen' },
+  { id: 'videoMute', keys: 'M', scope: 'video', labelKey: 'videoMute' },
+  { id: 'videoVolumeUp', keys: 'ArrowUp', scope: 'video', labelKey: 'videoVolumeUp' },
+  { id: 'videoVolumeDown', keys: 'ArrowDown', scope: 'video', labelKey: 'videoVolumeDown' },
   {
     id: 'videoPercent',
     keys: '0',
     alt: ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
     scope: 'video',
     labelKey: 'videoPercent',
-    planned: true,
   },
 ]
 
@@ -321,14 +304,22 @@ function onKeyDown(e: KeyboardEvent): void {
     }
   }
   const active: ShortcutScope[] = from > 0 ? ['global', ...scopeStack.slice(from)] : [...scopeStack]
-  for (const b of bindings.values()) {
-    if (!active.includes(b.def.scope)) continue
-    if (editable && !b.def.allowInInput) continue
-    for (const c of b.combos) {
-      if (matches(e, c.combo)) {
-        e.preventDefault()
-        b.handler(e, c.keys)
-        return
+  // the innermost scope wins: the video player (scope `video`, pushed above
+  // `viewer`) owns ←/→/Space while the overlay's prev/next stay below it
+  const seen = new Set<ShortcutScope>()
+  for (let i = active.length - 1; i >= 0; i--) {
+    const scope = active[i]!
+    if (seen.has(scope)) continue
+    seen.add(scope)
+    for (const b of bindings.values()) {
+      if (b.def.scope !== scope) continue
+      if (editable && !b.def.allowInInput) continue
+      for (const c of b.combos) {
+        if (matches(e, c.combo)) {
+          e.preventDefault()
+          b.handler(e, c.keys)
+          return
+        }
       }
     }
   }

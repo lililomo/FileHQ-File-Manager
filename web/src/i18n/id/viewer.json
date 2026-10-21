@@ -78,8 +78,11 @@
   },
   "card": {
     "unsupported": "Pratinjau untuk tipe ini belum tersedia.",
-    "comingSoon": "Pemutar audio/video dan viewer teks hadir di Step 17b.",
-    "download": "Download"
+    "download": "Download",
+    "office": "Pratinjau dokumen Office belum tersedia. Unduh untuk membukanya.",
+    "archive": "File arsip. Lihat isinya di browser arsip atau unduh.",
+    "browseArchive": "Lihat isi arsip",
+    "comingSoon": "Viewer teks, Markdown, CSV dan JSON hadir di Step 17b-3."
   },
   "pdf": {
     "loading": "Memuat PDF…",
@@ -121,5 +124,102 @@
     "retry": "Coba lagi",
     "toolbar": "Kontrol PDF",
     "document": "Dokumen PDF"
+  },
+  "audio": {
+    "title": "Pemutar musik",
+    "description": "Pemutar musik dengan playlist; tetap memutar saat berpindah folder.",
+    "miniPlayer": "Mini-player",
+    "expand": "Buka pemutar penuh",
+    "stop": "Hentikan & kosongkan playlist",
+    "play": "Putar",
+    "pause": "Jeda",
+    "prev": "Sebelumnya",
+    "next": "Berikutnya",
+    "seek": "Posisi lagu",
+    "volume": "Volume",
+    "mute": "Bisukan",
+    "unmute": "Bunyikan",
+    "shuffle": "Acak",
+    "repeat_off": "Ulangi: mati",
+    "repeat_all": "Ulangi: semua",
+    "repeat_one": "Ulangi: satu lagu",
+    "speed": "Kecepatan",
+    "playlist": "Playlist",
+    "clear": "Kosongkan",
+    "empty": "Playlist kosong. Buka file audio atau pilih \"Tambah ke playlist\" dari menu konteks.",
+    "remove": "Hapus {{name}} dari playlist",
+    "cover": "Sampul album",
+    "nothing": "Tidak ada yang diputar",
+    "unsupported": "Format audio ini tidak didukung browser ini. Unduh untuk memutarnya di aplikasi lain.",
+    "failed": "Audio tidak dapat dimuat.",
+    "starting": "Memulai pemutar musik…"
+  },
+  "video": {
+    "loading": "Memuat video…",
+    "seek": "Posisi video",
+    "pip": "Picture-in-picture",
+    "subtitles": "Subtitle",
+    "subtitlesOff": "Subtitle mati",
+    "autoNext": "Putar berikutnya otomatis",
+    "nextVideo": "Video berikutnya: {{name}}",
+    "resumeAt": "Lanjutkan dari {{time}}?",
+    "resume": "Lanjutkan",
+    "restart": "Dari awal",
+    "unsupportedCodec": "Codec {{codec}} tidak didukung browser ini.",
+    "unsupportedContainer": "Format {{format}} tidak didukung browser ini.",
+    "unsupportedHint": "Unduh file untuk memutarnya di aplikasi lain (transcoding belum tersedia).",
+    "failed": "Video tidak dapat diputar di browser ini."
+  },
+  "text": {
+    "loading": "Memuat isi file…",
+    "error": "Isi file tidak dapat dimuat.",
+    "binary": "File ini biner; tidak ada pratinjau teks.",
+    "tooLarge": "File terlalu besar untuk ditampilkan. {{detail}}",
+    "lines_one": "{{count}} baris",
+    "lines_other": "{{count}} baris",
+    "wrap": "Bungkus baris",
+    "partial": "File besar: hanya {{kb}} KB pertama yang ditampilkan.",
+    "htmlNote": "Menampilkan sumber HTML. Pratinjau langsung dinonaktifkan demi keamanan (hadir di Step 23e)."
+  },
+  "markdown": {
+    "rendered": "Tampilan",
+    "source": "Sumber"
+  },
+  "csv": {
+    "rows_one": "{{n}} baris",
+    "rows_other": "{{n}} baris",
+    "columns_one": "{{count}} kolom",
+    "columns_other": "{{count}} kolom",
+    "delimiter": "Pemisah: {{d}}",
+    "header": "Baris pertama = header",
+    "column": "Kolom {{n}}",
+    "loadingMore": "Memuat…",
+    "sort": "Urutkan",
+    "truncated": "Hanya {{n}} baris pertama yang ditampilkan."
+  },
+  "json": {
+    "title": "Pohon JSON",
+    "search": "Cari kunci…",
+    "matches": "{{current}} dari {{total}}",
+    "noMatches": "Tidak ditemukan",
+    "prev": "Kecocokan sebelumnya",
+    "next": "Kecocokan berikutnya",
+    "expandAll": "Buka semua",
+    "collapseAll": "Tutup semua",
+    "expand": "Buka",
+    "collapse": "Tutup",
+    "copyPath": "Salin path",
+    "copied": "Path {{path}} disalin",
+    "tooBig": "JSON lebih dari 5 MB ditampilkan sebagai teks.",
+    "invalid": "JSON tidak valid ({{error}}); ditampilkan sebagai teks."
+  },
+  "quick": {
+    "description": "Quick Look. Space atau Esc menutup, panah kiri/kanan berpindah item.",
+    "moreLines": "Hanya {{n}} baris pertama yang ditampilkan.",
+    "pdfPage": "Halaman {{n}}",
+    "pdfMore": "Menampilkan {{shown}} dari {{total}} halaman.",
+    "folderItems_one": "Berisi {{n}} item",
+    "folderItems_other": "Berisi {{n}} item",
+    "folderUnknown": "Jumlah isi belum dihitung."
   }
 }

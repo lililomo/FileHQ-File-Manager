@@ -7,6 +7,9 @@ import { TransferPanel } from '@/features/upload/TransferPanel'
 import { UploadInputs, type UploadInputsHandle } from '@/features/upload/UploadInputs'
 import { uploader } from '@/features/upload/useUploader'
 import { useUploaderEffects } from '@/features/upload/useUploaderEffects'
+import { MiniPlayer } from '@/features/viewer/audio/MiniPlayer'
+import { cn } from '@/lib/utils'
+import { usePlayerStore } from '@/stores/player'
 import { GlobalOverlays } from './GlobalOverlays'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
@@ -19,6 +22,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pickRef = useRef<UploadInputsHandle>(null)
   const pickAgain = useCallback(() => pickRef.current?.pickFiles(), [])
   useUploaderEffects(pickAgain)
+  const playerShown = usePlayerStore((s) => s.index >= 0)
   return (
     <div className="flex h-dvh flex-col bg-bg text-text">
       <a
@@ -34,9 +38,16 @@ export function AppShell({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+      {/* SPEC §8.14: persistent mini-player — outlives folder/route changes */}
+      <MiniPlayer />
       <GlobalOverlays />
       {/* SPEC §7.4 / §8.8: transfers above tasks, bottom-right; toasts stay bottom-left */}
-      <div className="pointer-events-none fixed right-3 bottom-3 z-40 flex flex-col items-end gap-2 [&>*]:pointer-events-auto">
+      <div
+        className={cn(
+          'pointer-events-none fixed right-3 z-40 flex flex-col items-end gap-2 [&>*]:pointer-events-auto',
+          playerShown ? 'bottom-17' : 'bottom-3',
+        )}
+      >
         <TransferPanel onPickAgain={pickAgain} />
         <TaskPanel />
       </div>

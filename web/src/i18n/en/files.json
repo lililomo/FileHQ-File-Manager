@@ -427,16 +427,20 @@
     "viewerOriginal": "Original size",
     "viewerRotate": "Rotate",
     "viewerFullscreen": "Fullscreen",
-    "videoPlay": "Play/pause",
-    "videoSeek": "Seek ±5 s",
-    "videoJKL": "Back 10 s / pause / forward 10 s",
-    "videoMute": "Mute",
-    "videoVolume": "Volume",
-    "videoPercent": "Jump to percent",
+    "videoPlay": "Play / pause (also K)",
+    "videoMute": "Mute / unmute",
+    "videoPercent": "Jump to 0–90 %",
     "viewerRotateLeft": "Rotate left (viewer)",
     "viewerInfo": "Info panel (viewer)",
     "viewerSlideshow": "Slideshow / Quick Look (viewer)",
-    "viewerFind": "Find text in PDF (viewer)"
+    "viewerFind": "Find text in PDF (viewer)",
+    "videoBack": "Back 5 s",
+    "videoForward": "Forward 5 s",
+    "videoBack10": "Back 10 s",
+    "videoForward10": "Forward 10 s",
+    "videoFullscreen": "Video fullscreen",
+    "videoVolumeUp": "Volume up",
+    "videoVolumeDown": "Volume down"
   },
   "palette": {
     "title": "Command palette",
@@ -492,6 +496,7 @@
     "undo": "Undo",
     "compress": "Compress…",
     "extract": "Extract",
+    "addToPlaylist": "Add to playlist",
     "browseArchive": "Browse archive",
     "extractEntries": "Extract selected to…",
     "downloadEntry": "Download entry",
@@ -535,5 +540,9 @@
     "started": "Downloading {{name}}",
     "preparingZip": "Preparing zip ({{count}} items)…",
     "zipStarted": "Download of {{name}} started"
+  },
+  "playlist": {
+    "added_one": "{{count}} track added to the playlist",
+    "added_other": "{{count}} tracks added to the playlist"
   }
 }

@@ -22,9 +22,14 @@ import { InfoCard } from './InfoCard'
 import { InfoPanel } from './InfoPanel'
 import { useSiblingNav, type SiblingNavPaging } from './useSiblingNav'
 
-// pdf.js and its viewer components are one lazy chunk (SPEC §8.14, §1.6)
-const PdfViewer = lazy(() => import('./pdf/PdfViewer').then((m) => ({ default: m.PdfViewer })))
 import { sameViewerKind, viewerFor } from './viewers'
+import { usePlayerStore } from '@/stores/player'
+
+// pdf.js and Video.js are lazy chunks (SPEC §8.14, §1.6)
+const PdfViewer = lazy(() => import('./pdf/PdfViewer').then((m) => ({ default: m.PdfViewer })))
+const VideoPlayer = lazy(() =>
+  import('./video/VideoPlayer').then((m) => ({ default: m.VideoPlayer })),
+)
 
 export interface ViewerOverlayProps {
   /** virtual path of the file being viewed (`?view=`) */
@@ -119,6 +124,37 @@ export function ViewerOverlay({
     return () => offs.forEach((off) => off())
   }, [prev, next, onNavigate, quickLook, onClose])
 
+  // audio plays in the global player (SPEC §8.14: survives route changes):
+  // the folder's audio files become the playlist, the overlay hands over to
+  // the expanded player dialog
+  const audioList = kind === 'audio' ? siblings.list : null
+  const handedOver = useRef<string | null>(null)
+  useEffect(() => {
+    if (!item || kind !== 'audio' || !audioList || handedOver.current === item.path) return
+    handedOver.current = item.path
+    const list = audioList.length ? audioList : [item]
+    const at = Math.max(
+      0,
+      list.findIndex((it) => it.path === item.path),
+    )
+    const st = usePlayerStore.getState()
+    const cur = st.index >= 0 ? st.queue[st.index] : null
+    if (cur?.path !== item.path) {
+      st.playList(
+        list.map((it) => ({
+          path: it.path,
+          name: it.name,
+          mime: it.mime,
+          ext: it.ext,
+          size: it.size,
+        })),
+        at,
+      )
+    } else if (!st.playing) st.setPlaying(true)
+    st.setExpanded(true)
+    onClose()
+  }, [item, kind, audioList, onClose])
+
   // Recent + announcement follow every file shown (SPEC §8.7)
   useEffect(() => {
     if (!item) return
@@ -182,6 +218,27 @@ export function ViewerOverlay({
       >
         <PdfViewer item={item} onDownload={download} />
       </Suspense>
+    )
+  } else if (kind === 'video') {
+    body = (
+      <Suspense
+        fallback={
+          <div
+            className="flex h-full items-center justify-center text-sm text-text-muted"
+            aria-busy="true"
+          >
+            {t('viewer:video.loading')}
+          </div>
+        }
+      >
+        <VideoPlayer item={item} next={next} onNext={onNavigate} onDownload={download} />
+      </Suspense>
+    )
+  } else if (kind === 'audio') {
+    body = (
+      <div className="flex h-full items-center justify-center text-sm text-text-muted">
+        {t('viewer:audio.starting')}
+      </div>
     )
   } else {
     body = <InfoCard item={item} kind={kind} onDownload={download} />

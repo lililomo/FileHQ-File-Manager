@@ -37,10 +37,11 @@ describe('viewerFor (SPEC §8.14 MIME → viewer)', () => {
     expect(viewerFor(file('bin', null, 'other', ''))).toBe('info')
     expect(viewerFor({ ...file('x.jpg', null, 'image'), isDir: true })).toBe('info')
   })
-  it('only image and pdf open in the overlay in this build', () => {
+  it('image, pdf, audio and video open in the overlay (17b-2)', () => {
     expect(opensInViewer(file('a.jpg', null, 'image'))).toBe(true)
     expect(opensInViewer(file('a.pdf', null, 'pdf'))).toBe(true)
-    expect(opensInViewer(file('a.mp3', null, 'audio'))).toBe(false)
+    expect(opensInViewer(file('a.mp3', null, 'audio'))).toBe(true)
+    expect(opensInViewer(file('a.mkv', null, 'video'))).toBe(true)
     expect(opensInViewer(file('a.txt', 'text/plain', 'text'))).toBe(false)
   })
   it('sibling navigation stays within one kind', () => {

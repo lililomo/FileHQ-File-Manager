@@ -43,8 +43,13 @@ const IMAGE_MIMES: ReadonlySet<string> = new Set([
   'image/heif',
 ])
 
-/** Viewers that exist in this build (SPEC §8.14; the rest arrive in 17b). */
-export const IMPLEMENTED_VIEWERS: ReadonlySet<ViewerKind> = new Set(['image', 'pdf'])
+/** Viewers that exist in this build (SPEC §8.14; text kinds arrive in 17b-3). */
+export const IMPLEMENTED_VIEWERS: ReadonlySet<ViewerKind> = new Set([
+  'image',
+  'pdf',
+  'audio',
+  'video',
+])
 
 function extOf(item: ViewerItem): string {
   if (item.ext) return item.ext.toLowerCase()

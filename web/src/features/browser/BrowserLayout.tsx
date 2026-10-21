@@ -2,6 +2,7 @@ import { useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-que
 import { useNavigate } from '@tanstack/react-router'
 import { ArchiveBrowser } from '@/features/archive/ArchiveBrowser'
 import { ViewerOverlay } from '@/features/viewer/ViewerOverlay'
+import { usePlayerStore } from '@/stores/player'
 import { opensInViewer, viewerFor } from '@/features/viewer/viewers'
 import { EditorModal } from '@/features/editor/EditorModal'
 import { isEditableByName } from '@/features/editor/languages'
@@ -509,7 +510,7 @@ export function BrowserLayout({
         return
       }
       if (opensInViewer(item)) {
-        // SPEC §8.14: images and PDFs open in the viewer overlay (it records the open)
+        // SPEC §8.14: images, PDFs, audio and video open in the viewer overlay (it records the open)
         openViewer(item.path)
         return
       }
@@ -519,7 +520,7 @@ export function BrowserLayout({
         recordOpen(item.path).catch(() => {})
         return
       }
-      // no viewer yet (audio/video/text arrive in 17b): the overlay shows the info card
+      // no viewer yet (text kinds arrive in 17b-3): the overlay shows the info card
       openViewer(item.path)
     },
     [go, openArchive, openViewer],
@@ -635,6 +636,19 @@ export function BrowserLayout({
       browseArchive: () => {
         const item = selItems.length === 1 ? selItems[0] : focusItem
         if (item && !item.isDir && item.category === 'archive') openArchive(item.path)
+      },
+      addToPlaylist: () => {
+        const tracks = (selItems.length ? selItems : focusItem ? [focusItem] : [])
+          .filter((it) => !it.isDir && it.category === 'audio')
+          .map((it) => ({
+            path: it.path,
+            name: it.name,
+            mime: it.mime,
+            ext: it.ext,
+            size: it.size,
+          }))
+        const added = usePlayerStore.getState().add(tracks)
+        toast.success(t('files:playlist.added', { count: added }))
       },
       openFolderProperties: () => {
         statItem(path)

@@ -78,8 +78,11 @@
   },
   "card": {
     "unsupported": "No preview is available for this type.",
-    "comingSoon": "Audio/video players and text viewers arrive in Step 17b.",
-    "download": "Download"
+    "download": "Download",
+    "office": "Office documents have no preview yet. Download to open it.",
+    "archive": "Archive file. Browse its contents in the archive browser or download it.",
+    "browseArchive": "Browse archive",
+    "comingSoon": "Text, Markdown, CSV and JSON viewers arrive in Step 17b-3."
   },
   "pdf": {
     "loading": "Loading PDF…",
@@ -121,5 +124,102 @@
     "retry": "Retry",
     "toolbar": "PDF controls",
     "document": "PDF document"
+  },
+  "audio": {
+    "title": "Music player",
+    "description": "Music player with a playlist; keeps playing while you browse folders.",
+    "miniPlayer": "Mini player",
+    "expand": "Open the full player",
+    "stop": "Stop & clear the playlist",
+    "play": "Play",
+    "pause": "Pause",
+    "prev": "Previous",
+    "next": "Next",
+    "seek": "Track position",
+    "volume": "Volume",
+    "mute": "Mute",
+    "unmute": "Unmute",
+    "shuffle": "Shuffle",
+    "repeat_off": "Repeat: off",
+    "repeat_all": "Repeat: all",
+    "repeat_one": "Repeat: one track",
+    "speed": "Speed",
+    "playlist": "Playlist",
+    "clear": "Clear",
+    "empty": "The playlist is empty. Open an audio file or choose \"Add to playlist\" from the context menu.",
+    "remove": "Remove {{name}} from the playlist",
+    "cover": "Album cover",
+    "nothing": "Nothing playing",
+    "unsupported": "This browser cannot play this audio format. Download it to play it elsewhere.",
+    "failed": "The audio could not be loaded.",
+    "starting": "Starting the music player…"
+  },
+  "video": {
+    "loading": "Loading video…",
+    "seek": "Video position",
+    "pip": "Picture-in-picture",
+    "subtitles": "Subtitles",
+    "subtitlesOff": "Subtitles off",
+    "autoNext": "Autoplay next",
+    "nextVideo": "Next video: {{name}}",
+    "resumeAt": "Resume from {{time}}?",
+    "resume": "Resume",
+    "restart": "Start over",
+    "unsupportedCodec": "This browser does not support the {{codec}} codec.",
+    "unsupportedContainer": "This browser does not support the {{format}} format.",
+    "unsupportedHint": "Download the file to play it in another application (no transcoding yet).",
+    "failed": "This browser cannot play the video."
+  },
+  "text": {
+    "loading": "Loading the file…",
+    "error": "The file content could not be loaded.",
+    "binary": "This file is binary; there is no text preview.",
+    "tooLarge": "The file is too large to show. {{detail}}",
+    "lines_one": "{{count}} line",
+    "lines_other": "{{count}} lines",
+    "wrap": "Wrap lines",
+    "partial": "Large file: only the first {{kb}} KB are shown.",
+    "htmlNote": "Showing the HTML source. Live preview is disabled for security (arrives in Step 23e)."
+  },
+  "markdown": {
+    "rendered": "Rendered",
+    "source": "Source"
+  },
+  "csv": {
+    "rows_one": "{{n}} row",
+    "rows_other": "{{n}} rows",
+    "columns_one": "{{count}} column",
+    "columns_other": "{{count}} columns",
+    "delimiter": "Delimiter: {{d}}",
+    "header": "First row is the header",
+    "column": "Column {{n}}",
+    "loadingMore": "Loading…",
+    "sort": "Sort",
+    "truncated": "Only the first {{n}} rows are shown."
+  },
+  "json": {
+    "title": "JSON tree",
+    "search": "Search keys…",
+    "matches": "{{current}} of {{total}}",
+    "noMatches": "No matches",
+    "prev": "Previous match",
+    "next": "Next match",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "copyPath": "Copy path",
+    "copied": "Copied {{path}}",
+    "tooBig": "JSON over 5 MB is shown as text.",
+    "invalid": "Invalid JSON ({{error}}); shown as text."
+  },
+  "quick": {
+    "description": "Quick Look. Space or Esc closes, left/right arrows move between items.",
+    "moreLines": "Only the first {{n}} lines are shown.",
+    "pdfPage": "Page {{n}}",
+    "pdfMore": "Showing {{shown}} of {{total}} pages.",
+    "folderItems_one": "Contains {{n}} item",
+    "folderItems_other": "Contains {{n}} items",
+    "folderUnknown": "The item count has not been computed yet."
   }
 }

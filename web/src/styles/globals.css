@@ -161,3 +161,14 @@
     animation: none;
   }
 }
+
+/* Step 17b: media range inputs (seek, volume) in the accent colour */
+.fm-range {
+  height: 1rem;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+.fm-range:disabled {
+  cursor: default;
+  opacity: 0.5;
+}

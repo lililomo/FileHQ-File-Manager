@@ -27,6 +27,16 @@ export interface GpsInfo {
   alt?: number
 }
 
+/** Sidecar subtitle of a video (Step 17b; signed `/files/subtitle` URL). */
+export interface SubtitleTrack {
+  path: string
+  name: string
+  lang?: string
+  label: string
+  format: 'vtt' | 'srt'
+  url: string
+}
+
 export type MediaKind = 'image' | 'svg' | 'video' | 'audio' | 'pdf' | 'other'
 
 export interface MediaInfo {
@@ -49,6 +59,8 @@ export interface MediaInfo {
   exif: ExifInfo | null
   /** Only present when requested with `includeGps` and stored in the file. */
   gps?: GpsInfo
+  /** Videos only: sidecar .vtt/.srt files of the same folder. */
+  subtitles?: SubtitleTrack[]
 }
 
 export function getMediaInfo(

@@ -21,6 +21,7 @@ import {
   FolderOpen,
   FolderPlus,
   FolderSearch,
+  ListMusic,
   FolderSymlink,
   Globe,
   Hash,
@@ -151,6 +152,8 @@ export interface ActionContext {
   openInEditor?: () => void
   /** Step 14b: open the archive browser overlay for the focused archive. */
   browseArchive?: () => void
+  /** Step 17b: append the selected audio files to the music player queue. */
+  addToPlaylist?: () => void
   /** Archive browser only (context "archive"): selected members. */
   extractEntries?: () => void
   downloadEntry?: () => void
@@ -403,6 +406,18 @@ export const ACTIONS: ActionDef[] = [
     shortcut: 'undo',
     isApplicable: (c) => c.canUndo,
     run: (c) => c.undo(),
+  },
+  // --- music player (17b) ---
+  {
+    id: 'addToPlaylist',
+    labelKey: 'addToPlaylist',
+    group: 'navigate',
+    icon: ListMusic,
+    isApplicable: (c) =>
+      some(c) &&
+      !!c.addToPlaylist &&
+      c.selection.some((it) => !it.isDir && it.category === 'audio'),
+    run: (c) => c.addToPlaylist?.(),
   },
   // --- archive (14) ---
   {
@@ -823,6 +838,7 @@ export const MENU_MATRIX: Record<MenuContext, string[]> = {
     'openInEditor',
     'openWith',
     'quickLook',
+    'addToPlaylist',
     '|',
     'download',
     'share',
@@ -891,6 +907,7 @@ export const MENU_MATRIX: Record<MenuContext, string[]> = {
   ],
   multi: [
     'downloadZip',
+    'addToPlaylist',
     '|',
     'copy',
     'cut',
