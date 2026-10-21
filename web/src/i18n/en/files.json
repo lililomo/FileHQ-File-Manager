@@ -243,9 +243,6 @@
     "created": "{{name}} created",
     "windowsIncompatible": "This name is problematic on Windows, but it was created anyway."
   },
-  "viewer": {
-    "notYet": "Viewer not available yet (Step 17). File: {{name}}"
-  },
   "announce": {
     "opened": "Opened folder {{name}}, {{n}} items",
     "refreshed": "List refreshed",
@@ -438,7 +435,8 @@
     "videoPercent": "Jump to percent",
     "viewerRotateLeft": "Rotate left (viewer)",
     "viewerInfo": "Info panel (viewer)",
-    "viewerSlideshow": "Slideshow / Quick Look (viewer)"
+    "viewerSlideshow": "Slideshow / Quick Look (viewer)",
+    "viewerFind": "Find text in PDF (viewer)"
   },
   "palette": {
     "title": "Command palette",

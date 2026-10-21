@@ -7,13 +7,14 @@ test('theme is applied before first paint without inline scripts', async ({ page
   await page.addInitScript(() => localStorage.setItem('theme', 'dark'))
   const response = await page.goto('/login')
   expect(response?.headers()['content-security-policy']).toContain("default-src 'self'")
-  // scripts never allow inline (theme comes from theme-init.js); styles do since
-  // Step 16a (Monaco/Radix inject <style>, SPEC §10.3)
+  // scripts never allow inline or eval (theme comes from theme-init.js); styles
+  // do since Step 16a (Monaco/Radix inject <style>); 'wasm-unsafe-eval' only
+  // permits WebAssembly compilation for pdf.js decoders (Step 17a, SPEC §10.3)
   const scriptSrc = (response?.headers()['content-security-policy'] ?? '')
     .split(';')
     .map((d) => d.trim())
     .find((d) => d.startsWith('script-src'))
-  expect(scriptSrc).toBe("script-src 'self'")
+  expect(scriptSrc).toBe("script-src 'self' 'wasm-unsafe-eval'")
   await expect(page.locator('script:not([src])')).toHaveCount(0)
   expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe('dark')
   await expect(page.getByRole('heading', { name: 'Masuk' })).toBeVisible()

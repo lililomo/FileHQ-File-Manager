@@ -1,0 +1,42 @@
+/* pdf.js viewer host (SPEC §8.14 PdfViewer). pdf_viewer.css ships the page,
+   text-layer, annotation and find-highlight styles; these rules only size
+   the container and wire the print root. */
+.fm-pdf-container {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  background: var(--surface-2);
+}
+.fm-pdf-container .pdfViewer .page {
+  margin: 8px auto;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.15);
+}
+/* pdf.js paints with --page-margin etc. from its own stylesheet; keep the
+   viewer's text selection colour readable in both themes */
+.fm-pdf-container .textLayer ::selection {
+  background: rgb(0 100 255 / 0.3);
+}
+
+/* print: only the rendered pages leave the screen */
+.fm-pdf-print-root {
+  display: none;
+}
+@media print {
+  body > *:not(.fm-pdf-print-root) {
+    display: none !important;
+  }
+  .fm-pdf-print-root {
+    display: block;
+  }
+  .fm-pdf-print-root img {
+    display: block;
+    width: 100%;
+    page-break-after: always;
+    break-after: page;
+  }
+  .fm-pdf-print-root img:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+}

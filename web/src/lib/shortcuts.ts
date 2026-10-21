@@ -153,6 +153,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'viewerFullscreen', keys: 'F', scope: 'viewer', labelKey: 'viewerFullscreen' },
   { id: 'viewerInfo', keys: 'I', scope: 'viewer', labelKey: 'viewerInfo' },
   { id: 'viewerSlideshow', keys: 'Space', scope: 'viewer', labelKey: 'viewerSlideshow' },
+  { id: 'viewerFind', keys: 'Ctrl+F', scope: 'viewer', labelKey: 'viewerFind' },
   { id: 'videoPlay', keys: 'Space', scope: 'video', labelKey: 'videoPlay', planned: true },
   {
     id: 'videoSeek',

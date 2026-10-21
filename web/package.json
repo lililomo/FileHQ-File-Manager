@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -p tsconfig.json --noEmit && vite build && node scripts/bundle-size.mjs",
+    "dev": "node scripts/pdfjs-assets.mjs && vite",
+    "build": "node scripts/pdfjs-assets.mjs && tsc -p tsconfig.json --noEmit && vite build && node scripts/bundle-size.mjs",
     "preview": "vite preview",
     "lint": "eslint . && node scripts/check-contrast.mjs && node scripts/i18n-check.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -17,7 +17,8 @@
     "check:contrast": "node scripts/check-contrast.mjs --verbose",
     "i18n:check": "node scripts/i18n-check.mjs",
     "bundle:size": "node scripts/bundle-size.mjs",
-    "gen:api": "openapi-typescript ../docs/openapi.yaml -o src/lib/api.gen.ts"
+    "gen:api": "openapi-typescript ../docs/openapi.yaml -o src/lib/api.gen.ts",
+    "pdfjs:assets": "node scripts/pdfjs-assets.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -33,6 +34,7 @@
     "lucide-react": "^1.55.0",
     "marked": "18.1.1",
     "monaco-editor": "0.57.0",
+    "pdfjs-dist": "6.4.299",
     "radix-ui": "^1.8.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

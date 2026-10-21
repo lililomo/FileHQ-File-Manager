@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, Download, Info, Pencil, Share2, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FileIcon } from '@/components/file-icon/FileIcon'
 import { toIconCategory } from '@/components/file-icon/categories'
@@ -21,6 +21,9 @@ import { ImageViewer } from './image/ImageViewer'
 import { InfoCard } from './InfoCard'
 import { InfoPanel } from './InfoPanel'
 import { useSiblingNav, type SiblingNavPaging } from './useSiblingNav'
+
+// pdf.js and its viewer components are one lazy chunk (SPEC §8.14, §1.6)
+const PdfViewer = lazy(() => import('./pdf/PdfViewer').then((m) => ({ default: m.PdfViewer })))
 import { sameViewerKind, viewerFor } from './viewers'
 
 export interface ViewerOverlayProps {
@@ -165,6 +168,21 @@ export function ViewerOverlay({
         slideshow={!quickLook}
       />
     )
+  } else if (kind === 'pdf') {
+    body = (
+      <Suspense
+        fallback={
+          <div
+            className="flex h-full items-center justify-center text-sm text-text-muted"
+            aria-busy="true"
+          >
+            {t('viewer:pdf.loading')}
+          </div>
+        }
+      >
+        <PdfViewer item={item} onDownload={download} />
+      </Suspense>
+    )
   } else {
     body = <InfoCard item={item} kind={kind} onDownload={download} />
   }
@@ -182,6 +200,12 @@ export function ViewerOverlay({
         onOpenAutoFocus={(e) => {
           e.preventDefault()
           contentRef.current?.focus()
+        }}
+        // Esc inside a sub-panel that handles it itself (PDF find bar) must
+        // not close the whole viewer: Radix listens in the capture phase
+        onEscapeKeyDown={(e) => {
+          const target = e.target as HTMLElement | null
+          if (target?.closest?.('[data-escape-local]')) e.preventDefault()
         }}
         data-testid={quickLook ? 'quick-look' : 'viewer-overlay'}
         data-kind={kind}

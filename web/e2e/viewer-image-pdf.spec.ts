@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { apiMkdir, apiResetPrefs, e2eStorageRoot, loginAsAdmin } from './fixtures'
+import { makePdf } from './pdf-fixtures'
 
 test.describe.configure({ mode: 'serial', timeout: 120_000 })
 
@@ -284,4 +285,170 @@ test('Quick Look (Space) on an image is the 80 % overlay; Space closes it', asyn
   await expect(page).not.toHaveURL(/view=/)
   await page.keyboard.press('Space')
   await expect(ql).toBeHidden()
+})
+
+// ---------------------------------------------------------------------------
+// PDF viewer (pdf.js): streaming, sidebar, search, password, virtualisation
+// ---------------------------------------------------------------------------
+
+const PDF_DIR = '/galeri/pdf'
+const BIG_BYTES = 100 * 1024 * 1024
+let pdfSeeded = false
+function seedPdf(dir: string) {
+  if (pdfSeeded) return
+  pdfSeeded = true
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(
+    join(dir, 'dokumen-20.pdf'),
+    makePdf({
+      pages: 20,
+      text: (n) => (n === 7 ? `Halaman ${n} kata-unik-xyz` : `Halaman ${n}`),
+      outline: [
+        { title: 'Bab satu', page: 1 },
+        { title: 'Bab dua', page: 12 },
+        { title: 'Lampiran', page: 20 },
+      ],
+    }),
+  )
+  writeFileSync(join(dir, 'rahasia.pdf'), makePdf({ pages: 3, password: 'pdf123' }))
+  writeFileSync(join(dir, 'besar.pdf'), makePdf({ pages: 3, junkBytes: BIG_BYTES }))
+  writeFileSync(join(dir, 'banyak.pdf'), makePdf({ pages: 500 }))
+}
+
+async function openPdfFolder(page: Page) {
+  if (!pdfSeeded) {
+    await apiMkdir(page.request, '/galeri', 'pdf')
+    seedPdf(join(e2eStorageRoot(), 'admin', 'galeri', 'pdf'))
+  }
+  await page.goto(`/files${PDF_DIR}`)
+  await expect(page.getByRole('row', { name: /dokumen-20\.pdf/ })).toBeVisible()
+}
+
+const firstCanvas = (page: Page) =>
+  page.locator('[data-testid="pdf-container"] .page[data-page-number="1"] canvas')
+
+test('pdf: self-hosted worker, sidebar thumbnails/outline, text search jumps to the page', async ({
+  page,
+}) => {
+  await openPdfFolder(page)
+  const workerReq = page.waitForRequest((r) => /pdf\.worker\.min-.*\.mjs$/.test(r.url()))
+  await page.getByRole('row', { name: /dokumen-20\.pdf/ }).dblclick()
+  await expect(overlay(page)).toHaveAttribute('data-kind', 'pdf')
+  const worker = await workerReq
+  expect(new URL(worker.url()).origin).toBe(new URL(page.url()).origin)
+  await expect(firstCanvas(page)).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByTestId('pdf-page-count')).toHaveText('dari 20')
+  await expect(page.getByTestId('pdf-page-input')).toHaveValue('1')
+
+  // sidebar: 20 thumbnails, clicking one navigates
+  await page.getByTestId('pdf-sidebar-toggle').click()
+  await expect(page.getByTestId('pdf-thumb')).toHaveCount(20)
+  await expect(page.getByTestId('pdf-thumb').first().locator('img')).toBeVisible({
+    timeout: 15_000,
+  })
+  await page.getByTestId('pdf-thumb').nth(4).click()
+  await expect(page.getByTestId('pdf-page-input')).toHaveValue('5')
+  // outline
+  await page.getByTestId('pdf-tab-outline').click()
+  await expect(page.getByTestId('pdf-outline-item')).toHaveCount(3)
+  await page.getByTestId('pdf-outline-item').nth(1).click()
+  await expect(page.getByTestId('pdf-page-input')).toHaveValue('12')
+
+  // search: Ctrl+F, the unique word sits on page 7
+  await page.keyboard.press('Control+f')
+  const input = page.getByTestId('pdf-search-input')
+  await expect(input).toBeFocused()
+  await input.fill('kata-unik-xyz')
+  await expect(page.getByTestId('pdf-search-count')).toHaveText('1 dari 1', { timeout: 15_000 })
+  await expect(page.getByTestId('pdf-page-input')).toHaveValue('7')
+  await expect(page.locator('.textLayer .highlight').first()).toBeVisible()
+  await input.fill('tidak-ada-di-dokumen')
+  await expect(page.getByTestId('pdf-search-count')).toHaveText('Tidak ditemukan', {
+    timeout: 15_000,
+  })
+  await page.getByTestId('pdf-search-input').press('Escape')
+  await expect(page.getByTestId('pdf-search')).toHaveCount(0)
+
+  // page input, zoom preset and rotation go through pdf.js (page-width keeps
+  // the width, so rotating an A4 portrait page changes its height)
+  await page.getByTestId('pdf-page-input').fill('20')
+  await page.getByTestId('pdf-page-input').press('Enter')
+  await expect(page.getByTestId('pdf-page-input')).toHaveValue('20')
+  await page.getByTestId('pdf-zoom').click()
+  await page.getByRole('option', { name: 'Lebar halaman' }).click()
+  await expect(page.getByTestId('pdf-zoom')).toContainText('Lebar halaman')
+  const before = await page
+    .locator('[data-testid="pdf-container"] .page')
+    .first()
+    .evaluate((el) => (el as HTMLElement).offsetHeight)
+  await page.getByTestId('pdf-rotate').click()
+  await expect
+    .poll(() =>
+      page
+        .locator('[data-testid="pdf-container"] .page')
+        .first()
+        .evaluate((el) => (el as HTMLElement).offsetHeight),
+    )
+    .not.toBe(before)
+  // arrows still move between files of the same kind (pdf → pdf)
+  await page.keyboard.press('Escape')
+  await expect(overlay(page)).toBeHidden()
+  expect(cspErrors).toEqual([])
+})
+
+test('pdf: password prompt, wrong then right', async ({ page }) => {
+  await openPdfFolder(page)
+  await page.getByRole('row', { name: /rahasia\.pdf/ }).dblclick()
+  const form = page.getByTestId('pdf-password')
+  await expect(form).toBeVisible({ timeout: 20_000 })
+  await page.getByTestId('pdf-password-input').fill('salah')
+  await page.getByTestId('pdf-password-open').click()
+  await expect(page.getByTestId('pdf-password-wrong')).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId('pdf-password-input').fill('pdf123')
+  await page.getByTestId('pdf-password-open').click()
+  await expect(firstCanvas(page)).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByTestId('pdf-page-count')).toHaveText('dari 3')
+  await page.keyboard.press('Escape')
+})
+
+test('pdf: a 100 MB file shows page 1 through Range requests long before it is downloaded', async ({
+  page,
+}) => {
+  await openPdfFolder(page)
+  let ranged = 0
+  let bytes = 0
+  page.on('response', (r) => {
+    if (!r.url().includes('/api/v1/files/raw') || !r.url().includes('besar.pdf')) return
+    if (r.request().headers()['range']) ranged++
+    const len = Number(r.headers()['content-length'] ?? 0)
+    if (r.status() === 206) bytes += len
+  })
+  await page.getByRole('row', { name: /besar\.pdf/ }).dblclick()
+  await expect(firstCanvas(page)).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByTestId('pdf-page-count')).toHaveText('dari 3')
+  expect(ranged).toBeGreaterThan(0)
+  // only a few 64 KB chunks were needed for the first page, not the 100 MB body
+  expect(bytes).toBeLessThan(8 * 1024 * 1024)
+  await page.keyboard.press('Escape')
+})
+
+test('pdf: 500 pages stay virtualised while scrolling to the end', async ({ page }) => {
+  await openPdfFolder(page)
+  await page.getByRole('row', { name: /banyak\.pdf/ }).dblclick()
+  await expect(firstCanvas(page)).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByTestId('pdf-page-count')).toHaveText('dari 500')
+  const container = page.getByTestId('pdf-container')
+  // scroll through the document in big steps, then to the very end
+  for (let i = 1; i <= 10; i++) {
+    await container.evaluate((el, k) => {
+      el.scrollTop = (el.scrollHeight * k) / 10
+    }, i)
+    await page.waitForTimeout(150)
+  }
+  await expect(page.getByTestId('pdf-page-input')).toHaveValue('500', { timeout: 15_000 })
+  // pdf.js keeps only the visible pages (+ a small buffer) rendered
+  const canvases = await page.locator('[data-testid="pdf-container"] .page canvas').count()
+  expect(canvases).toBeLessThanOrEqual(12)
+  await page.keyboard.press('Escape')
+  expect(cspErrors).toEqual([])
 })

@@ -53,6 +53,10 @@ export default defineConfig(({ mode }) => ({
   build: {
     target: 'es2022',
     sourcemap: false,
+    // pdf.js (library, viewer components, CSS, worker) is reached only through
+    // the dynamic imports in features/viewer/pdf/pdfjs.ts, so it splits into
+    // lazy chunks on its own; a manualChunks entry would make rolldown
+    // modulepreload it from index.html and blow the §1.6 budget (verified).
     chunkSizeWarningLimit: 600,
   },
   test: {

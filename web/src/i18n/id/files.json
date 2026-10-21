@@ -243,9 +243,6 @@
     "created": "{{name}} dibuat",
     "windowsIncompatible": "Nama ini bermasalah di Windows, tetapi tetap dibuat."
   },
-  "viewer": {
-    "notYet": "Viewer belum tersedia (Step 17). File: {{name}}"
-  },
   "announce": {
     "opened": "Membuka folder {{name}}, {{n}} item",
     "refreshed": "Daftar dimuat ulang",
@@ -438,7 +435,8 @@
     "videoPercent": "Lompat ke persen",
     "viewerRotateLeft": "Putar kiri (viewer)",
     "viewerInfo": "Panel info (viewer)",
-    "viewerSlideshow": "Slideshow / Quick Look (viewer)"
+    "viewerSlideshow": "Slideshow / Quick Look (viewer)",
+    "viewerFind": "Cari teks di PDF (viewer)"
   },
   "palette": {
     "title": "Command palette",

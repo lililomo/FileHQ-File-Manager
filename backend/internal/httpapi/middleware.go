@@ -140,8 +140,11 @@ func RealIP(cfg *config.Config) func(http.Handler) http.Handler {
 	}
 }
 
-// InitialCSP is the Step 1 policy for HTML; the final policy with nonces is Step 20.
-const InitialCSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'"
+// InitialCSP is the Step 1 policy for HTML; the final policy with nonces is
+// Step 20. 'wasm-unsafe-eval' (Step 17a) lets pdf.js compile its WASM
+// decoders (OpenJPEG for JPX images, JBIG2, qcms for ICC profiles); it does
+// not permit JavaScript eval.
+const InitialCSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'"
 
 // APICSP is the policy of JSON responses (SPEC §10.3): nothing may load.
 const APICSP = "default-src 'none'; frame-ancestors 'none'"
