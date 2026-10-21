@@ -33,6 +33,9 @@ UPDATE media_metadata
 SET thumb_state = ?, thumb_error = ?, computed_at = ?
 WHERE user_id = ? AND path = ?;
 
+-- name: SetMediaMetadataExif :exec
+UPDATE media_metadata SET exif_json = ? WHERE user_id = ? AND path = ?;
+
 -- name: DeleteMediaMetadata :exec
 DELETE FROM media_metadata WHERE user_id = ? AND path = ?;
 

@@ -464,8 +464,11 @@ func (s *Service) Preview(ctx context.Context, j *fsjail.Jail, job Job, info fsj
 	tmpRel := dir + "/." + key[:16] + "-" + randHex(6) + "-preview.webp"
 	tmpHost := filepath.Join(hostDir, filepath.Base(tmpRel))
 	if _, err := s.runner.Run(ctx, exec.Spec{
-		Bin:     s.cfg.Vips,
-		Args:    []string{"-s", fmt.Sprintf("%dx%d", SizePreview, SizePreview), "-o", tmpHost + "[Q=85,strip]", src},
+		Bin: s.cfg.Vips,
+		// ">" = shrink only: a photo smaller than 2048 px is re-encoded at its
+		// own size instead of being upscaled (Step 17a; the viewer swaps to the
+		// original at 100 % anyway). EXIF orientation is applied (vips default).
+		Args:    []string{"-s", fmt.Sprintf("%dx%d>", SizePreview, SizePreview), "-o", tmpHost + "[Q=85,strip]", src},
 		Timeout: 60 * time.Second,
 	}); err != nil {
 		_ = s.sys.Remove(tmpRel)

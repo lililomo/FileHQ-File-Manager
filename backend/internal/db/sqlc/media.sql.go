@@ -218,6 +218,21 @@ func (q *Queries) ListMediaMetadataPrefix(ctx context.Context, arg ListMediaMeta
 	return items, nil
 }
 
+const setMediaMetadataExif = `-- name: SetMediaMetadataExif :exec
+UPDATE media_metadata SET exif_json = ? WHERE user_id = ? AND path = ?
+`
+
+type SetMediaMetadataExifParams struct {
+	ExifJson *string `json:"exif_json"`
+	UserID   string  `json:"user_id"`
+	Path     string  `json:"path"`
+}
+
+func (q *Queries) SetMediaMetadataExif(ctx context.Context, arg SetMediaMetadataExifParams) error {
+	_, err := q.db.ExecContext(ctx, setMediaMetadataExif, arg.ExifJson, arg.UserID, arg.Path)
+	return err
+}
+
 const setMediaThumbState = `-- name: SetMediaThumbState :exec
 UPDATE media_metadata
 SET thumb_state = ?, thumb_error = ?, computed_at = ?

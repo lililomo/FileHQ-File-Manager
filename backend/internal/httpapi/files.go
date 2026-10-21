@@ -38,6 +38,7 @@ func (s *Server) mountFiles(api chi.Router) {
 		g.Use(RequirePasswordChanged)
 		g.Get("/files/list", s.handleFilesList)
 		g.Get("/files/stat", s.handleFilesStat)
+		g.Get("/files/media-info", s.handleFilesMediaInfo)
 		g.Get("/files/templates", s.handleFilesTemplates)
 		g.Post("/files/mkdir", s.handleFilesMkdir)
 		g.Post("/files/create", s.handleFilesCreate)

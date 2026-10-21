@@ -118,6 +118,11 @@ func (s *Service) Ensure(ctx context.Context, j *fsjail.Jail, userID string, inf
 			p.TagsJson = db.Ptr(string(b))
 		}
 	}
+	if m.Exif != nil {
+		if b, err := json.Marshal(m.Exif); err == nil {
+			p.ExifJson = db.Ptr(string(b))
+		}
+	}
 	if perr != nil {
 		// probe tool failed (e.g. ffprobe missing): keep the MIME, mark thumbs failed
 		p.ThumbState = ThumbFailed
@@ -128,6 +133,36 @@ func (s *Service) Ensure(ctx context.Context, j *fsjail.Jail, userID string, inf
 	}
 	row, err = s.store.GetMedia(ctx, userID, string(info.Path))
 	return row, true, err
+}
+
+// ExifFor returns the EXIF block of a cached image row, reading it from the
+// file for rows written before Step 17a (then stored, so the read happens
+// once). ok=false when the file has no EXIF.
+func (s *Service) ExifFor(ctx context.Context, j *fsjail.Jail, userID string, info fsjail.Info, row sqlc.MediaMetadatum) *Exif {
+	if row.ExifJson != nil {
+		return ExifOf(row.ExifJson)
+	}
+	if KindOfRow(row) != KindImage {
+		return nil
+	}
+	f, err := j.Open(info.Path)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = f.Close() }()
+	ex, err := ReadExif(f)
+	stored := "{}" // remember "none" so the file is not re-read on every call
+	if err == nil && !ex.Empty() {
+		if b, merr := json.Marshal(ex); merr == nil {
+			stored = string(b)
+		}
+	} else {
+		ex = nil
+	}
+	if err := s.store.SetMediaExif(ctx, userID, string(info.Path), stored); err != nil {
+		s.logger.DebugContext(ctx, "media exif store failed", slog.String("path", string(info.Path)), slog.String("error", err.Error()))
+	}
+	return ex
 }
 
 // Tags decodes tags_json.

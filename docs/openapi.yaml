@@ -491,6 +491,28 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+  /api/v1/files/media-info:
+    get:
+      summary: Media metadata and EXIF of one file (viewer info panel)
+      description: |
+        The cached `media_metadata` row of a file (dimensions, duration, codecs, audio tags, thumbnail state)
+        plus the EXIF subset of raster images (camera, lens, exposure, dates, orientation; SPEC §8.14).
+        The GPS position is stored but only returned with `include_gps=1`; `exif.hasGps` says whether it exists.
+        Files outside the media categories answer `kind: other` with the extension MIME only.
+      tags: [files]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+        - { name: include_gps, in: query, schema: { type: boolean, default: false } }
+      responses:
+        "200":
+          description: Media metadata
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MediaInfo" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
   /api/v1/files/templates:
     get:
       summary: List the templates accepted by POST /files/create
@@ -2678,6 +2700,63 @@ components:
         path: { type: string }
         parentPath: { type: string, nullable: true }
         dir: { $ref: "#/components/schemas/DirInfo" }
+    MediaInfo:
+      type: object
+      required: [path, name, size, mtime, category, mime, kind, hasCover, exif]
+      properties:
+        path: { type: string }
+        name: { type: string }
+        size: { type: integer, format: int64 }
+        mtime: { type: string, format: date-time }
+        category: { type: string }
+        mime: { type: string, description: From magic bytes once probed, else from the extension }
+        kind: { type: string, enum: [image, svg, video, audio, pdf, other] }
+        width: { type: integer }
+        height: { type: integer }
+        durationMs: { type: integer, format: int64 }
+        codecVideo: { type: string }
+        codecAudio: { type: string }
+        bitrate: { type: integer, format: int64 }
+        hasCover: { type: boolean }
+        tags:
+          type: object
+          additionalProperties: { type: string }
+        thumbState: { type: string, enum: [pending, ready, failed, unsupported] }
+        exif:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Exif"
+            - type: object
+              required: [hasGps]
+              properties:
+                hasGps: { type: boolean, description: A position is stored; request it with include_gps=1 }
+        gps:
+          type: object
+          description: Only with include_gps=1
+          required: [lat, lon]
+          properties:
+            lat: { type: number }
+            lon: { type: number }
+            alt: { type: number }
+    Exif:
+      type: object
+      description: EXIF subset (SPEC §4.2 exif_json); absent fields were not in the file
+      properties:
+        make: { type: string }
+        model: { type: string }
+        lens: { type: string }
+        software: { type: string }
+        dateTimeOriginal: { type: string, example: "2024-04-30T18:05:00", description: Local camera time, no zone }
+        dateTime: { type: string }
+        exposureTime: { type: string, example: "1/250" }
+        fNumber: { type: number }
+        iso: { type: integer }
+        focalLength: { type: number, description: mm }
+        focalLength35: { type: integer }
+        orientation: { type: integer, minimum: 1, maximum: 8 }
+        flash: { type: boolean }
+        width: { type: integer }
+        height: { type: integer }
     StatResponse:
       allOf:
         - $ref: "#/components/schemas/Item"

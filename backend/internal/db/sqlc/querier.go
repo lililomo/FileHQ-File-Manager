@@ -155,6 +155,7 @@ type Querier interface {
 	RewriteFileVersions(ctx context.Context, arg RewriteFileVersionsParams) (int64, error)
 	RewritePins(ctx context.Context, arg RewritePinsParams) (int64, error)
 	SetHomeProvisioned(ctx context.Context, arg SetHomeProvisionedParams) error
+	SetMediaMetadataExif(ctx context.Context, arg SetMediaMetadataExifParams) error
 	SetMediaThumbState(ctx context.Context, arg SetMediaThumbStateParams) error
 	SetMustChangePassword(ctx context.Context, arg SetMustChangePasswordParams) error
 	SetQuotaDirty(ctx context.Context, arg SetQuotaDirtyParams) error

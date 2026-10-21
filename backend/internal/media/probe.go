@@ -75,6 +75,9 @@ type Meta struct {
 	Bitrate    int64
 	HasCover   bool
 	Tags       *Tags
+	// Exif is filled for raster images that carry an EXIF block (Step 17a);
+	// GPS stays inside and is stripped by the API unless asked for.
+	Exif *Exif
 }
 
 // Prober runs the detectors. FFprobe/Vipsheader may be "" (feature degrades).
@@ -153,6 +156,11 @@ func (p *Prober) Probe(ctx context.Context, j *fsjail.Jail, path fsjail.VPath, n
 			if w, h, err := p.vipsDimensions(ctx, j, path); err == nil {
 				m.Width, m.Height = w, h
 			}
+		}
+		// EXIF is read from the container directly (bounded reads); a damaged
+		// block is ignored, the rest of the probe still succeeds.
+		if ex, err := ReadExif(f); err == nil && !ex.Empty() {
+			m.Exif = ex
 		}
 	case KindVideo, KindAudio:
 		if p != nil && p.Runner != nil && p.FFprobe != "" {

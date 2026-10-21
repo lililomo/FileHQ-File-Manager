@@ -103,6 +103,7 @@ type MediaRepo interface {
 	ListMediaByPaths(ctx context.Context, userID string, paths []string) ([]sqlc.MediaMetadatum, error)
 	UpsertMedia(ctx context.Context, p sqlc.UpsertMediaMetadataParams) error
 	SetMediaThumbState(ctx context.Context, p sqlc.SetMediaThumbStateParams) error
+	SetMediaExif(ctx context.Context, userID, path, exifJSON string) error
 	DeleteMedia(ctx context.Context, userID, path string) error
 	ListMediaPrefix(ctx context.Context, userID, dir string) ([]sqlc.MediaMetadatum, error)
 	DeleteMediaPrefix(ctx context.Context, userID, dir string) (int64, error)
@@ -450,6 +451,10 @@ func (s *Store) UpsertMedia(ctx context.Context, p sqlc.UpsertMediaMetadataParam
 
 func (s *Store) SetMediaThumbState(ctx context.Context, p sqlc.SetMediaThumbStateParams) error {
 	return s.w.SetMediaThumbState(ctx, p)
+}
+
+func (s *Store) SetMediaExif(ctx context.Context, userID, path, exifJSON string) error {
+	return s.w.SetMediaMetadataExif(ctx, sqlc.SetMediaMetadataExifParams{ExifJson: &exifJSON, UserID: userID, Path: path})
 }
 
 func (s *Store) DeleteMedia(ctx context.Context, userID, path string) error {
