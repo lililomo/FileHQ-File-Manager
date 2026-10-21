@@ -49,6 +49,7 @@ type Querier interface {
 	DeleteLoginAttemptsOlderThan(ctx context.Context, at string) (int64, error)
 	DeleteMediaMetadata(ctx context.Context, arg DeleteMediaMetadataParams) error
 	DeleteMediaMetadataPrefix(ctx context.Context, arg DeleteMediaMetadataPrefixParams) (int64, error)
+	DeleteMediaPosition(ctx context.Context, arg DeleteMediaPositionParams) (int64, error)
 	DeleteNotification(ctx context.Context, arg DeleteNotificationParams) (int64, error)
 	DeletePin(ctx context.Context, arg DeletePinParams) (int64, error)
 	DeletePinsPrefix(ctx context.Context, arg DeletePinsPrefixParams) (int64, error)
@@ -67,6 +68,7 @@ type Querier interface {
 	GetFileVersion(ctx context.Context, arg GetFileVersionParams) (FileVersion, error)
 	GetFolderViewPref(ctx context.Context, arg GetFolderViewPrefParams) (FolderViewPref, error)
 	GetMediaMetadata(ctx context.Context, arg GetMediaMetadataParams) (MediaMetadatum, error)
+	GetMediaPosition(ctx context.Context, arg GetMediaPositionParams) (MediaPosition, error)
 	GetPin(ctx context.Context, arg GetPinParams) (Pin, error)
 	GetPreferences(ctx context.Context, userID string) (UserPreference, error)
 	// Quota accounting (SPEC 4.2 quota_usage, 8.2, ADR-23). Deltas are applied
@@ -143,6 +145,7 @@ type Querier interface {
 	MarkAllNotificationsRead(ctx context.Context, arg MarkAllNotificationsReadParams) (int64, error)
 	MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) (int64, error)
 	MarkRunningTasksInterrupted(ctx context.Context, arg MarkRunningTasksInterruptedParams) (int64, error)
+	PruneMediaPositions(ctx context.Context, arg PruneMediaPositionsParams) (int64, error)
 	PruneNotifications(ctx context.Context, arg PruneNotificationsParams) (int64, error)
 	PruneSearchHistory(ctx context.Context, arg PruneSearchHistoryParams) (int64, error)
 	RecordLoginFailure(ctx context.Context, arg RecordLoginFailureParams) error
@@ -189,6 +192,7 @@ type Querier interface {
 	UpsertFileTag(ctx context.Context, arg UpsertFileTagParams) error
 	UpsertFolderViewPref(ctx context.Context, arg UpsertFolderViewPrefParams) error
 	UpsertMediaMetadata(ctx context.Context, arg UpsertMediaMetadataParams) error
+	UpsertMediaPosition(ctx context.Context, arg UpsertMediaPositionParams) (MediaPosition, error)
 	UpsertPin(ctx context.Context, arg UpsertPinParams) error
 	UpsertPreferences(ctx context.Context, arg UpsertPreferencesParams) error
 	UpsertSetting(ctx context.Context, arg UpsertSettingParams) error

@@ -178,6 +178,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/editor-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Open editor tabs of the user (SPEC §8.13 "Tab & sesi") */
+        get: operations["meEditorSessionGet"];
+        /** Replace the open tabs (max 20; paths validated; ≤ 32 KB) */
+        put: operations["meEditorSessionPut"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/media-position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Last playback position of a video (SPEC §8.14 VideoPlayer resume; Step 17b) */
+        get: operations["meMediaPositionGet"];
+        /** Store a playback position (max 500 per user, least recently updated pruned; seconds 0 forgets) */
+        put: operations["meMediaPositionPut"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/folder-prefs": {
         parameters: {
             query?: never;
@@ -261,6 +297,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/files/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Open a text file for the editor (SPEC §8.13 "Membuka file")
+         * @description Regular files only (`400 VALIDATION_FAILED reason=not_a_file` for folders). Binary content (NUL in the first 8000 bytes or > 30 %
+         *     non-text bytes) answers `415 BINARY_FILE`. Files above `EDITOR_MAX_FILE_SIZE` answer `413 FILE_TOO_LARGE` unless `tail` is given:
+         *     `tail=N` (or `tail=true` → 1000) returns the last N lines (≤ 2 MB, from a line boundary) read-only with `truncated:true`,
+         *     `offset` (byte offset of the first returned line) and `tailLines`; ask for a bigger N to load more. Encoding: BOM (UTF-8/UTF-16)
+         *     → certain; valid UTF-8 → `utf-8`; otherwise chardet (gbk, big5, shift_jis, euc-jp, euc-kr, windows-125x, iso-8859-x, koi8-r)
+         *     with ≥ 50 % confidence, fallback `windows-1252`; `encoding=` overrides. Undecodable bytes become U+FFFD and set `lossy:true`.
+         *     `eol` is `lf`, `crlf` or `mixed`. `etag` (`"size-mtimeNs"`) must be sent back as `If-Match` on save. Takes a read lock.
+         */
+        get: operations["filesContentGet"];
+        /**
+         * Save a text file (SPEC §8.13 "Menyimpan")
+         * @description Header `If-Match: <etag>` (from GET; `*` or `force:true` skips the check). A different server etag answers `409 CONFLICT`
+         *     (`details.serverEtag`, `serverMtime`, `serverSize`). The text is encoded to `encoding` (default utf-8; `bom:true` adds a BOM,
+         *     UTF-16 always has one) — an unrepresentable character answers `400 VALIDATION_FAILED fields.content=unencodable` with
+         *     `details.line/col/char`; `eol` `lf|crlf` rewrites every line ending, `keep` (default) leaves them. Bytes identical to the file
+         *     → `200 noop:true` without a write or a version. Otherwise: write lock, pre-image version (`reason save|force_save`, deduplicated
+         *     by sha256, when versions are enabled), atomic write (tmp + rename, mode kept), quota delta, activity `edit`. A missing file is
+         *     created only with `create:true` (blocked extensions refused, folder must exist, activity `create`). Body limit:
+         *     4 × `EDITOR_MAX_FILE_SIZE` + 64 KB (JSON escaping); `content` itself ≤ `EDITOR_MAX_FILE_SIZE`.
+         */
+        put: operations["filesContentPut"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/files/stat": {
         parameters: {
             query?: never;
@@ -292,6 +365,107 @@ export interface paths {
                 400: components["responses"]["Error"];
                 401: components["responses"]["Error"];
                 404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/media-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Media metadata and EXIF of one file (viewer info panel)
+         * @description The cached `media_metadata` row of a file (dimensions, duration, codecs, audio tags, thumbnail state)
+         *     plus the EXIF subset of raster images (camera, lens, exposure, dates, orientation; SPEC §8.14).
+         *     The GPS position is stored but only returned with `include_gps=1`; `exif.hasGps` says whether it exists.
+         *     Files outside the media categories answer `kind: other` with the extension MIME only.
+         */
+        get: {
+            parameters: {
+                query: {
+                    path: string;
+                    include_gps?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Media metadata */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MediaInfo"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                401: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/subtitle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sidecar subtitle as sanitised WebVTT (signed URL; Step 17b)
+         * @description Serves a `.srt`/`.vtt` file of the signing user as `text/vtt; charset=utf-8` (≤ 2 MiB). SubRip is
+         *     converted, WebVTT re-emitted; only cue timing, well-formed cue settings and the tags `<b> <i> <u>`
+         *     survive (other markup, STYLE/REGION/NOTE blocks dropped; stray `< > &` escaped). The text encoding is
+         *     detected like the editor's. URLs come from `GET /files/media-info` (`subtitles[].url`, purpose `media`,
+         *     TTL `MEDIA_URL_TTL`); no cookie is needed.
+         */
+        get: {
+            parameters: {
+                query: {
+                    path: string;
+                    purpose: "media";
+                    scope: string;
+                    exp: number;
+                    sig: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description WebVTT document */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/vtt": string;
+                    };
+                };
+                400: components["responses"]["Error"];
+                403: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                413: components["responses"]["Error"];
             };
         };
         put?: never;
@@ -2375,6 +2549,8 @@ export interface paths {
         /**
          * Current offset of an upload (resume)
          * @description Only the owner of an **active** session sees it; any other id answers `404 NOT_FOUND` (finished, aborted, expired or foreign uploads).
+         *     If every byte is already stored but the finalisation of the last PATCH failed with a retryable error (e.g. `423`), HEAD (and an empty
+         *     PATCH at the final offset) finalises the upload and answers like the last PATCH would (`Upload-Result`/`Upload-Path` headers, review C).
          */
         head: operations["tusHead"];
         /**
@@ -2384,11 +2560,245 @@ export interface paths {
          *     the stored size is verified, the file is moved atomically into `path/relativePath/filename` (folders created as needed) under
          *     `onConflict`, quota is committed, `activity_logs` gets `upload`, listings/thumbnails are invalidated and `file.changed` is sent.
          *     Finalisation answers with `Upload-Result: created|renamed|overwritten|skipped` and `Upload-Path` (percent-encoded virtual path,
+         *     Upload-Version: { schema: { type: string }, description: "Id of the pre-image version an overwrite of a text file took (Step 16b)" }
          *     empty when skipped). If the destination folder disappeared the upload is dropped (`404 NOT_FOUND`); a folder in the way of an
          *     `overwrite` is `400 VALIDATION_FAILED type_mismatch` (upload dropped); a path lock answers `423 OPERATION_IN_PROGRESS` so tus
          *     clients retry. Excluded from the API timeout and the JSON body limit.
          */
         patch: operations["tusPatch"];
+        trace?: never;
+    };
+    "/api/v1/search/names": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Name search below a folder (SPEC §8.12 "Pencarian nama")
+         * @description Walks `path` (default `/`, `recursive` default true) without following symlinked folders and matches the entry name:
+         *     case-insensitive substring (Unicode fold) by default, `*`/`?` wildcards (`glob=1` or when the query contains them) or
+         *     RE2 (`regex=1`). Filters: `types` (categories of `files/list`), `ext` (comma list), `minSize`/`maxSize` (bytes, files only),
+         *     `from`/`to` (mtime, RFC 3339 or YYYY-MM-DD), `tag` (colour). Either `q` or one filter is required. The result set is
+         *     capped at 5 000 entries / 20 s (`truncated:true`), sorted naturally, cached 60 s and paged with `cursor`
+         *     (`limit` default 500, max 1 000). A fresh search counts against 30/minute per user (`429 RATE_LIMITED`, `Retry-After`)
+         *     and is written to the history. `path` outside the root → `400 PATH_INVALID`; `.system` and atomic-write staging files never appear.
+         */
+        get: operations["searchNames"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Content search streamed as NDJSON (SPEC §8.12 "Pencarian isi", ADR-12)
+         * @description Engine `rg --json --no-ignore --hidden --no-follow -n --column -C 1 --max-filesize <EDITOR_MAX_FILE_SIZE> --max-count 200`
+         *     with cwd = the folder (read lock held), timeout 30 s, or the Go fallback (2 workers, RE2, NUL = binary, 1 MB line buffer)
+         *     when `RG_PATH` is empty/missing; both produce the same rows. The pattern is validated as RE2 first (`400 VALIDATION_FAILED
+         *     fields.q=invalid_regex`), so catastrophic patterns are impossible. Response `application/x-ndjson`: one `SearchMatch` per
+         *     line, then a final `SearchSummary` (`done:true`). The stream stops at `maxMatches` (default/max 2 000, `truncated:true`)
+         *     or when the client disconnects; a new search of the same user cancels the previous one. Rate limit 10/minute per user.
+         *     `minSize`/`from`/`to` are applied after matching (ripgrep has no such filters).
+         */
+        post: operations["searchContent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search/replace/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue a replace_preview task (SPEC §8.12 "Replace in files")
+         * @description Runs the content search, then computes the replacement per matching line in memory (regex → `ReplaceAllString` with
+         *     `$1` groups; plain → literal) and stores the hunks under `DATA_DIR/tmp/sr-<task>/preview.json` for 10 minutes.
+         *     Task result: `ReplacePreviewResult` — the first 20 files carry up to 50 hunks each, the rest only counts. Files that
+         *     are binary, not UTF-8 (decoder arrives with Step 16a), too large or unreadable are listed with `skipped`.
+         */
+        post: operations["searchReplacePreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search/replace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue a replace_apply task for a stored preview
+         * @description For every selected file (default: all previewed files): write lock, re-read, sha256 compared with the preview (changed →
+         *     skipped `changed`), pre-image version `replace_in_files` (when `FILE_VERSION_LIMIT` > 0), atomic write (tmp + rename,
+         *     mode and per-line EOL kept), quota delta, activity `replace`, one log line per file. Result `ReplaceApplyResult` with the
+         *     version ids for rollback (`POST /versions/{id}/restore`). The preview is deleted afterwards.
+         */
+        post: operations["searchReplaceApply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The user's last 50 queries (newest first) */
+        get: operations["searchHistory"];
+        put?: never;
+        post?: never;
+        /** Clear the user's search history */
+        delete: operations["searchHistoryClear"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Versions of a file, newest first (SPEC §6.3 "Versions") */
+        get: operations["versionsList"];
+        put?: never;
+        post?: never;
+        /** Delete every version of a file (rows + blobs; bytes return to the quota) */
+        delete: operations["versionsDeleteAll"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Alias of GET /versions (PROMPT Step 16b naming) */
+        get: operations["filesVersionsList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Decoded content of a version (read-only, same shape as /files/content)
+         * @description The blob is decoded like the live file (BOM/chardet or `encoding` override, EOL, language from the path). `readOnly`
+         *     is always true and `etag` is `"v-<id>"`. Blobs above `EDITOR_MAX_FILE_SIZE` answer `413 FILE_TOO_LARGE` (use download);
+         *     binary blobs `415 BINARY_FILE`.
+         */
+        get: operations["versionContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the raw blob of a version as `<name>.v<no>.<ext>`
+         * @description Session-bound attachment stream (Range, ETag) with the §8.9 attachment policy; no signed URL is involved because the
+         *     route is owner-only (SPEC §6.3 lists it as a signed redirect — deviation recorded in PROGRESS, Step 16b).
+         */
+        get: operations["versionDownload"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write a version back to its path
+         * @description Takes a pre-image of the current content first (reason `restore`, skipped when identical), then writes the blob
+         *     atomically with the mode of the existing file (0640 when the file was gone). `423 OPERATION_IN_PROGRESS` while another
+         *     operation holds the path; `403 FORBIDDEN reason=versions_disabled` when `FILE_VERSION_LIMIT=0`.
+         */
+        post: operations["versionRestore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete one version (row + blob; bytes return to the quota) */
+        delete: operations["versionDelete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
 }
@@ -2515,6 +2925,86 @@ export interface components {
             path: string;
             parentPath: string | null;
             dir: components["schemas"]["DirInfo"];
+        };
+        MediaInfo: {
+            path: string;
+            name: string;
+            /** Format: int64 */
+            size: number;
+            /** Format: date-time */
+            mtime: string;
+            category: string;
+            /** @description From magic bytes once probed */
+            mime: string;
+            /** @enum {string} */
+            kind: "image" | "svg" | "video" | "audio" | "pdf" | "other";
+            width?: number;
+            height?: number;
+            /** Format: int64 */
+            durationMs?: number;
+            codecVideo?: string;
+            codecAudio?: string;
+            /** Format: int64 */
+            bitrate?: number;
+            hasCover: boolean;
+            tags?: {
+                [key: string]: string;
+            };
+            /** @enum {string} */
+            thumbState?: "pending" | "ready" | "failed" | "unsupported";
+            exif: (components["schemas"]["Exif"] & {
+                /** @description A position is stored; request it with include_gps=1 */
+                hasGps: boolean;
+            }) | null;
+            /** @description Only with include_gps=1 */
+            gps?: {
+                lat: number;
+                lon: number;
+                alt?: number;
+            };
+            /** @description Videos only (Step 17b) — sidecar `<name>.vtt|srt` and `<name>.<label>.vtt|srt` in the same folder; omitted when none */
+            subtitles?: {
+                path: string;
+                name: string;
+                /** @description Language tag when the label is one (en, id, pt-BR) */
+                lang?: string;
+                label: string;
+                /** @enum {string} */
+                format: "vtt" | "srt";
+                /** @description Signed GET /files/subtitle URL */
+                url: string;
+            }[];
+        };
+        MediaPosition: {
+            path: string;
+            seconds: number;
+            duration?: number;
+            /** Format: date-time */
+            updatedAt: string | null;
+        };
+        /** @description EXIF subset (SPEC §4.2 exif_json); absent fields were not in the file */
+        Exif: {
+            make?: string;
+            model?: string;
+            lens?: string;
+            software?: string;
+            /**
+             * @description Local camera time
+             * @example 2024-04-30T18:05:00
+             */
+            dateTimeOriginal?: string;
+            dateTime?: string;
+            /** @example 1/250 */
+            exposureTime?: string;
+            fNumber?: number;
+            iso?: number;
+            /** @description mm */
+            focalLength?: number;
+            focalLength35?: number;
+            orientation?: number;
+            flash?: boolean;
+            width?: number;
+            height?: number;
         };
         StatResponse: components["schemas"]["Item"] & {
             stat: {
@@ -3241,6 +3731,92 @@ export interface components {
             maxExtractSize: number;
             maxEntries: number;
         };
+        /** @description Decoded text file for the editor (SPEC §8.13) */
+        FileContent: {
+            path: string;
+            content: string;
+            /** @description Encoding used to decode (override or detected) */
+            encoding: string;
+            detectedEncoding: string;
+            bom: boolean;
+            /** @description Some bytes had no mapping (U+FFFD) */
+            lossy: boolean;
+            /** @enum {string} */
+            eol: "lf" | "crlf" | "mixed";
+            /** @description Monaco language id hint from the file name */
+            language: string;
+            /** Format: int64 */
+            size: number;
+            /** Format: date-time */
+            mtime: string;
+            etag: string;
+            /** @description Octal permission bits, e.g. 0640 */
+            mode: string;
+            lines: number;
+            /** @description Tail mode: only the last lines are returned */
+            truncated: boolean;
+            /**
+             * Format: int64
+             * @description Tail mode: byte offset of the first returned line
+             */
+            offset?: number;
+            tailLines?: number;
+            readOnly: boolean;
+        };
+        FileContentPut: {
+            path: string;
+            content: string;
+            /** @default utf-8 */
+            encoding: string;
+            /** @default false */
+            bom: boolean;
+            /**
+             * @default keep
+             * @enum {string}
+             */
+            eol: "keep" | "lf" | "crlf";
+            /**
+             * @description Overwrite even when the etag differs (version reason force_save)
+             * @default false
+             */
+            force: boolean;
+            /**
+             * @description Create the file when it does not exist
+             * @default false
+             */
+            create: boolean;
+            /** @description Reserved */
+            mode?: string;
+        };
+        FileContentSaved: {
+            etag: string;
+            /** Format: date-time */
+            mtime: string;
+            /** Format: int64 */
+            size: number;
+            version: {
+                id?: string;
+                no?: number;
+            } | null;
+            noop: boolean;
+            created?: boolean;
+        };
+        EditorSession: {
+            tabs: {
+                path: string;
+                scrollTop?: number;
+                cursor?: {
+                    line?: number;
+                    col?: number;
+                };
+                language?: string;
+                encoding?: string;
+                pinned?: boolean;
+            }[];
+            activePath?: string | null;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
         ArchiveCompressRequest: {
             paths: string[];
             /**
@@ -3508,6 +4084,146 @@ export interface components {
         NotificationsReadRequest: {
             ids?: string[];
             all?: boolean;
+        };
+        SearchNameItem: components["schemas"]["Item"] & {
+            /** @description Parent folder */
+            location: string;
+        };
+        SearchNamesResponse: {
+            items: components["schemas"]["SearchNameItem"][];
+            /** @description Size of the whole result set (max 5 000) */
+            total: number;
+            nextCursor?: string;
+            /** @description 5 000 results or 20 s reached */
+            truncated: boolean;
+            tookMs: number;
+            path: string;
+        };
+        ContentSearchRequest: {
+            q: string;
+            /** @default / */
+            path: string;
+            /** @default false */
+            regex: boolean;
+            /** @default false */
+            caseSensitive: boolean;
+            /** @default false */
+            wholeWord: boolean;
+            /** @default true */
+            recursive: boolean;
+            ext?: string[];
+            minSize?: number;
+            /** @description Capped at EDITOR_MAX_FILE_SIZE */
+            maxSize?: number;
+            /** @description RFC 3339 or YYYY-MM-DD (mtime ≥) */
+            from?: string;
+            /** @description RFC 3339 or YYYY-MM-DD (mtime ≤) */
+            to?: string;
+            /** @default 2000 */
+            maxMatches: number;
+        };
+        SearchMatch: {
+            file: string;
+            line: number;
+            /** @description 1-based rune column */
+            col: number;
+            /** @description Matched span in runes (highlighting) */
+            len?: number;
+            /** @description The line, at most 500 characters */
+            text: string;
+            before?: string;
+            after?: string;
+        };
+        SearchSummary: {
+            /** @enum {boolean} */
+            done: true;
+            files: number;
+            matches: number;
+            truncated: boolean;
+            /** @enum {string} */
+            engine: "rg" | "go";
+            tookMs?: number;
+            /** @description Present only when the stream ended early (stream_interrupted) */
+            error?: string;
+        };
+        ReplacePreviewRequest: components["schemas"]["ContentSearchRequest"] & {
+            /** @description Regex mode expands $1/${name}; plain mode is literal */
+            replace: string;
+        };
+        ReplaceHunk: {
+            line: number;
+            before: string;
+            after: string;
+        };
+        ReplacePreviewFile: {
+            path: string;
+            replacements: number;
+            hunks?: components["schemas"]["ReplaceHunk"][];
+            hunksTotal: number;
+            /** @enum {string} */
+            skipped?: "encoding" | "too_large" | "binary" | "unreadable";
+        };
+        /** @description Task result of replace_preview */
+        ReplacePreviewResult: {
+            previewId: string;
+            files: components["schemas"]["ReplacePreviewFile"][];
+            totalFiles: number;
+            totalReplacements: number;
+            truncated: boolean;
+            engine: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        ReplaceApplyRequest: {
+            previewId: string;
+            /** @description Subset of previewed paths; empty = all */
+            files?: string[];
+        };
+        /** @description Task result of replace_apply */
+        ReplaceApplyResult: {
+            files: {
+                path: string;
+                /** @enum {string} */
+                status: "ok" | "skipped";
+                /** @enum {string} */
+                reason?: "locked" | "changed" | "no_change" | "version_failed" | "quota" | "write_failed" | "encoding" | "too_large" | "binary" | "unreadable";
+                replacements: number;
+                versionId?: string;
+            }[];
+            replacements: number;
+            versionIds: string[];
+            skipped: number;
+        };
+        SearchHistoryEntry: {
+            id: number;
+            /** @enum {string} */
+            kind: "name" | "content";
+            query: string;
+            path: string;
+            filters?: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            at: string;
+        };
+        FileVersion: {
+            id: string;
+            path: string;
+            no: number;
+            size: number;
+            sha256: string;
+            /** @enum {string} */
+            reason: "save" | "force_save" | "restore" | "replace_in_files" | "external_overwrite";
+            /** Format: date-time */
+            createdAt: string;
+        };
+        VersionRestoreResult: {
+            path: string;
+            size: number;
+            etag: string;
+            /** @description Pre-image of the replaced content */
+            version?: components["schemas"]["FileVersion"] | null;
+            restored: components["schemas"]["FileVersion"];
         };
     };
     responses: {
@@ -3896,6 +4612,128 @@ export interface operations {
             };
         };
     };
+    meEditorSessionGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description `{tabs:[], activePath:null}` when nothing was saved yet */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorSession"];
+                };
+            };
+            401: components["responses"]["Error"];
+            /** @description PASSWORD_CHANGE_REQUIRED */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    meEditorSessionPut: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditorSession"];
+            };
+        };
+        responses: {
+            /** @description Stored session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorSession"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            413: components["responses"]["Error"];
+        };
+    };
+    meMediaPositionGet: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description `seconds: 0` and `updatedAt: null` when nothing is stored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaPosition"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            /** @description PASSWORD_CHANGE_REQUIRED */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    meMediaPositionPut: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    path: string;
+                    seconds: number;
+                    duration?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Stored position */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaPosition"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
     meFolderPrefGet: {
         parameters: {
             query: {
@@ -4012,6 +4850,107 @@ export interface operations {
             400: components["responses"]["Error"];
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
+        };
+    };
+    filesContentGet: {
+        parameters: {
+            query: {
+                path: string;
+                /** @description Override the detected encoding */
+                encoding?: string;
+                /** @description Line count or true (1000) for tail mode (alias tail_lines) */
+                tail?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Decoded content */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileContent"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            /** @description FILE_TOO_LARGE */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description BINARY_FILE */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            423: components["responses"]["Error"];
+        };
+    };
+    filesContentPut: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileContentPut"];
+            };
+        };
+        responses: {
+            /** @description Saved (or no-op) */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileContentSaved"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            /** @description CONFLICT (etag mismatch) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description FILE_TOO_LARGE or QUOTA_EXCEEDED or PAYLOAD_TOO_LARGE */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            415: components["responses"]["Error"];
+            423: components["responses"]["Error"];
         };
     };
     meQuota: {
@@ -5497,6 +6436,388 @@ export interface operations {
             };
             413: components["responses"]["Error"];
             423: components["responses"]["Error"];
+        };
+    };
+    searchNames: {
+        parameters: {
+            query?: {
+                q?: string;
+                path?: string;
+                recursive?: boolean;
+                glob?: boolean;
+                regex?: boolean;
+                /** @description Comma-separated categories */
+                types?: string;
+                /** @description Comma-separated extensions */
+                ext?: string;
+                minSize?: number;
+                maxSize?: number;
+                from?: string;
+                to?: string;
+                tag?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of results */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchNamesResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    searchContent: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContentSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description NDJSON stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": components["schemas"]["SearchMatch"] | components["schemas"]["SearchSummary"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            423: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    searchReplacePreview: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplacePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Task queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskAccepted"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    searchReplaceApply: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplaceApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Task queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskAccepted"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            /** @description NOT_FOUND — preview expired or unknown (`details.reason: preview_expired`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    searchHistory: {
+        parameters: {
+            query?: {
+                kind?: "name" | "content";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["SearchHistoryEntry"][];
+                        limit: number;
+                    };
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    searchHistoryClear: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cleared */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    versionsList: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FileVersion"][];
+                        /** @description FILE_VERSION_LIMIT */
+                        limit: number;
+                        enabled: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+        };
+    };
+    versionsDeleteAll: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted (also when there was nothing) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+        };
+    };
+    filesVersionsList: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FileVersion"][];
+                        limit: number;
+                        enabled: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+        };
+    };
+    versionContent: {
+        parameters: {
+            query?: {
+                encoding?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileContent"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            413: components["responses"]["Error"];
+            415: components["responses"]["Error"];
+        };
+    };
+    versionDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attachment stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Partial content */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    versionRestore: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Restored */
+            200: {
+                headers: {
+                    /** @description New etag of the file (Step 16b) */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionRestoreResult"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            423: components["responses"]["Error"];
+        };
+    };
+    versionDelete: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
 }

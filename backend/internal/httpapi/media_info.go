@@ -32,6 +32,9 @@ type mediaInfoResponse struct {
 	ThumbState string            `json:"thumbState,omitempty"`
 	Exif       *mediaInfoExif    `json:"exif"`
 	GPS        *media.GPS        `json:"gps,omitempty"`
+	// Subtitles are the sidecar .vtt/.srt files of a video (Step 17b), each
+	// with a signed /files/subtitle URL; omitted when there are none.
+	Subtitles []subtitleTrack `json:"subtitles,omitempty"`
 }
 
 type mediaInfoExif struct {
@@ -109,6 +112,9 @@ func (s *Server) handleFilesMediaInfo(w http.ResponseWriter, r *http.Request) {
 		if it.Media != nil {
 			out.Tags = it.Media.Tags
 		}
+	}
+	if out.Kind == media.KindVideo {
+		out.Subtitles = s.subtitlesFor(j, u.ID, info)
 	}
 	if out.Kind == media.KindImage {
 		if ex := s.media.ExifFor(r.Context(), j, u.ID, info, row); ex != nil {

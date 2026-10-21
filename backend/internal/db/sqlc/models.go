@@ -107,6 +107,14 @@ type MediaMetadatum struct {
 	ComputedAt string  `json:"computed_at"`
 }
 
+type MediaPosition struct {
+	UserID    string   `json:"user_id"`
+	Path      string   `json:"path"`
+	Seconds   float64  `json:"seconds"`
+	Duration  *float64 `json:"duration"`
+	UpdatedAt string   `json:"updated_at"`
+}
+
 type Notification struct {
 	ID        string  `json:"id"`
 	UserID    string  `json:"user_id"`

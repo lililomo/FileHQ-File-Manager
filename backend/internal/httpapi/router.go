@@ -208,6 +208,8 @@ func (s *Server) mountAPI(api chi.Router) {
 		s.mountSearch(api)
 		s.mountVersions(api)
 		s.mountEditor(api)
+		s.mountSubtitle(api)
+		s.mountMediaPosition(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": s.cfg.AppName})

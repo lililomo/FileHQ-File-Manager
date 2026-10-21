@@ -25,3 +25,28 @@ func (s *Store) UpsertEditorSession(ctx context.Context, p sqlc.UpsertEditorSess
 func (s *Store) DeleteEditorSession(ctx context.Context, userID string) (int64, error) {
 	return s.w.DeleteEditorSession(ctx, userID)
 }
+
+// MediaPositionRepo stores the last playback position per video (SPEC §4.2
+// media_positions, §8.14 VideoPlayer resume; Step 17b).
+type MediaPositionRepo interface {
+	GetMediaPosition(ctx context.Context, p sqlc.GetMediaPositionParams) (sqlc.MediaPosition, error)
+	UpsertMediaPosition(ctx context.Context, p sqlc.UpsertMediaPositionParams) (sqlc.MediaPosition, error)
+	DeleteMediaPosition(ctx context.Context, p sqlc.DeleteMediaPositionParams) (int64, error)
+	PruneMediaPositions(ctx context.Context, p sqlc.PruneMediaPositionsParams) (int64, error)
+}
+
+func (s *Store) GetMediaPosition(ctx context.Context, p sqlc.GetMediaPositionParams) (sqlc.MediaPosition, error) {
+	return s.r.GetMediaPosition(ctx, p)
+}
+
+func (s *Store) UpsertMediaPosition(ctx context.Context, p sqlc.UpsertMediaPositionParams) (sqlc.MediaPosition, error) {
+	return s.w.UpsertMediaPosition(ctx, p)
+}
+
+func (s *Store) DeleteMediaPosition(ctx context.Context, p sqlc.DeleteMediaPositionParams) (int64, error) {
+	return s.w.DeleteMediaPosition(ctx, p)
+}
+
+func (s *Store) PruneMediaPositions(ctx context.Context, p sqlc.PruneMediaPositionsParams) (int64, error) {
+	return s.w.PruneMediaPositions(ctx, p)
+}

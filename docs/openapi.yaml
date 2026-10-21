@@ -307,6 +307,49 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "413": { $ref: "#/components/responses/Error" }
 
+  /api/v1/me/media-position:
+    get:
+      tags: [me]
+      summary: Last playback position of a video (SPEC §8.14 VideoPlayer resume; Step 17b)
+      operationId: meMediaPositionGet
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: "`seconds: 0` and `updatedAt: null` when nothing is stored"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MediaPosition" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { description: PASSWORD_CHANGE_REQUIRED, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    put:
+      tags: [me]
+      summary: Store a playback position (max 500 per user, least recently updated pruned; seconds 0 forgets)
+      operationId: meMediaPositionPut
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path, seconds]
+              properties:
+                path: { type: string }
+                seconds: { type: number, minimum: 0, maximum: 10000000 }
+                duration: { type: number, minimum: 0 }
+      responses:
+        "200":
+          description: Stored position
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MediaPosition" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+
   /api/v1/me/folder-prefs:
     get:
       tags: [me]
@@ -513,6 +556,32 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+  /api/v1/files/subtitle:
+    get:
+      summary: Sidecar subtitle as sanitised WebVTT (signed URL; Step 17b)
+      description: |
+        Serves a `.srt`/`.vtt` file of the signing user as `text/vtt; charset=utf-8` (≤ 2 MiB). SubRip is
+        converted, WebVTT re-emitted; only cue timing, well-formed cue settings and the tags `<b> <i> <u>`
+        survive (other markup, STYLE/REGION/NOTE blocks dropped; stray `< > &` escaped). The text encoding is
+        detected like the editor's. URLs come from `GET /files/media-info` (`subtitles[].url`, purpose `media`,
+        TTL `MEDIA_URL_TTL`); no cookie is needed.
+      tags: [files]
+      security: []
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+        - { name: purpose, in: query, required: true, schema: { type: string, enum: [media] } }
+        - { name: scope, in: query, required: true, schema: { type: string } }
+        - { name: exp, in: query, required: true, schema: { type: integer } }
+        - { name: sig, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: WebVTT document
+          content:
+            text/vtt: { schema: { type: string } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
   /api/v1/files/templates:
     get:
       summary: List the templates accepted by POST /files/create
@@ -2738,6 +2807,27 @@ components:
             lat: { type: number }
             lon: { type: number }
             alt: { type: number }
+        subtitles:
+          type: array
+          description: Videos only (Step 17b) — sidecar `<name>.vtt|srt` and `<name>.<label>.vtt|srt` in the same folder; omitted when none
+          items:
+            type: object
+            required: [path, name, label, format, url]
+            properties:
+              path: { type: string }
+              name: { type: string }
+              lang: { type: string, description: "Language tag when the label is one (en, id, pt-BR)" }
+              label: { type: string }
+              format: { type: string, enum: [vtt, srt] }
+              url: { type: string, description: Signed GET /files/subtitle URL }
+    MediaPosition:
+      type: object
+      required: [path, seconds, updatedAt]
+      properties:
+        path: { type: string }
+        seconds: { type: number }
+        duration: { type: number }
+        updatedAt: { type: string, format: date-time, nullable: true }
     Exif:
       type: object
       description: EXIF subset (SPEC §4.2 exif_json); absent fields were not in the file

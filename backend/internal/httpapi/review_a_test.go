@@ -384,9 +384,13 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		// Step 16a: editor (gated above)
 		"GET /api/v1/files/content": true, "PUT /api/v1/files/content": true,
 		"GET /api/v1/me/editor-session": true, "PUT /api/v1/me/editor-session": true,
+		// Step 17b: playback positions (gated above); subtitles are signed-only
+		// and their URLs come from the gated GET /files/media-info
+		"GET /api/v1/me/media-position": true, "PUT /api/v1/me/media-position": true,
+		"GET /api/v1/files/subtitle": true,
 	}
 	// the signed endpoints reject cookie-only access: no signature → 403
-	for _, p := range []string{"/api/v1/files/thumb?path=/x&size=128", "/api/v1/files/download?path=/x", "/api/v1/files/raw?path=/x&purpose=media", "/api/v1/files/zip?token=x", "/api/v1/archives/entry-content?path=/x&inner=a"} {
+	for _, p := range []string{"/api/v1/files/thumb?path=/x&size=128", "/api/v1/files/download?path=/x", "/api/v1/files/raw?path=/x&purpose=media", "/api/v1/files/zip?token=x", "/api/v1/archives/entry-content?path=/x&inner=a", "/api/v1/files/subtitle?path=/x.srt&purpose=media"} {
 		if r := env.call(http.MethodGet, p, ip, nil, nil, ck); r.rec.Code != 403 || r.code(t) != "SIGNATURE_INVALID" {
 			t.Fatalf("%s without signature: %d %s", p, r.rec.Code, r.rec.Body.String())
 		}

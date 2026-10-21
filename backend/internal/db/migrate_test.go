@@ -53,7 +53,7 @@ func TestMigrateUpDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const migrations = 10 // 0001..0010 (0010_editor_sessions, Step 16a)
+	const migrations = 11 // 0001..0011 (0011_media_positions, Step 17b)
 	if len(st) != migrations {
 		t.Fatalf("want %d embedded migrations, got %d", migrations, len(st))
 	}
@@ -79,7 +79,7 @@ func TestMigrateUpDownUp(t *testing.T) {
 	if err := d.Ready(ctx); err != nil {
 		t.Fatalf("Ready after up: %v", err)
 	}
-	for _, tbl := range []string{"users", "sessions", "settings", "user_preferences", "folder_view_prefs", "audit_logs", "login_attempts", "media_metadata", "trash_items", "activity_logs", "favorites", "pins", "file_notes", "file_tags", "file_versions", "quota_usage"} {
+	for _, tbl := range []string{"users", "sessions", "settings", "user_preferences", "folder_view_prefs", "audit_logs", "login_attempts", "media_metadata", "trash_items", "activity_logs", "favorites", "pins", "file_notes", "file_tags", "file_versions", "quota_usage", "editor_sessions", "media_positions"} {
 		var n int
 		if err := d.Reader().QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tbl).Scan(&n); err != nil || n != 1 {
 			t.Fatalf("table %s missing (n=%d, err=%v)", tbl, n, err)
