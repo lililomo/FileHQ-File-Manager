@@ -16,7 +16,7 @@ import (
 )
 
 // createShare makes a public link through the API and returns id + token/slug.
-func createShare(t *testing.T, env *authEnv, ck *http.Cookie, hdr map[string]string, body map[string]any) (id, token string) {
+func createShare(t testing.TB, env *authEnv, ck *http.Cookie, hdr map[string]string, body map[string]any) (id, token string) {
 	t.Helper()
 	r := env.call(http.MethodPost, "/api/v1/shares", "203.0.113.5:1", body, hdr, ck)
 	if r.rec.Code != 201 {

@@ -340,7 +340,11 @@ func (s *Service) tusError(ctx context.Context, e *Error) handler.Error {
 // filename, path, relativePath, onConflict, lastModified; the SPEC aliases
 // name, dest, relPath, policy are accepted).
 type metadata struct {
-	Dest         fsjail.VPath
+	Dest fsjail.VPath
+	// Shown is the destination as the uploader may see it: share-relative
+	// for file requests and recipients (the owner's absolute Dest never
+	// reaches them through the tus metadata echo; review E M-03).
+	Shown        fsjail.VPath
 	Name         string
 	RelPath      []string
 	Policy       files.Policy
@@ -406,6 +410,7 @@ func (s *Service) parseMetadata(md handler.MetaData, p Principal) (metadata, *Er
 			return m, newErr(CodePathInvalid, http.StatusBadRequest, "invalid destination path", map[string]any{"fields": map[string]string{"path": "invalid"}})
 		}
 		m.Dest = p.ShareDest.JoinPath(rel)
+		m.Shown = rel
 		segs, perr := splitRelative(pick(md, "relativePath", "relPath"))
 		if perr != nil {
 			return m, perr
@@ -428,6 +433,7 @@ func (s *Service) parseMetadata(md handler.MetaData, p Principal) (metadata, *Er
 		// rename (a guest can never overwrite), only relativePath/lastModified
 		// are taken from the client
 		m.Dest = p.ShareDest
+		m.Shown = fsjail.Root
 		segs, perr := splitRelative(pick(md, "relativePath", "relPath"))
 		if perr != nil {
 			return m, perr

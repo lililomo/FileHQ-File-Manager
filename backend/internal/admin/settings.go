@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"kppbwi.app/filemanager/internal/audit"
 	"kppbwi.app/filemanager/internal/config"
@@ -360,6 +361,9 @@ func parseValue(sp *spec, raw json.RawMessage) (v any, reason string) {
 			item = strings.ToLower(strings.TrimSpace(item))
 			if item == "" {
 				continue
+			}
+			if strings.ContainsFunc(item, unicode.IsControl) {
+				return nil, "invalid"
 			}
 			if sp.Key == KeyBlockedExtensions {
 				item = strings.TrimPrefix(item, ".")

@@ -653,6 +653,14 @@ func (s *Server) countPublicDownload(w http.ResponseWriter, r *http.Request, p *
 	}
 	rng := r.Header.Get("Range")
 	if rng != "" && !strings.HasPrefix(strings.ReplaceAll(rng, " ", ""), "bytes=0-") {
+		// a continuation of a download counted earlier is free — but only while
+		// the limit is not reached, otherwise "bytes=1-" would hand out the
+		// whole file uncounted (review E M-01)
+		if share.LimitReached(p.row) {
+			s.shares.Log(r.Context(), p.row.ID, share.ActDenied, p.ip, r.UserAgent(), path, nil)
+			WriteError(w, r, CodeShareLimitReached, 0, "the download limit of this link has been reached", map[string]any{"maxDownloads": p.row.MaxDownloads})
+			return false
+		}
 		return true
 	}
 	if lerr := s.shares.CountDownload(r.Context(), p.row); lerr != nil {

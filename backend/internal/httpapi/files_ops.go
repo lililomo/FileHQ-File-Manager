@@ -185,7 +185,10 @@ func (s *Server) handleFilesRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer release()
-	if !sc.requireEditor(w, r) {
+	// a single shared file cannot be renamed by its editor: the new name
+	// would be checked against (and could collide with) the owner's siblings,
+	// which the share does not expose (review E)
+	if !sc.requireEditor(w, r) || !sc.requireFolderShare(w, r) {
 		return
 	}
 	p, ok := sc.path(w, r, req.Path)

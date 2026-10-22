@@ -372,7 +372,7 @@ export function SharedBrowser({ header, path, viewPath, onNavigate }: SharedBrow
                 {t('shared.delete')}
               </Button>
             ) : null}
-            {editor && selectedItems.length === 1 ? (
+            {editor && header.isDir && selectedItems.length === 1 ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -454,7 +454,7 @@ export function SharedBrowser({ header, path, viewPath, onNavigate }: SharedBrow
           data-testid="shared-list"
         >
           <div
-            className="sticky top-0 z-10 grid grid-cols-[2rem_minmax(0,1fr)_6rem_10rem_5rem] gap-2 border-b border-border bg-surface px-2 py-1 text-xs font-medium text-text-muted"
+            className="sticky top-0 z-10 grid grid-cols-[2rem_minmax(0,1fr)_4.5rem_5rem] gap-2 border-b border-border bg-surface sm:grid-cols-[2rem_minmax(0,1fr)_6rem_10rem_5rem] px-2 py-1 text-xs font-medium text-text-muted"
             role="row"
           >
             <span role="columnheader" />
@@ -479,7 +479,7 @@ export function SharedBrowser({ header, path, viewPath, onNavigate }: SharedBrow
                   data-path={it.path}
                   data-testid="shared-row"
                   aria-selected={selected.has(it.path)}
-                  className="absolute left-0 grid w-full grid-cols-[2rem_minmax(0,1fr)_6rem_10rem_5rem] items-center gap-2 border-b border-border/60 px-2 text-sm hover:bg-surface-2 aria-selected:bg-surface-2"
+                  className="absolute left-0 grid w-full grid-cols-[2rem_minmax(0,1fr)_4.5rem_5rem] items-center sm:grid-cols-[2rem_minmax(0,1fr)_6rem_10rem_5rem] gap-2 border-b border-border/60 px-2 text-sm hover:bg-surface-2 aria-selected:bg-surface-2"
                   style={{ top: vr.start, height: ROW }}
                 >
                   <span role="gridcell" className="flex items-center">

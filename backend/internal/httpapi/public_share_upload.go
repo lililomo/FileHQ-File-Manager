@@ -151,5 +151,19 @@ func (s *Server) handlePublicSharePrecheck(w http.ResponseWriter, r *http.Reques
 		s.writeUploadError(w, r, uerr)
 		return
 	}
+	// verdict paths are relative to the shared folder: the owner's folder
+	// above it never reaches a guest (review E M-03)
+	for i := range res.Items {
+		abs := fsjail.VPath(res.Items[i].Path)
+		switch {
+		case abs == "":
+		case abs == dest:
+			res.Items[i].Path = "/"
+		case abs.HasPrefix(dest):
+			res.Items[i].Path = strings.TrimPrefix(string(abs), string(dest))
+		default:
+			res.Items[i].Path = ""
+		}
+	}
 	WriteJSON(w, http.StatusOK, res)
 }

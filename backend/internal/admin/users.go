@@ -286,7 +286,7 @@ func (s *Service) CreateUser(ctx context.Context, a Actor, in CreateInput) (*Cre
 			return err
 		}
 		created = u
-		s.record(ctx, tx, a, audit.ActionUserCreate, "user", u.ID, map[string]any{"username": username, "role": role, "quotaBytes": quota, "generatedPassword": generated})
+		s.record(ctx, tx, a, audit.ActionUserCreate, "user", u.ID, map[string]any{"username": username, "role": role, "quotaBytes": quota, "generated": generated})
 		return nil
 	})
 	if err != nil {

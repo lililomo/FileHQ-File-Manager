@@ -14,7 +14,7 @@ import (
 
 // seedShareFixture provisions the admin home (login) and writes a folder
 // with two files for the share tests.
-func seedShareFixture(t *testing.T, env *authEnv) (ck *http.Cookie, hdr map[string]string, home string) {
+func seedShareFixture(t testing.TB, env *authEnv) (ck *http.Cookie, hdr map[string]string, home string) {
 	t.Helper()
 	ck, hdr = readyAdmin(t, env)
 	home = filepath.Join(env.cfg.StorageRoot, "admin")
@@ -33,7 +33,7 @@ func seedShareFixture(t *testing.T, env *authEnv) (ck *http.Cookie, hdr map[stri
 	return ck, hdr, home
 }
 
-func shareOf(t *testing.T, r resp) map[string]any {
+func shareOf(t testing.TB, r resp) map[string]any {
 	t.Helper()
 	s, _ := r.body["share"].(map[string]any)
 	if s == nil {

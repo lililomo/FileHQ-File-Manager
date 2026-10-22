@@ -17,7 +17,7 @@ const readyPassword = "Kelapa muda 2026 segar!"
 
 // readyAdmin logs the seeded admin in and completes the forced password
 // change so S+P endpoints are reachable. Returns cookie + CSRF header.
-func readyAdmin(t *testing.T, env *authEnv) (*http.Cookie, map[string]string) {
+func readyAdmin(t testing.TB, env *authEnv) (*http.Cookie, map[string]string) {
 	t.Helper()
 	r, ck, csrf := env.login(t, "admin", initialAdminPassword, "203.0.113.5:1")
 	if r.rec.Code != 200 {

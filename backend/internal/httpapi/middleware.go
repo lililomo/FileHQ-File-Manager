@@ -215,8 +215,33 @@ func Recoverer(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
+// secretPathPrefixes are the routes whose next path segment is a bearer
+// credential (a public share token or slug, SPEC §8.15): the access log
+// keeps four characters for correlation and drops the rest (review E M-02).
+var secretPathPrefixes = []string{"/s/", PublicSharePrefix}
+
+// LogPath is the request path as written to the access log.
+func LogPath(p string) string {
+	for _, prefix := range secretPathPrefixes {
+		rest, ok := strings.CutPrefix(p, prefix)
+		if !ok || rest == "" {
+			continue
+		}
+		seg, tail, hasTail := strings.Cut(rest, "/")
+		if len(seg) > 4 {
+			seg = seg[:4] + "***"
+		}
+		if hasTail {
+			return prefix + seg + "/" + tail
+		}
+		return prefix + seg
+	}
+	return p
+}
+
 // AccessLog writes one structured line per request. Query strings are never
-// logged (they may contain signed-URL parameters).
+// logged (they may contain signed-URL parameters) and share tokens in the
+// path are redacted (LogPath).
 func AccessLog(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -225,7 +250,7 @@ func AccessLog(logger *slog.Logger) func(http.Handler) http.Handler {
 			next.ServeHTTP(ww, r)
 			attrs := []slog.Attr{
 				slog.String("method", r.Method),
-				slog.String("path", r.URL.Path),
+				slog.String("path", LogPath(r.URL.Path)),
 				slog.Int("status", ww.Status()),
 				slog.Int64("duration_ms", time.Since(start).Milliseconds()),
 				slog.Int("bytes", ww.BytesWritten()),

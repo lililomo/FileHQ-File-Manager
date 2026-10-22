@@ -101,7 +101,7 @@ func (f notifyFunc) Create(ctx context.Context, userID, typ, title, body, link s
 	return f(ctx, userID, typ, title, body, link)
 }
 
-func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
+func newAuthEnv(t testing.TB, extraEnv ...string) *authEnv {
 	t.Helper()
 	storage := filepath.Join(t.TempDir(), "storage")
 	if err := os.MkdirAll(storage, 0o750); err != nil {
@@ -334,7 +334,7 @@ func sessionCookie(rec *httptest.ResponseRecorder) *http.Cookie {
 	return nil
 }
 
-func (e *authEnv) login(t *testing.T, username, password, remote string) (resp, *http.Cookie, string) {
+func (e *authEnv) login(t testing.TB, username, password, remote string) (resp, *http.Cookie, string) {
 	t.Helper()
 	r := e.call(http.MethodPost, "/api/v1/auth/login", remote, map[string]string{"username": username, "password": password}, nil, nil)
 	tok, _ := r.body["csrfToken"].(string)

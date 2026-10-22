@@ -507,6 +507,11 @@ func (s *Service) Create(ctx context.Context, j *fsjail.Jail, owner sqlc.User, i
 	if lerr != nil {
 		return nil, newErr("NOT_FOUND", http.StatusNotFound, "file or folder not found", map[string]any{"path": string(p)})
 	}
+	if info.IsSymlink {
+		// like mode users: the link itself is never shared (its target may
+		// change after the fact; review E)
+		return nil, fieldErr("path", "symlink", "a symbolic link cannot be shared")
+	}
 	isDir := info.IsDir
 	allowDownload := in.AllowDownload == nil || *in.AllowDownload
 	allowUpload := in.AllowUpload != nil && *in.AllowUpload

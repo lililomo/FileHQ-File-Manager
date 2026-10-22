@@ -213,7 +213,7 @@ export function PublicBrowser({ token, meta, path, viewPath, onNavigate }: Publi
           aria-rowcount={items.length}
           data-testid="public-list"
         >
-          <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_6rem_10rem_2.5rem] gap-2 border-b border-border bg-surface px-2 py-1 text-xs font-medium text-text-muted" role="row">
+          <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_4.5rem_2.5rem] gap-2 border-b border-border bg-surface sm:grid-cols-[minmax(0,1fr)_6rem_10rem_2.5rem] px-2 py-1 text-xs font-medium text-text-muted" role="row">
             <span role="columnheader">{t('public.name')}</span>
             <span role="columnheader" className="text-right">
               {t('public.size')}
@@ -232,7 +232,7 @@ export function PublicBrowser({ token, meta, path, viewPath, onNavigate }: Publi
                   role="row"
                   data-path={it.path}
                   data-testid="public-row"
-                  className="absolute left-0 grid w-full grid-cols-[minmax(0,1fr)_6rem_10rem_2.5rem] items-center gap-2 border-b border-border/60 px-2 text-sm hover:bg-surface-2"
+                  className="absolute left-0 grid w-full grid-cols-[minmax(0,1fr)_4.5rem_2.5rem] items-center sm:grid-cols-[minmax(0,1fr)_6rem_10rem_2.5rem] gap-2 border-b border-border/60 px-2 text-sm hover:bg-surface-2"
                   style={{ top: vr.start, height: ROW }}
                 >
                   <button

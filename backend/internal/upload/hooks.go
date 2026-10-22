@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tus/tusd/v2/pkg/handler"
@@ -28,6 +29,22 @@ const (
 	HeaderVersion = "Upload-Version"
 	HeaderPath    = "Upload-Path" // percent-encoded virtual path (empty when skipped)
 )
+
+// shareRelative maps an owner-absolute path to the share-relative path a
+// guest or recipient is allowed to see (review E M-03); own uploads are
+// returned unchanged.
+func shareRelative(p Principal, abs fsjail.VPath) fsjail.VPath {
+	if p.ShareID == "" || p.ShareDest == "" || abs == "" {
+		return abs
+	}
+	if abs == p.ShareDest {
+		return fsjail.Root
+	}
+	if abs.HasPrefix(p.ShareDest) {
+		return fsjail.VPath(strings.TrimPrefix(string(abs), string(p.ShareDest)))
+	}
+	return fsjail.Root
+}
 
 // preCreate validates Upload-Metadata, reserves quota and records the
 // session (SPEC §6.5 PreUploadCreateCallback).
@@ -85,7 +102,11 @@ func (s *Service) preCreate(ev handler.HookEvent) (handler.HTTPResponse, handler
 	if err := s.o.Repo.InsertUploadSession(ctx, params); err != nil {
 		return s.createErr(ctx, s.internal(ctx, "insert session", err))
 	}
-	md := handler.MetaData{"filename": m.Name, "path": string(m.Dest), "relativePath": params.RelativePath, "onConflict": string(m.Policy)}
+	shownDest := m.Dest
+	if m.Shown != "" {
+		shownDest = m.Shown
+	}
+	md := handler.MetaData{"filename": m.Name, "path": string(shownDest), "relativePath": params.RelativePath, "onConflict": string(m.Policy)}
 	if m.LastModified != nil {
 		md["lastModified"] = strconv.FormatInt(*m.LastModified, 10)
 	}
@@ -191,7 +212,7 @@ func (s *Service) preFinish(ev handler.HookEvent) (handler.HTTPResponse, error) 
 		}
 		return handler.HTTPResponse{}, s.tusError(ctx, ferr)
 	}
-	h := handler.HTTPHeader{HeaderResult: res.Status, HeaderPath: (&url.URL{Path: string(res.Path)}).EscapedPath()}
+	h := handler.HTTPHeader{HeaderResult: res.Status, HeaderPath: (&url.URL{Path: string(shareRelative(p, res.Path))}).EscapedPath()}
 	if res.VersionID != "" {
 		h[HeaderVersion] = res.VersionID
 	}

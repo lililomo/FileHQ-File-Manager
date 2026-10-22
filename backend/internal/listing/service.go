@@ -166,7 +166,13 @@ func (s *Service) List(ctx context.Context, j *fsjail.Jail, req ListRequest) (*L
 		}
 		items = make([]*Item, 0, len(infos))
 		for i := range infos {
-			items = append(items, FromInfo(infos[i]))
+			it := FromInfo(infos[i])
+			if req.Scope != "" {
+				// a guest or recipient sees that an entry is a link, never where
+				// it points (the target may name files above the share; review E)
+				it.SymlinkTarget = ""
+			}
+			items = append(items, it)
 		}
 		if s.meta != nil && req.Scope == "" {
 			if err := s.meta.Annotate(ctx, req.UserID, req.Dir, items); err != nil {
@@ -321,6 +327,9 @@ func (s *Service) Stat(j *fsjail.Jail, user, scope string, p fsjail.VPath) (*Ite
 		return nil, err
 	}
 	it := FromInfo(info)
+	if scope != "" {
+		it.SymlinkTarget = ""
+	}
 	if it.IsDir {
 		it.ItemCount = s.countDir(j, user, scope, p)
 	}
