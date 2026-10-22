@@ -13,8 +13,13 @@ type LooseT = (key: string, options?: Record<string, unknown>) => string
 export interface TaskRowProps {
   task: Task
   onCancel: (id: string) => void
-  onRetry: (id: string) => void
-  onDelete: (id: string) => void
+  /** Omitted in the admin list (retry/remove belong to the owner). */
+  onRetry?: (id: string) => void
+  onDelete?: (id: string) => void
+  /** Admin list (Step 19b): owner shown next to the title ("sistem" when empty). */
+  owner?: string
+  /** Log loader; defaults to the owner's `/tasks/{id}/logs`. */
+  loadLogs?: (id: string) => Promise<TaskLogEntry[]>
 }
 
 const STATE_VARIANT: Record<Task['state'], 'default' | 'secondary' | 'destructive' | 'outline'> = {
@@ -26,7 +31,7 @@ const STATE_VARIANT: Record<Task['state'], 'default' | 'secondary' | 'destructiv
   interrupted: 'destructive',
 }
 
-export function TaskRow({ task, onCancel, onRetry, onDelete }: TaskRowProps) {
+export function TaskRow({ task, onCancel, onRetry, onDelete, owner, loadLogs }: TaskRowProps) {
   const { t, i18n } = useTranslation(['tasks', 'common'])
   const lt = t as unknown as LooseT
   const lang = i18n.resolvedLanguage ?? 'id'
@@ -41,8 +46,7 @@ export function TaskRow({ task, onCancel, onRetry, onDelete }: TaskRowProps) {
     setOpen(next)
     if (next && logs === null) {
       try {
-        const res = await getTaskLogs(task.id)
-        setLogs(res.items)
+        setLogs(loadLogs ? await loadLogs(task.id) : (await getTaskLogs(task.id)).items)
       } catch {
         setLogs([])
       }
@@ -69,6 +73,11 @@ export function TaskRow({ task, onCancel, onRetry, onDelete }: TaskRowProps) {
             <span className="truncate text-sm font-medium text-text" title={label}>
               {label}
             </span>
+            {owner !== undefined ? (
+              <Badge variant="outline" className="shrink-0 font-normal" data-testid="task-owner">
+                {owner || lt('tasks:panel.system')}
+              </Badge>
+            ) : null}
             <Badge
               variant={STATE_VARIANT[task.state]}
               className="shrink-0"
@@ -108,7 +117,7 @@ export function TaskRow({ task, onCancel, onRetry, onDelete }: TaskRowProps) {
               <X aria-hidden="true" />
             </IconButton>
           ) : null}
-          {task.retryable ? (
+          {task.retryable && onRetry ? (
             <IconButton
               label={lt('tasks:actions.retry')}
               onClick={() => onRetry(task.id)}
@@ -118,7 +127,7 @@ export function TaskRow({ task, onCancel, onRetry, onDelete }: TaskRowProps) {
               <RotateCw aria-hidden="true" />
             </IconButton>
           ) : null}
-          {!active ? (
+          {!active && onDelete ? (
             <IconButton
               label={lt('tasks:actions.remove')}
               onClick={() => onDelete(task.id)}

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { setDisplayTimeZone } from '@/lib/format'
 import {
   applyAccent,
   applyDensity,
@@ -69,6 +70,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   applyServerPrefs: (prefs) => {
     if (!prefs) return
+    setDisplayTimeZone(prefs['ui.timezone'])
     const theme = prefs['ui.theme']
     if (isThemePref(theme) && theme !== get().theme) get().setTheme(theme)
     const accent = prefs['ui.accent']

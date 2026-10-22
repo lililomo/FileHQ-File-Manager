@@ -66,8 +66,20 @@ export function taskLabel(task: Task, t: LooseT, lang: string): string {
       break
     }
   }
+  if (MAINTENANCE_TYPES.includes(task.type)) return t(`tasks:label.job.${task.type}`)
   return task.title
 }
+
+/** System task types of the admin maintenance page (SPEC §7.1, Step 19b). */
+export const MAINTENANCE_TYPES = [
+  'recalc_quota',
+  'clear_thumbs',
+  'clean_uploads',
+  'purge_trash',
+  'integrity_check',
+  'backup_db',
+  'prune_logs',
+]
 
 /** "1,2 MB/s · 00:12 tersisa" style secondary line. */
 export function taskMeta(task: Task, t: LooseT, lang: string): string {

@@ -64,6 +64,23 @@ function toDate(input: string | number | Date): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
+let displayTimeZone: string | undefined
+
+/** Display time zone from the `ui.timezone` preference (SPEC §8.18);
+ *  "auto"/empty/unknown = the browser's zone. Returns the zone applied. */
+export function setDisplayTimeZone(tz: unknown): string | undefined {
+  displayTimeZone = undefined
+  if (typeof tz === 'string' && tz !== '' && tz !== 'auto') {
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: tz })
+      displayTimeZone = tz
+    } catch {
+      /* unknown zone: keep the browser's */
+    }
+  }
+  return displayTimeZone
+}
+
 /** "12 Okt 2026" / "12 Oct 2026"; with `time`: "12 Okt 2026, 14.05". */
 export function formatDate(
   input: string | number | Date,
@@ -73,8 +90,9 @@ export function formatDate(
   const d = toDate(input)
   if (!d) return '—'
   const loc = toIntlLocale(language)
-  const tz = options.timeZone ? { timeZone: options.timeZone } : {}
-  const tzKey = options.timeZone ?? ''
+  const zone = options.timeZone ?? displayTimeZone
+  const tz = zone ? { timeZone: zone } : {}
+  const tzKey = zone ?? ''
   const date = cached(
     `date:${loc}:${tzKey}`,
     () => new Intl.DateTimeFormat(loc, { day: 'numeric', month: 'short', year: 'numeric', ...tz }),
@@ -91,10 +109,15 @@ export function formatDate(
 export function formatDateTimeFull(input: string | number | Date, language = 'id'): string {
   const d = toDate(input)
   if (!d) return '—'
+  const zone = displayTimeZone
   return cached(
-    `full:${language}`,
+    `full:${language}:${zone ?? ''}`,
     () =>
-      new Intl.DateTimeFormat(toIntlLocale(language), { dateStyle: 'medium', timeStyle: 'medium' }),
+      new Intl.DateTimeFormat(toIntlLocale(language), {
+        dateStyle: 'medium',
+        timeStyle: 'medium',
+        ...(zone ? { timeZone: zone } : {}),
+      }),
   ).format(d)
 }
 

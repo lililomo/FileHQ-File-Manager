@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 
 const NAV: {
-  key: 'dashboard' | 'users' | 'settings' | 'audit' | 'tasks' | 'maintenance'
+  key: 'dashboard' | 'users' | 'settings' | 'audit' | 'tasks' | 'shares' | 'maintenance'
   link: LinkProps
   exact?: boolean
 }[] = [
@@ -12,6 +12,7 @@ const NAV: {
   { key: 'settings', link: { to: '/admin/settings' } },
   { key: 'audit', link: { to: '/admin/audit' } },
   { key: 'tasks', link: { to: '/admin/tasks' } },
+  { key: 'shares', link: { to: '/admin/shares' } },
   { key: 'maintenance', link: { to: '/admin/maintenance' } },
 ]
 

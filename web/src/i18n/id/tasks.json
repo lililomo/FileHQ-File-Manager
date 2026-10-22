@@ -14,7 +14,8 @@
     "noLog": "Tidak ada log.",
     "cancelling": "Membatalkan…",
     "offline": "Koneksi realtime terputus; mencoba menyambung kembali",
-    "offlineShort": "offline"
+    "offlineShort": "offline",
+    "system": "sistem"
   },
   "state": {
     "queued": "Antre",
@@ -41,7 +42,16 @@
     "compress": "Kompres {{name}}",
     "extract": "Ekstrak {{name}}",
     "zipEditAdd": "Tambah {{n}} item ke {{name}}",
-    "zipEditRemove": "Hapus {{n}} entri dari {{name}}"
+    "zipEditRemove": "Hapus {{n}} entri dari {{name}}",
+    "job": {
+      "recalc_quota": "Rekalkulasi kuota",
+      "clear_thumbs": "Cache thumbnail",
+      "clean_uploads": "Bersihkan upload terbengkalai",
+      "purge_trash": "Kosongkan Recycle Bin kedaluwarsa",
+      "integrity_check": "Pemeriksaan integritas",
+      "backup_db": "Backup database",
+      "prune_logs": "Pangkas log"
+    }
   },
   "meta": {
     "items": "{{done}} / {{total}} item",

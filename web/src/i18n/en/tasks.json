@@ -14,7 +14,8 @@
     "noLog": "No log lines.",
     "cancelling": "Cancelling…",
     "offline": "Realtime connection lost; reconnecting",
-    "offlineShort": "offline"
+    "offlineShort": "offline",
+    "system": "system"
   },
   "state": {
     "queued": "Queued",
@@ -41,7 +42,16 @@
     "compress": "Compress {{name}}",
     "extract": "Extract {{name}}",
     "zipEditAdd": "Add {{n}} items to {{name}}",
-    "zipEditRemove": "Remove {{n}} entries from {{name}}"
+    "zipEditRemove": "Remove {{n}} entries from {{name}}",
+    "job": {
+      "recalc_quota": "Recalculate quota",
+      "clear_thumbs": "Thumbnail cache",
+      "clean_uploads": "Clean abandoned uploads",
+      "purge_trash": "Purge expired Recycle Bin items",
+      "integrity_check": "Integrity check",
+      "backup_db": "Database backup",
+      "prune_logs": "Prune logs"
+    }
   },
   "meta": {
     "items": "{{done}} / {{total}} items",

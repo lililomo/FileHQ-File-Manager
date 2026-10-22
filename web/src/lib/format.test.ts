@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatBytes, formatDate, formatRelativeTime } from './format'
+import { formatBytes, formatDate, formatRelativeTime, setDisplayTimeZone } from './format'
 
 describe('formatBytes', () => {
   it('formats with a comma decimal in Indonesian', () => {
@@ -46,5 +46,17 @@ describe('formatRelativeTime', () => {
   })
   it('falls back to the absolute date after a week', () => {
     expect(formatRelativeTime(now - 10 * 86_400_000, 'id', now)).toMatch(/2026$/)
+  })
+})
+
+describe('setDisplayTimeZone (ui.timezone, Step 19b)', () => {
+  it('applies a valid IANA zone and falls back to the browser zone', () => {
+    const d = new Date('2026-10-12T23:30:00Z')
+    expect(setDisplayTimeZone('Asia/Jakarta')).toBe('Asia/Jakarta')
+    expect(formatDate(d, 'en', { time: true })).toBe('13 Oct 2026, 06:30')
+    // an explicit zone still wins
+    expect(formatDate(d, 'en', { time: true, timeZone: 'UTC' })).toBe('12 Oct 2026, 23:30')
+    expect(setDisplayTimeZone('Mars/Olympus')).toBeUndefined()
+    expect(setDisplayTimeZone('auto')).toBeUndefined()
   })
 })
