@@ -23,7 +23,7 @@ func (s *Server) mountAuth(api chi.Router) {
 		g.Group(func(a chi.Router) {
 			a.Use(s.RequireAuth)
 			a.Use(s.RequireCSRF)
-			a.Get("/auth/csrf", s.handleCSRF)
+			a.With(s.limitBy("csrf", s.cfg.RateLimits.CSRF, keySession)).Get("/auth/csrf", s.handleCSRF)
 			a.Get("/auth/me", s.handleMe)
 			a.Post("/auth/logout", s.handleLogout)
 			a.Post("/auth/change-password", s.handleChangePassword)

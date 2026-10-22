@@ -500,6 +500,7 @@ func (s *Service) SuggestUsers(ctx context.Context, selfID, q string) ([]Suggest
 }
 
 // suggestLimiter builds the per-user autocomplete limiter.
-func suggestLimiter(now func() time.Time) *auth.RateLimiter {
-	return auth.NewRateLimiter(SuggestPerMinute, time.Minute, now)
+func suggestLimiter(now func() time.Time, lim RateSpec) *auth.RateLimiter {
+	n, w := lim.or(SuggestPerMinute, time.Minute)
+	return auth.NewRateLimiter(n, w, now)
 }

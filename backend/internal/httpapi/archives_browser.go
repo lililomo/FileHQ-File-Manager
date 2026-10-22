@@ -42,7 +42,7 @@ func (s *Server) mountArchiveBrowser(api chi.Router) {
 		g.Use(s.RequireAuth)
 		g.Use(s.RequireCSRF)
 		g.Use(RequirePasswordChanged)
-		g.Post("/archives/sign", s.handleArchiveSign)
+		g.With(s.limitBy("archive_sign", s.cfg.RateLimits.ArchiveSign, keySession)).Post("/archives/sign", s.handleArchiveSign)
 		g.Post("/archives/extract-entries", s.handleArchiveExtractEntries)
 		g.Post("/archives/add", s.handleArchiveAdd)
 		g.Post("/archives/remove-entries", s.handleArchiveRemove)

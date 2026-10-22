@@ -109,6 +109,7 @@ func newAuthEnv(t testing.TB, extraEnv ...string) *authEnv {
 	}
 	environ := []string{
 		"APP_ENV=test",
+		"RATE_LIMIT_API=off", // Step 20: tests issue hundreds of calls per session; ratelimit_test re-enables it
 		"APP_BASE_URL=https://file.example.test",
 		"APP_SECRET=" + strings.Repeat("ab", 32),
 		"STORAGE_ROOT=" + storage,
@@ -168,7 +169,7 @@ func newAuthEnv(t testing.TB, extraEnv ...string) *authEnv {
 			env.listing.Invalidate(userID, "", dir)
 		}
 	}})
-	env.share = share.New(share.Options{Repo: store, AppSecret: cfg.AppSecret, BaseURL: cfg.AppBaseURL, PublicEnabled: cfg.PublicSharesEnabled,
+	env.share = share.New(share.Options{Limits: share.LimitsFrom(cfg.RateLimits), Repo: store, AppSecret: cfg.AppSecret, BaseURL: cfg.AppBaseURL, PublicEnabled: cfg.PublicSharesEnabled,
 		AllowNoExpiry: cfg.ShareAllowNoExpiry, RequirePassword: cfg.ShareRequirePassword, DefaultExpiryDays: cfg.ShareDefaultExpiryDays, Logger: logger, Now: clock.Now,
 		Invalidate: func(userID string, dir fsjail.VPath) {
 			if env.listing != nil {
@@ -213,7 +214,8 @@ func newAuthEnv(t testing.TB, extraEnv ...string) *authEnv {
 	// (httptest servers); in-task retries without backoff.
 	remoteGuard := netguard.New(netguard.Policy{AllowLoopback: remoteLoopback})
 	remoteGuard.ConnectTimeout = 2 * time.Second
-	env.remote = remotedl.New(remotedl.Options{DataDir: cfg.DataDir, Enabled: cfg.RemoteDownloadEnabled, MaxSize: cfg.RemoteDownloadMaxSize, MaxUploadSize: cfg.MaxUploadSize,
+	rdRate, rdWindow := auth.SpecOr(cfg.RateLimits.RemoteDownload, remotedl.DefaultRateLimit, time.Hour)
+	env.remote = remotedl.New(remotedl.Options{RateLimit: rdRate, RateWindow: rdWindow, DataDir: cfg.DataDir, Enabled: cfg.RemoteDownloadEnabled, MaxSize: cfg.RemoteDownloadMaxSize, MaxUploadSize: cfg.MaxUploadSize,
 		Version: "test", BaseURL: cfg.AppBaseURL, Repo: store, Quota: env.quota, Files: env.files, Locks: env.locks, Tasks: env.tasks, Guard: remoteGuard,
 		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) },
 		Logger:     logger, RetryBackoff: []time.Duration{}, ProgressStep: 64 << 10})
@@ -228,7 +230,9 @@ func newAuthEnv(t testing.TB, extraEnv ...string) *authEnv {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = env.versions.Close() })
-	env.search = search.New(search.Options{DataDir: cfg.DataDir, RgPath: cfg.RgPath, Runner: fmexec.New(filepath.Join(cfg.DataDir, "tmp")), MaxFileSize: cfg.EditorMaxFileSize,
+	nameRate, searchWindow := auth.SpecOr(cfg.RateLimits.NameSearch, search.NameRateLimit, time.Minute)
+	contentRate, _ := auth.SpecOr(cfg.RateLimits.ContentSearch, search.ContentRateLimit, time.Minute)
+	env.search = search.New(search.Options{NameRateLimit: nameRate, ContentRate: contentRate, RateWindow: searchWindow, DataDir: cfg.DataDir, RgPath: cfg.RgPath, Runner: fmexec.New(filepath.Join(cfg.DataDir, "tmp")), MaxFileSize: cfg.EditorMaxFileSize,
 		Repo: store, Quota: env.quota, Files: env.files, Locks: env.locks, Tasks: env.tasks, Versions: env.versions, Logger: logger, Engine: searchEngine,
 		TagPaths: func(ctx context.Context, userID, color string) ([]string, error) {
 			rows, err := store.ListFileTagsByColor(ctx, userID, color)

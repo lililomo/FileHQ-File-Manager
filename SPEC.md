@@ -385,6 +385,25 @@ Nilai yang ditampilkan di admin panel menunjukkan sumbernya (default / env / ove
 | `RG_PATH` | path | `/usr/bin/rg` | tanpa → fallback worker Go | tidak | Belum terpasang di server (dipasang `install.sh` via paket `ripgrep`). |
 | `LOG_LEVEL` | enum | `info` | `debug` \| `info` \| `warn` \| `error` | tidak | JSON slog ke stdout (journald). |
 | `METRICS_ADDR` | host:port | kosong | kosong = nonaktif; harus loopback | tidak | Prometheus `/metrics` di listener terpisah. |
+| `RATE_LIMIT_LOGIN_IP` | `N/jendela[:burst]` \| `off` | `20/1m` | jendela 1s–24h, burst 1..N | tidak | §10.5 login per IP (jendela geser). Semua `RATE_LIMIT_*` dibaca sekali saat start (Step 20). |
+| `RATE_LIMIT_PASSWORD_CHANGE` | idem | `5/15m` | | tidak | Ganti password terverifikasi per sesi. |
+| `RATE_LIMIT_SHARE_UNLOCK_LINK` | idem | `10/10m` | | tidak | Password share per (link, IP). |
+| `RATE_LIMIT_SHARE_UNLOCK_IP` | idem | `30/10m` | | tidak | Password share per IP. |
+| `RATE_LIMIT_SHARE_PUBLIC` | idem | `120/1m:60` | | tidak | meta/list/raw/download/zip/thumb publik per (link, IP); burst diabaikan oleh limiter share (kapasitas = N). |
+| `RATE_LIMIT_SHARE_NOT_FOUND` | idem | `30/1m` | | tidak | Token share tidak dikenal per IP (anti-enumerasi). |
+| `RATE_LIMIT_API` | idem | `600/1m:120` | | tidak | Semua `/api/v1` per sesi (cookie di-hash; tanpa sesi → IP). Dikecualikan: tus, thumb/raw/download/zip/entry-content/subtitle, `public/shares/*`, `events`. |
+| `RATE_LIMIT_FILES_LIST` | idem | `240/1m` | | tidak | `GET /files/list` per sesi. |
+| `RATE_LIMIT_THUMB` | idem | `600/1m` | | tidak | `GET /files/thumb` per scope tanda tangan (`u:`/`r:`), tanpa scope → IP. |
+| `RATE_LIMIT_NAME_SEARCH` | idem | `30/1m` | | tidak | Pencarian nama per user. |
+| `RATE_LIMIT_CONTENT_SEARCH` | idem | `10/1m` | | tidak | Pencarian isi per user (+ 1 aktif). Jendela dipakai bersama pencarian nama. |
+| `RATE_LIMIT_REMOTE_DOWNLOAD` | idem | `10/1h` | | tidak | Task remote download per user. |
+| `RATE_LIMIT_USER_SUGGEST` | idem | `30/1m` | | tidak | `GET /users/suggest` per user. |
+| `RATE_LIMIT_ARCHIVE_SIGN` | idem | `120/1m` | | tidak | `POST /archives/sign` per sesi (review C m-05). |
+| `RATE_LIMIT_FILES_SIGN` | idem | `120/1m` | | tidak | `POST /files/sign` per sesi. |
+| `RATE_LIMIT_CSRF` | idem | `60/1m` | | tidak | `GET /auth/csrf` per sesi. |
+| `RATE_LIMIT_TUS_CREATE` | idem | `60/1m` | | tidak | `POST /upload/tus` per sesi. |
+| `RATE_LIMIT_HEALTHZ` | idem | `60/1m` | | tidak | `GET /healthz` per IP. |
+| `RATE_LIMIT_BACKUP_DOWNLOAD` | idem | `5/10m` | | tidak | Unduh backup SQLite per sesi admin. |
 | `CONTENT_BASE_URL` | URL | kosong | kosong = origin sama (ADR-06) | tidak | Jika diisi: `raw`, `thumb`, `download`, `zip`, dan halaman share raw dilayani dari origin ini (butuh site aaPanel kedua). |
 | `THUMB_WORKERS` | int | `max(1, NumCPU−1)` | 1–16 | tidak | |
 | `TASK_MAX_PER_USER` | int | `3` | 1–10 | ya | |
@@ -840,6 +859,8 @@ Jika tujuan sudah punya baris (mis. memindah `a` ke lokasi yang punya catatan la
 ## §6 API
 
 ### 6.1 Konvensi
+
+Body JSON di-decode dengan `DisallowUnknownFields`: field yang tidak dikenal → `400 VALIDATION_FAILED` (klien tidak boleh mengirim key tambahan; dicatat review A m-11, didokumentasikan Step 20).
 
 - Base path `/api/v1`. Request/response JSON UTF-8 (`Content-Type: application/json`), kecuali endpoint streaming (raw/download/zip/thumb/SSE/NDJSON) dan tus.
 - Autentikasi: cookie sesi (`fm_session`). Endpoint ditandai **S** = butuh sesi valid; **S+P** = sesi valid dan tidak sedang `must_change_password`; **A** = admin; **Sig** = signed URL (tanpa cookie); **Pub** = publik (dengan rate limit); **Shr** = publik + cookie share jika ber-password.
@@ -1902,12 +1923,12 @@ Cache-Control: no-store   (API & index.html; aset hash: immutable)
 X-Robots-Tag: noindex, nofollow   (seluruh aplikasi; tidak ada halaman publik yang perlu diindeks)
 ```
 
-CSP untuk `index.html` (sejak Step 6 tidak ada script inline: tema diterapkan oleh `theme-init.js` eksternal, jadi `script-src 'self'` cukup; `'nonce-<nonce>'` dipertahankan sebagai opsi bila suatu saat script inline dibutuhkan — tanpa `'unsafe-inline'` untuk script):
+CSP untuk `index.html` (final Step 20; tidak ada script inline — tema diterapkan oleh `theme-init.js` eksternal — sehingga `script-src` tanpa nonce dan tanpa `unsafe-inline`; nonce tidak dipasang karena tidak ada yang memakainya. `upgrade-insecure-requests` hanya ditambahkan saat request diketahui HTTPS (TLS atau `X-Forwarded-Proto: https` dari proxy terpercaya); di luar itu tidak, agar E2E/dev lewat HTTP tidak memaksa upgrade):
 
 ```text
 Content-Security-Policy:
   default-src 'self';
-  script-src 'self' 'wasm-unsafe-eval' 'nonce-<nonce>';
+  script-src 'self' 'wasm-unsafe-eval';
   style-src 'self' 'unsafe-inline';
   img-src 'self' data: blob:;
   media-src 'self' blob:;
@@ -1920,8 +1941,8 @@ Content-Security-Policy:
   frame-ancestors 'none';
   base-uri 'self';
   form-action 'self';
-  manifest-src 'self';
-  upgrade-insecure-requests
+  manifest-src 'self'
+  (+ upgrade-insecure-requests hanya pada respons HTTPS)
 ```
 
 Catatan: `script-src 'wasm-unsafe-eval'` (Step 17a) hanya mengizinkan kompilasi WebAssembly — pdf.js 6.x mendekode JPX (OpenJPEG), JBIG2 dan profil ICC (qcms) lewat modul WASM yang dimuat dari `/pdfjs/wasm/` (origin sendiri; pdf.js 6 tidak lagi punya jalur `new Function`, jadi `unsafe-eval` tetap tidak diperlukan); tanpa direktif ini gambar JPX/JBIG2 di PDF gagal dirender. `style-src 'unsafe-inline'` diperlukan karena Monaco, Radix (`style` attribute untuk posisi popover), dan Tailwind arbitrary animations menyuntikkan inline style; risiko CSS injection diterima (tidak memungkinkan eksekusi script). `worker-src blob:` karena Monaco membuat worker via blob URL ketika `MonacoEnvironment.getWorker` mengembalikan worker dari bundel (`?worker` Vite menghasilkan file terpisah → `'self'` cukup; `blob:` dipertahankan untuk pdf.js fake worker fallback; verifikasi saat implementasi dan hapus jika tidak perlu). Jika `CONTENT_BASE_URL` diisi: tambah origin itu ke `img-src`, `media-src`, `connect-src`.
@@ -1961,6 +1982,9 @@ Respons `raw/download/thumb/zip`: `Content-Security-Policy: sandbox; default-src
 | Admin user-suggest per sesi | 60 / menit | 429 |
 | `/healthz` | 60 / menit per IP (publik via Nginx, body hanya status) | 429 |
 | `/readyz` `/metrics` | tidak dibatasi; tidak di-proxy Nginx (`return 404` di snippet), hanya loopback untuk systemd/update.sh | |
+
+Implementasi (Step 20): angka di atas dibaca dari `config.RateLimits` (env `RATE_LIMIT_*`, §3.3). Limit per route (`healthz`, `files/list`, `files/sign`, `archives/sign`, `auth/csrf`, `upload/tus` create, `files/thumb`, unduh backup, dan API umum per sesi) ditegakkan oleh middleware token bucket `httpapi/ratelimit.go` yang menambahkan header `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`, `RateLimit-Policy` pada setiap respons dan `Retry-After` + `429 RATE_LIMITED {retryAfter, limit}` saat ditolak. Limit yang hidup di dalam service (login, ganti password, share unlock/publik/not-found, suggest, search, remote download, download/thumb paralel, SSE) tetap ditegakkan di sana dengan angka dari konfigurasi yang sama. Limiter API umum mengecualikan route streaming/bertanda tangan (tus, thumb/raw/download/zip/entry-content/subtitle, `public/shares/*`, `events`) agar grid thumbnail dan unggahan berpotongan tidak tercekik; semuanya in-memory (hilang saat restart, kecuali login yang juga membaca `login_attempts`).
+
 
 ### 10.6 Daftar test keamanan (wajib lulus sebelum rilis, Step 20)
 

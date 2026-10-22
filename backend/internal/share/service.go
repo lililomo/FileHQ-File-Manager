@@ -75,6 +75,7 @@ var errNotFound = newErr("NOT_FOUND", http.StatusNotFound, "share not found", ni
 // Options configure the Service.
 type Options struct {
 	Repo              db.Repository
+	Limits            Limits // guest-facing rate limits (RATE_LIMIT_*, SPEC §10.5); zero = package defaults
 	AppSecret         []byte
 	BaseURL           string // APP_BASE_URL without trailing slash
 	PublicEnabled     bool   // PUBLIC_SHARES_ENABLED
@@ -192,7 +193,7 @@ func New(o Options) *Service {
 		PublicEnabled: o.PublicEnabled, AllowNoExpiry: o.AllowNoExpiry, RequirePassword: o.RequirePassword,
 		DefaultExpiryDays: o.DefaultExpiryDays, AllowCustomSlug: true,
 	}}
-	s.guards = newGuards(o.Now)
+	s.guards = newGuards(o.Now, o.Limits)
 	return s
 }
 

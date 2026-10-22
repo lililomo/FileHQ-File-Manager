@@ -44,8 +44,9 @@ func (s *Server) mountUpload(api chi.Router) {
 		g.Post("/upload/precheck", s.handleUploadPrecheck)
 		// tus-js-client posts to the endpoint with its trailing slash; both
 		// spellings map to the same documented operation.
+		createLimit := s.limitBy("tus_create", s.cfg.RateLimits.TusCreate, keySession)
 		for _, p := range []string{"/upload/tus", "/upload/tus/"} {
-			g.Post(p, withPrincipal(tus.PostFile))
+			g.With(createLimit).Post(p, withPrincipal(tus.PostFile))
 			g.Options(p, withPrincipal(http.NotFound))
 		}
 		g.Options("/upload/tus/{id}", withPrincipal(http.NotFound))

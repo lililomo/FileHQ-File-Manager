@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"kppbwi.app/filemanager/internal/auth"
+	"kppbwi.app/filemanager/internal/config"
 	"kppbwi.app/filemanager/internal/db"
 	"kppbwi.app/filemanager/internal/db/sqlc"
 )
@@ -55,13 +56,17 @@ type guards struct {
 	lastSwep time.Time
 }
 
-func newGuards(now func() time.Time) *guards {
+func newGuards(now func() time.Time, lim Limits) *guards {
+	mk := func(r RateSpec, n int, w time.Duration) *auth.RateLimiter {
+		l, win := r.or(n, w)
+		return auth.NewRateLimiter(l, win, now)
+	}
 	return &guards{
-		unlockLinkIP: auth.NewRateLimiter(UnlockPerLinkIP, 10*time.Minute, now),
-		unlockIP:     auth.NewRateLimiter(UnlockPerIP, 10*time.Minute, now),
-		notFound:     auth.NewRateLimiter(NotFoundPerIP, time.Minute, now),
-		traffic:      auth.NewRateLimiter(TrafficPerLinkIP, time.Minute, now),
-		suggest:      suggestLimiter(now),
+		unlockLinkIP: mk(lim.UnlockLinkIP, UnlockPerLinkIP, 10*time.Minute),
+		unlockIP:     mk(lim.UnlockIP, UnlockPerIP, 10*time.Minute),
+		notFound:     mk(lim.NotFound, NotFoundPerIP, time.Minute),
+		traffic:      mk(lim.Traffic, TrafficPerLinkIP, time.Minute),
+		suggest:      suggestLimiter(now, lim.Suggest),
 		fails:        auth.NewWindowLimiter(FailsBeforeLock, time.Hour, now),
 		now:          now,
 		locked:       map[string]time.Time{},
@@ -323,4 +328,37 @@ func humanBytes(n int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %s", float64(n)/float64(div), []string{"KB", "MB", "GB", "TB", "PB"}[exp])
+}
+
+// RateSpec is one guest-facing limit: Limit per Window.
+type RateSpec struct {
+	Limit  int
+	Window time.Duration
+}
+
+// Limits are the SPEC §10.5 public-share limits; zero values keep the
+// package defaults. They are filled from config.RateLimits (RATE_LIMIT_*).
+type Limits struct {
+	UnlockLinkIP RateSpec // password attempts per (link, IP)
+	UnlockIP     RateSpec // password attempts per IP
+	NotFound     RateSpec // unknown tokens per IP
+	Traffic      RateSpec // meta/list/raw/download/zip/thumb per (link, IP)
+	Suggest      RateSpec // user autocomplete per user
+}
+
+func (r RateSpec) or(n int, w time.Duration) (int, time.Duration) {
+	if r.Limit > 0 && r.Window > 0 {
+		return r.Limit, r.Window
+	}
+	return n, w
+}
+
+// LimitsFrom converts the configured limits (env RATE_LIMIT_*) for this
+// package.
+func LimitsFrom(r config.RateLimits) Limits {
+	spec := func(l config.RateLimit) RateSpec { return RateSpec{Limit: l.Limit, Window: l.Window} }
+	return Limits{
+		UnlockLinkIP: spec(r.ShareUnlockLink), UnlockIP: spec(r.ShareUnlockIP), NotFound: spec(r.ShareNotFound),
+		Traffic: spec(r.SharePublic), Suggest: spec(r.UserSuggest),
+	}
 }

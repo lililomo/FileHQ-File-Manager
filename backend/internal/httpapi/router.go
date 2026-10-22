@@ -22,6 +22,7 @@ import (
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/media"
 	"kppbwi.app/filemanager/internal/meta"
+	"kppbwi.app/filemanager/internal/metrics"
 	"kppbwi.app/filemanager/internal/notify"
 	"kppbwi.app/filemanager/internal/quota"
 	"kppbwi.app/filemanager/internal/remotedl"
@@ -72,6 +73,7 @@ type Options struct {
 	Versions    *versions.Store     // file versions (Step 15 minimal); nil disables /versions
 	Share       *share.Service      // public links (Step 18a); nil disables /shares and /public/shares
 	Admin       *admin.Service      // admin panel (Step 19a); nil disables /admin/*
+	Metrics     *metrics.Registry   // request metrics registry (Step 20); nil disables
 }
 
 // Server holds dependencies shared by handlers.
@@ -174,14 +176,16 @@ func New(o Options) http.Handler {
 	r.Use(AccessLog(o.Logger))
 	r.Use(Recoverer(o.Logger))
 	r.Use(SecurityHeaders)
+	r.Use(Metrics(o.Metrics))
 	r.Use(middleware.Compress(5, "application/json", "text/html", "text/css", "application/javascript", "image/svg+xml"))
 
-	r.Get("/healthz", s.handleHealthz)
+	r.With(s.limitBy("healthz", o.Cfg.RateLimits.Healthz, keyIP)).Get("/healthz", s.handleHealthz)
 	r.Get("/readyz", s.handleReadyz)
 
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Use(TimeoutExcept(APITimeout, EventsPath, TusPrefix, DownloadPath, RawPath, ZipPath, EntryContentPath, ContentSearchPath, PublicSharePrefix, AuditExportPath, BackupDownloadPrefix))
 		api.Use(MaxBytes(JSONBodyLimit, TusPrefix, ContentPath, PublicShareTusMarker))
+		api.Use(s.limitAPI(o.Cfg.RateLimits.API, TusPrefix, ThumbPath, DownloadPath, RawPath, ZipPath, EntryContentPath, SubtitlePath, PublicSharePrefix, EventsPath))
 		api.NotFound(func(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, r, CodeNotFound, 0, "endpoint not found", nil)
 		})

@@ -86,6 +86,8 @@ func NewService(cfg *config.Config, repo db.Repository, rec *audit.Recorder, log
 		rt := cfg.Runtime()
 		return rt.SessionIdleTimeout, rt.SessionAbsoluteTimeout
 	}
+	loginN, loginW := SpecOr(cfg.RateLimits.LoginIP, LoginPerIP, LoginWindow)
+	pwN, pwW := SpecOr(cfg.RateLimits.PasswordChange, PasswordChangePerSess, PasswordChangeWindow)
 	return &Service{
 		cfg:       cfg,
 		repo:      repo,
@@ -93,8 +95,8 @@ func NewService(cfg *config.Config, repo db.Repository, rec *audit.Recorder, log
 		audit:     rec,
 		logger:    logger,
 		now:       now,
-		loginIP:   NewWindowLimiter(LoginPerIP, LoginWindow, now),
-		pwChange:  NewWindowLimiter(PasswordChangePerSess, PasswordChangeWindow, now),
+		loginIP:   NewWindowLimiter(loginN, loginW, now),
+		pwChange:  NewWindowLimiter(pwN, pwW, now),
 		userCache: map[string]cachedUser{},
 	}
 }
@@ -177,6 +179,17 @@ type LoginResult struct {
 
 // Login implements SPEC §8.1 "Login" steps 1–7 (TOTP excluded until Step 23a).
 func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error) {
+	if !s.loginIP.Known(in.IP) {
+		// survive a restart: count the attempts this IP already made in the
+		// window (login_attempts) before trusting the empty in-memory bucket
+		limit, window := SpecOr(s.cfg.RateLimits.LoginIP, LoginPerIP, LoginWindow)
+		if n, err := s.repo.CountLoginAttemptsByIPSince(ctx, in.IP, db.FormatTime(s.now().Add(-window))); err == nil && n > 0 {
+			if int(n) > limit {
+				n = int64(limit)
+			}
+			s.loginIP.Preload(in.IP, int(n), s.now())
+		}
+	}
 	if ok, wait := s.loginIP.Allow(in.IP); !ok {
 		return LoginResult{}, &RateLimitedError{RetryAfter: wait}
 	}
@@ -203,10 +216,6 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 			return LoginResult{}, &LockedError{RetryAfter: until.Sub(now).Round(time.Second)}
 		}
 	}
-	if u.Status != "active" {
-		return LoginResult{}, ErrAccountDisabled
-	}
-
 	ok, rehash, err := VerifyPassword(u.PasswordHash, in.Password, DefaultParams)
 	if err != nil {
 		s.logger.Error("stored password hash unreadable", slog.String("user_id", u.ID), slog.String("error", err.Error()))
@@ -237,6 +246,12 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 				Details: map[string]any{"failures": failures, "lockedUntil": *lockedUntil}})
 		}
 		return LoginResult{}, ErrInvalidCredentials
+	}
+	if u.Status != "active" {
+		// answered only with the right password so a disabled account is not
+		// an enumeration oracle (review A m-03); counts as a failed attempt
+		fail("account_disabled")
+		return LoginResult{}, ErrAccountDisabled
 	}
 
 	if rehash {

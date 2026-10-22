@@ -2,8 +2,10 @@ module kppbwi.app/filemanager
 
 go 1.26.0
 
+toolchain go1.27.3
+
 require (
-	github.com/bodgit/sevenzip v1.6.1
+	github.com/bodgit/sevenzip v1.6.5
 	github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707
 	github.com/gabriel-vasile/mimetype v1.4.15
 	github.com/go-chi/chi/v5 v5.4.0
@@ -12,6 +14,7 @@ require (
 	github.com/klauspost/pgzip v1.2.6
 	github.com/nwaples/rardecode/v2 v2.2.0
 	github.com/pressly/goose/v3 v3.29.0
+	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
 	github.com/tus/tusd/v2 v2.10.1
 	github.com/ulikunitz/xz v0.5.15
 	golang.org/x/crypto v0.58.0
@@ -33,11 +36,11 @@ require (
 	github.com/ncruces/go-strftime v1.1.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.33 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/sethvargo/go-retry v0.5.0 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
+	github.com/stangelandcl/ppmd v0.1.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
+	go4.org v0.0.0-20260112195520-a5071408f32f // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	modernc.org/libc v1.78.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

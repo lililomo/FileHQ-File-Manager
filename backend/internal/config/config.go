@@ -139,6 +139,8 @@ type Config struct {
 	TaskMaxGlobal   int // TASK_MAX_GLOBAL
 	ListingPageSize int // LISTING_PAGE_SIZE
 
+	RateLimits RateLimits // RATE_LIMIT_* (SPEC §10.5)
+
 	SignedURLTTL          time.Duration  // SIGNED_URL_TTL
 	MediaURLTTL           time.Duration  // MEDIA_URL_TTL
 	AuditRetentionDays    int            // AUDIT_RETENTION_DAYS
@@ -439,6 +441,7 @@ func Load(o Options) (*Config, error) {
 	c.TaskMaxPerUser = l.intv("TASK_MAX_PER_USER", 1, 10)
 	c.TaskMaxGlobal = l.intv("TASK_MAX_GLOBAL", 1, 64)
 	c.ListingPageSize = l.intv("LISTING_PAGE_SIZE", 50, 1000)
+	c.RateLimits = l.rateLimits()
 	c.SignedURLTTL = l.dur("SIGNED_URL_TTL", time.Minute, time.Hour)
 	c.MediaURLTTL = l.dur("MEDIA_URL_TTL", 5*time.Minute, 24*time.Hour)
 	c.AuditRetentionDays = l.intv("AUDIT_RETENTION_DAYS", 30, 3650)

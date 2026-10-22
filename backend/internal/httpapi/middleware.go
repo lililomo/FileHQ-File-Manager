@@ -140,11 +140,17 @@ func RealIP(cfg *config.Config) func(http.Handler) http.Handler {
 	}
 }
 
-// InitialCSP is the Step 1 policy for HTML; the final policy with nonces is
-// Step 20. 'wasm-unsafe-eval' (Step 17a) lets pdf.js compile its WASM
+// FinalCSP is the SPEC §10.3 policy for HTML (Step 20). No inline script
+// exists, so script-src needs neither a nonce nor unsafe-inline;
+// style-src keeps unsafe-inline because Radix positions popovers through
+// style attributes and Monaco injects <style> elements (documented in
+// SPEC §10.3 and SECURITY.md). 'wasm-unsafe-eval' (Step 17a) lets pdf.js compile its WASM
 // decoders (OpenJPEG for JPX images, JBIG2, qcms for ICC profiles); it does
 // not permit JavaScript eval.
-const InitialCSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'"
+const FinalCSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'"
+
+// InitialCSP is kept as an alias for callers from earlier steps.
+const InitialCSP = FinalCSP
 
 // APICSP is the policy of JSON responses (SPEC §10.3): nothing may load.
 const APICSP = "default-src 'none'; frame-ancestors 'none'"
@@ -176,11 +182,14 @@ func SecurityHeaders(next http.Handler) http.Handler {
 			h.Set("Cache-Control", "no-store")
 			h.Set("Content-Security-Policy", APICSP)
 		} else {
-			h.Set("Content-Security-Policy", InitialCSP)
+			h.Set("Content-Security-Policy", FinalCSP)
 		}
 		https := r.TLS != nil || (PeerTrustedFrom(r.Context()) && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"))
 		if https {
 			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+			if !isAPIPath(r.URL.Path) {
+				h.Set("Content-Security-Policy", FinalCSP+"; upgrade-insecure-requests")
+			}
 		}
 		next.ServeHTTP(w, r)
 	})

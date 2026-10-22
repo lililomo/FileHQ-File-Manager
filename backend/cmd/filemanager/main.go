@@ -37,6 +37,7 @@ import (
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/media"
 	"kppbwi.app/filemanager/internal/meta"
+	"kppbwi.app/filemanager/internal/metrics"
 	"kppbwi.app/filemanager/internal/netguard"
 	"kppbwi.app/filemanager/internal/notify"
 	"kppbwi.app/filemanager/internal/quota"
@@ -346,7 +347,8 @@ func runServe(envFile string, noMigrate bool) int {
 	// metadata and media; the trash hook disables links of deleted items.
 	var notifySvc *notify.Service
 	shareSvc := share.New(share.Options{
-		Repo: store, AppSecret: cfg.AppSecret, BaseURL: cfg.AppBaseURL, PublicEnabled: cfg.PublicSharesEnabled,
+		Limits: share.LimitsFrom(cfg.RateLimits),
+		Repo:   store, AppSecret: cfg.AppSecret, BaseURL: cfg.AppBaseURL, PublicEnabled: cfg.PublicSharesEnabled,
 		AllowNoExpiry: cfg.ShareAllowNoExpiry, RequirePassword: cfg.ShareRequirePassword, DefaultExpiryDays: cfg.ShareDefaultExpiryDays,
 		Logger: logger,
 		Invalidate: func(userID string, dir fsjail.VPath) {
@@ -424,7 +426,10 @@ func runServe(envFile string, noMigrate bool) int {
 		return exitConfig
 	}
 	defer func() { _ = versionsSvc.Close() }()
+	nameRate, searchWindow := auth.SpecOr(cfg.RateLimits.NameSearch, search.NameRateLimit, time.Minute)
+	contentRate, _ := auth.SpecOr(cfg.RateLimits.ContentSearch, search.ContentRateLimit, time.Minute)
 	searchSvc := search.New(search.Options{DataDir: cfg.DataDir, RgPath: cfg.RgPath, Runner: runner, MaxFileSize: cfg.EditorMaxFileSize,
+		NameRateLimit: nameRate, ContentRate: contentRate, RateWindow: searchWindow,
 		Repo: store, Quota: quotaSvc, Files: filesSvc, Locks: locks, Tasks: engine, Versions: versionsSvc, Logger: logger,
 		Less: func(a, b string) bool { return listing.NaturalLess(a, b, collator) },
 		TagPaths: func(ctx context.Context, userID, color string) ([]string, error) {
@@ -475,7 +480,9 @@ func runServe(envFile string, noMigrate bool) int {
 
 	// Remote downloads (Step 13, SPEC §8.10): SSRF guard + task runner. The
 	// loopback exemption exists for development/E2E only.
+	rdRate, rdWindow := auth.SpecOr(cfg.RateLimits.RemoteDownload, remotedl.DefaultRateLimit, time.Hour)
 	remoteSvc := remotedl.New(remotedl.Options{
+		RateLimit: rdRate, RateWindow: rdWindow,
 		DataDir: cfg.DataDir, Enabled: cfg.RemoteDownloadEnabled, MaxSize: cfg.RemoteDownloadMaxSize, MaxUploadSize: cfg.MaxUploadSize,
 		MaxUploadSizeFn: func() int64 { return cfg.Runtime().MaxUploadSize },
 		Version:         version, BaseURL: cfg.AppBaseURL, Repo: store, Quota: quotaSvc, Files: filesSvc, Locks: locks, Tasks: engine,
@@ -546,7 +553,20 @@ func runServe(envFile string, noMigrate bool) int {
 	}
 	auditRec.Record(context.Background(), audit.Entry{Action: audit.ActionSystemStart, TargetType: "system", Details: map[string]any{"version": version, "commit": commit}})
 
+	// /metrics (SPEC §6.3, §3 METRICS_ADDR): separate loopback listener, no
+	// user-identifying labels; nil registry when disabled.
+	var reg *metrics.Registry
+	if cfg.MetricsAddr != "" {
+		reg = metrics.New()
+		reg.Gauge("filemanager_tasks_running", "Tasks currently executing.", func() float64 { return float64(engine.Running()) })
+		reg.Gauge("filemanager_sse_clients", "Open SSE connections.", func() float64 { return float64(broker.Clients()) })
+		reg.Gauge("filemanager_thumb_queue", "Thumbnail jobs waiting.", func() float64 { q, _, _ := thumbsSvc.Stats(); return float64(q) })
+		reg.Gauge("filemanager_thumb_rendered_total", "Thumbnails rendered since start.", func() float64 { _, r, _ := thumbsSvc.Stats(); return float64(r) })
+		reg.Gauge("filemanager_thumb_failed_total", "Thumbnail renders that failed since start.", func() float64 { _, _, f := thumbsSvc.Stats(); return float64(f) })
+		reg.Gauge("filemanager_scheduler_jobs", "Registered scheduler jobs.", func() float64 { return float64(len(jobs.Status())) })
+	}
 	handler := httpapi.New(httpapi.Options{
+		Metrics:     reg,
 		Cfg:         cfg,
 		Logger:      logger,
 		Version:     version,
@@ -601,6 +621,18 @@ func runServe(envFile string, noMigrate bool) int {
 	}
 	logger.Info("task engine started", slog.Int("maxPerUser", cfg.TaskMaxPerUser), slog.Int("maxGlobal", cfg.TaskMaxGlobal))
 
+	var metricsSrv *http.Server
+	if reg != nil {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", reg)
+		metricsSrv = &http.Server{Addr: cfg.MetricsAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+		go func() {
+			logger.Info("metrics listening", slog.String("addr", cfg.MetricsAddr))
+			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Error("metrics listener failed", slog.String("error", err.Error()))
+			}
+		}()
+	}
 	errCh := make(chan error, 1)
 	go func() {
 		logger.Info("listening", slog.String("addr", cfg.ListenAddr), slog.Bool("frontend_embedded", webassets.HasIndex()))
@@ -622,6 +654,9 @@ func runServe(envFile string, noMigrate bool) int {
 		broker.Close()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
+		if metricsSrv != nil {
+			_ = metricsSrv.Shutdown(shutdownCtx)
+		}
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			logger.Error("graceful shutdown failed", slog.String("error", err.Error()))
 			return 1

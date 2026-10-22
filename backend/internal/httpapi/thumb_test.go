@@ -260,8 +260,8 @@ func TestThumbSignatureChecks(t *testing.T) {
 	if err := env.store.UpdateUserStatus(context.Background(), sqlc.UpdateUserStatusParams{Status: "disabled", UpdatedAt: db.Now(), ID: u.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if r := env.call(http.MethodGet, good, "198.51.100.7:1", nil, nil, nil); r.rec.Code != 404 {
-		t.Fatalf("disabled user: %d", r.rec.Code)
+	if r := env.call(http.MethodGet, good, "198.51.100.7:1", nil, nil, nil); r.rec.Code != 403 {
+		t.Fatalf("disabled user: %d", r.rec.Code) // Step 20: one code for inactive accounts on every signed route
 	}
 }
 

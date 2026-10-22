@@ -37,13 +37,13 @@ func (s *Server) mountFiles(api chi.Router) {
 		g.Use(s.RequireAuth)
 		g.Use(s.RequireCSRF)
 		g.Use(RequirePasswordChanged)
-		g.Get("/files/list", s.handleFilesList)
+		g.With(s.limitBy("files_list", s.cfg.RateLimits.FilesList, keySession)).Get("/files/list", s.handleFilesList)
 		g.Get("/files/stat", s.handleFilesStat)
 		g.Get("/files/media-info", s.handleFilesMediaInfo)
 		g.Get("/files/templates", s.handleFilesTemplates)
 		g.Post("/files/mkdir", s.handleFilesMkdir)
 		g.Post("/files/create", s.handleFilesCreate)
-		g.Post("/files/sign", s.handleFilesSign)
+		g.With(s.limitBy("files_sign", s.cfg.RateLimits.FilesSign, keySession)).Post("/files/sign", s.handleFilesSign)
 	})
 }
 

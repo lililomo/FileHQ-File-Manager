@@ -56,18 +56,20 @@ func (l *thumbLimiter) release(userID string) {
 // mountThumbs registers GET /files/thumb: authenticated by signature only
 // (no cookie/CSRF) so <img> tags, tabs and download managers can use it
 // (SPEC §6.3, §8.9).
+// ThumbPath is the signed thumbnail route (exempt from the coarse API limit).
+const ThumbPath = "/api/v1/files/thumb"
+
 func (s *Server) mountThumbs(api chi.Router) {
-	api.Get("/files/thumb", s.handleFilesThumb)
+	api.With(s.limitBy("thumb", s.cfg.RateLimits.Thumb, keyScope)).Get("/files/thumb", s.handleFilesThumb)
 }
 
 // verifySigned parses and verifies a signed URL of the given purpose and
 // resolves its scope: the user ("u:<id>") or a share recipient
 // ("r:<share>:<user>", Step 18b). On failure the error is written.
 func (s *Server) verifySigned(w http.ResponseWriter, r *http.Request, purpose download.Purpose) (download.Params, *signedScope, bool) {
+	// Step 20: every signed route answers an inactive account the same way
+	// (403 account_inactive); the thumb-only 404 of Step 8 is gone.
 	inactive := CodeForbidden
-	if purpose == download.PurposeThumb {
-		inactive = CodeNotFound
-	}
 	p, sig, err := download.FromQuery(r.URL.Query())
 	if err != nil || p.Purpose != purpose {
 		WriteError(w, r, CodeSignatureInvalid, 0, "invalid signed url", nil)

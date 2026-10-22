@@ -4,6 +4,8 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	"kppbwi.app/filemanager/internal/config"
 )
 
 // RateLimiter is an in-memory token bucket per key (client IP, session ...).
@@ -146,4 +148,37 @@ func LockoutDuration(failures int64) time.Duration {
 	default:
 		return 0
 	}
+}
+
+// SpecOr returns the configured limit (RATE_LIMIT_*, SPEC §10.5) or the SPEC
+// default when the config carries none (tests building Config by hand).
+func SpecOr(l config.RateLimit, n int, w time.Duration) (int, time.Duration) {
+	if l.Enabled() {
+		return l.Limit, l.Window
+	}
+	return n, w
+}
+
+// Known reports whether key has in-memory events; Preload seeds n events at
+// now for an unknown key so a limit survives a restart (login reads the
+// recent failures from login_attempts, SPEC §10.2 item 6).
+func (w *WindowLimiter) Known(key string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	_, ok := w.events[key]
+	return ok
+}
+
+// Preload records n synthetic events for key at now (capped at max).
+func (w *WindowLimiter) Preload(key string, n int, now time.Time) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if n > w.max {
+		n = w.max
+	}
+	ev := make([]time.Time, n)
+	for i := range ev {
+		ev[i] = now
+	}
+	w.events[key] = ev
 }

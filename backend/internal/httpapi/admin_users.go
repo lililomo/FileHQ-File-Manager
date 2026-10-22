@@ -50,7 +50,7 @@ func (s *Server) mountAdmin(api chi.Router) {
 		g.Get("/admin/maintenance", s.handleAdminMaintenance)
 		g.Post("/admin/maintenance/{job}", s.handleAdminMaintenanceRun)
 		g.Get("/admin/maintenance/backups", s.handleAdminBackups)
-		g.Get("/admin/maintenance/backups/{name}", s.handleAdminBackupDownload)
+		g.With(s.limitBy("backup_download", s.cfg.RateLimits.BackupDownload, keySession)).Get("/admin/maintenance/backups/{name}", s.handleAdminBackupDownload)
 	})
 }
 
