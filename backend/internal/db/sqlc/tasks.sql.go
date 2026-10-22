@@ -238,6 +238,166 @@ func (q *Queries) InsertTaskLog(ctx context.Context, arg InsertTaskLogParams) er
 	return err
 }
 
+const latestTaskOfType = `-- name: LatestTaskOfType :one
+SELECT id, user_id, type, state, title, payload_json, result_json, error_code, error_message, progress_done, progress_total, progress_unit, eta_seconds, speed_bps, cancel_requested, locks_json, hidden, retry_of, created_at, started_at, finished_at, updated_at FROM tasks WHERE type = ?1 ORDER BY created_at DESC, id DESC LIMIT 1
+`
+
+func (q *Queries) LatestTaskOfType(ctx context.Context, type_ string) (Task, error) {
+	row := q.db.QueryRowContext(ctx, latestTaskOfType, type_)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Type,
+		&i.State,
+		&i.Title,
+		&i.PayloadJson,
+		&i.ResultJson,
+		&i.ErrorCode,
+		&i.ErrorMessage,
+		&i.ProgressDone,
+		&i.ProgressTotal,
+		&i.ProgressUnit,
+		&i.EtaSeconds,
+		&i.SpeedBps,
+		&i.CancelRequested,
+		&i.LocksJson,
+		&i.Hidden,
+		&i.RetryOf,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listActiveTasksOfType = `-- name: ListActiveTasksOfType :many
+SELECT id, user_id, type, state, title, payload_json, result_json, error_code, error_message, progress_done, progress_total, progress_unit, eta_seconds, speed_bps, cancel_requested, locks_json, hidden, retry_of, created_at, started_at, finished_at, updated_at FROM tasks WHERE type = ?1 AND state IN ('queued', 'running') ORDER BY created_at, id
+`
+
+func (q *Queries) ListActiveTasksOfType(ctx context.Context, type_ string) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveTasksOfType, type_)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Task{}
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Type,
+			&i.State,
+			&i.Title,
+			&i.PayloadJson,
+			&i.ResultJson,
+			&i.ErrorCode,
+			&i.ErrorMessage,
+			&i.ProgressDone,
+			&i.ProgressTotal,
+			&i.ProgressUnit,
+			&i.EtaSeconds,
+			&i.SpeedBps,
+			&i.CancelRequested,
+			&i.LocksJson,
+			&i.Hidden,
+			&i.RetryOf,
+			&i.CreatedAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllTasks = `-- name: ListAllTasks :many
+SELECT id, user_id, type, state, title, payload_json, result_json, error_code, error_message, progress_done, progress_total, progress_unit, eta_seconds, speed_bps, cancel_requested, locks_json, hidden, retry_of, created_at, started_at, finished_at, updated_at FROM tasks
+WHERE hidden = 0
+  AND (?1 = 1 OR state = ?2)
+  AND (?3 = 0
+       OR (?3 = 1 AND user_id = ?4)
+       OR (?3 = 2 AND user_id IS NULL))
+  AND (?5 = '' OR created_at < ?5 OR (created_at = ?5 AND id < ?6))
+ORDER BY created_at DESC, id DESC
+LIMIT ?7
+`
+
+type ListAllTasksParams struct {
+	AnyState interface{} `json:"any_state"`
+	State    string      `json:"state"`
+	UserMode interface{} `json:"user_mode"`
+	UserID   *string     `json:"user_id"`
+	Before   interface{} `json:"before"`
+	BeforeID string      `json:"before_id"`
+	MaxRows  int64       `json:"max_rows"`
+}
+
+func (q *Queries) ListAllTasks(ctx context.Context, arg ListAllTasksParams) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, listAllTasks,
+		arg.AnyState,
+		arg.State,
+		arg.UserMode,
+		arg.UserID,
+		arg.Before,
+		arg.BeforeID,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Task{}
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Type,
+			&i.State,
+			&i.Title,
+			&i.PayloadJson,
+			&i.ResultJson,
+			&i.ErrorCode,
+			&i.ErrorMessage,
+			&i.ProgressDone,
+			&i.ProgressTotal,
+			&i.ProgressUnit,
+			&i.EtaSeconds,
+			&i.SpeedBps,
+			&i.CancelRequested,
+			&i.LocksJson,
+			&i.Hidden,
+			&i.RetryOf,
+			&i.CreatedAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTaskLogs = `-- name: ListTaskLogs :many
 SELECT id, task_id, at, level, message FROM task_logs
 WHERE task_id = ?1 AND id > ?2

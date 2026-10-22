@@ -84,6 +84,7 @@ func run(args []string) int {
 	fs.SetOutput(os.Stderr)
 	envFile := fs.String("env-file", "", "dotenv file to load (development only; production uses systemd EnvironmentFile)")
 	noMigrate := fs.Bool("no-migrate", false, "serve: do not apply pending migrations at start (fails readiness)")
+	label := fs.String("label", "", "backup-db: label kept out of the automatic rotation (a-z, 0-9, -)")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
@@ -101,8 +102,10 @@ func run(args []string) int {
 		return runMigrate(*envFile, action)
 	case "serve":
 		return runServe(*envFile, *noMigrate)
+	case "backup-db":
+		return runBackupDB(*envFile, *label)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\nusage: filemanager [serve|check-deps|migrate [up|down|status]|version] [--env-file FILE]\n", cmd)
+		fmt.Fprintf(os.Stderr, "unknown command %q\nusage: filemanager [serve|check-deps|migrate [up|down|status]|backup-db [--label L]|version] [--env-file FILE]\n", cmd)
 		return exitUsage
 	}
 }
@@ -151,6 +154,30 @@ func dbPath(envFile string) (string, error) {
 		return "", fmt.Errorf("DATA_DIR (or STORAGE_ROOT) must be an absolute path, got %q", dataDir)
 	}
 	return filepath.Join(dataDir, "db", "app.db"), nil
+}
+
+// runBackupDB writes DATA_DIR/backups/app-<ts>[-label].db (VACUUM INTO,
+// keep 7 unlabelled) — deploy/update.sh runs it before replacing the binary
+// (SPEC §12.5/§12.6). Safe while the service runs (WAL).
+func runBackupDB(envFile, label string) int {
+	syscall.Umask(0o027)
+	cfg, code := loadConfig(envFile)
+	if code != 0 {
+		return code
+	}
+	database, err := db.Open(filepath.Join(cfg.DataDir, "db", "app.db"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return exitConfig
+	}
+	defer func() { _ = database.Close() }()
+	info, pruned, err := admin.BackupDB(context.Background(), database, cfg.DataDir, cfg.TZDefault, time.Now(), label)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	fmt.Printf("backup written: %s (%d bytes); rotated out: %d\n", info.Name, info.Size, len(pruned))
+	return 0
 }
 
 func runMigrate(envFile, action string) int {
@@ -483,7 +510,7 @@ func runServe(envFile string, noMigrate bool) int {
 	// Admin panel (Step 19a, SPEC §8.17): installs the settings snapshot
 	// from the DB (overrides survive restarts) and registers delete_user.
 	adminSvc, err := admin.New(context.Background(), admin.Options{
-		Cfg: cfg, Repo: store, Auth: authSvc, Audit: auditRec, Quota: quotaSvc, Tasks: engine,
+		Cfg: cfg, Repo: store, Auth: authSvc, Audit: auditRec, Quota: quotaSvc, Tasks: engine, Shares: shareSvc,
 		Build: admin.BuildInfo{Version: version, Commit: commit, BuildDate: buildDate}, Logger: logger,
 		Deps: config.CheckDeps(cfg.ToolValues()),
 		OnSettingsChanged: func(_ *config.Runtime) {
@@ -500,6 +527,24 @@ func runServe(envFile string, noMigrate bool) int {
 		logger.Error("admin service unavailable", slog.String("error", err.Error()))
 		return exitConfig
 	}
+	// Scheduled jobs (SPEC §7.3): maintenance jobs are defined centrally in
+	// internal/admin and run as system tasks (Step 19b); the rest below.
+	jobs := scheduler.New(cfg.TZDefault, logger, nil)
+	if _, err := adminSvc.EnableMaintenance(admin.MaintenanceOptions{
+		DB: database, Trash: trashStore, Thumbs: thumbsSvc, Scheduler: jobs,
+		PruneActivity: filesSvc.PruneActivity, PruneShareAccess: shareSvc.PruneAccessLogs,
+		CleanUploads: func(ctx context.Context) (any, error) {
+			return cleanAbandoned(ctx, uploadSvc, remoteSvc, archiveSvc, logger)
+		},
+	}); err != nil {
+		logger.Error("maintenance setup failed", slog.String("error", err.Error()))
+		return exitConfig
+	}
+	if err := registerJobs(jobs, engine, shareSvc, trashStore, adminSvc, logger); err != nil {
+		logger.Error("scheduler setup failed", slog.String("error", err.Error()))
+		return exitConfig
+	}
+	auditRec.Record(context.Background(), audit.Entry{Action: audit.ActionSystemStart, TargetType: "system", Details: map[string]any{"version": version, "commit": commit}})
 
 	handler := httpapi.New(httpapi.Options{
 		Cfg:         cfg,
@@ -547,11 +592,6 @@ func runServe(envFile string, noMigrate bool) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go authSvc.RunMaintenance(ctx)
-	jobs := scheduler.New(cfg.TZDefault, logger, nil)
-	if err := registerJobs(jobs, cfg, trashStore, quotaSvc, filesSvc, auditRec, engine, uploadSvc, remoteSvc, archiveSvc, shareSvc, adminSvc, logger); err != nil {
-		logger.Error("scheduler setup failed", slog.String("error", err.Error()))
-		return exitConfig
-	}
 	go jobs.Start(ctx)
 	thumbsSvc.Start(ctx)
 	logger.Info("thumbnail workers started", slog.Int("workers", thumbsSvc.Workers()))
@@ -592,33 +632,30 @@ func runServe(envFile string, noMigrate bool) int {
 	return 0
 }
 
-// registerJobs wires the background jobs of SPEC §7.3 that exist so far:
-// clean_uploads hourly (abandoned tus uploads, Step 12a), purge_trash 03:00 (expired Recycle Bin items), recalc_quota 03:30 (every
-// account, bounded to one hour) and prune_logs 04:00 (activity journal
-// older than ACTIVITY_RETENTION_DAYS). Step 19b exposes RunNow for admins.
-func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *trash.Store, quotaSvc *quota.Service, filesSvc *files.Service, auditRec *audit.Recorder, engine *tasks.Engine, uploadSvc *upload.Service, remoteSvc *remotedl.Service, archiveSvc *archive.Service, shareSvc *share.Service, adminSvc *admin.Service, logger *slog.Logger) error {
-	if err := jobs.Add(scheduler.Job{Name: "clean_uploads", Every: time.Hour, Timeout: 15 * time.Minute, Run: func(ctx context.Context) error {
-		res, err := uploadSvc.CleanExpired(ctx)
-		if res.Expired > 0 || res.Orphans > 0 {
-			logger.Info("abandoned uploads cleaned", slog.Int("expired", res.Expired), slog.Int("orphans", res.Orphans), slog.Int64("prunedRows", res.Pruned))
-		}
-		// abandoned remote download parts (Step 13) share the hourly slot
-		if n, rerr := remoteSvc.CleanOrphans(ctx); rerr != nil {
-			logger.Warn("remote download cleanup failed", slog.String("error", rerr.Error()))
-		} else if n > 0 {
-			logger.Info("abandoned remote downloads cleaned", slog.Int("folders", n))
-		}
-		// abandoned archive workspaces (Step 14a)
-		if n, aerr := archiveSvc.CleanOrphans(ctx); aerr != nil {
-			logger.Warn("archive workspace cleanup failed", slog.String("error", aerr.Error()))
-		} else if n > 0 {
-			logger.Info("abandoned archive workspaces cleaned", slog.Int("folders", n))
-		}
-		return err
-	}}); err != nil {
-		return err
+// cleanAbandoned is the clean_uploads maintenance job: abandoned tus
+// uploads (Step 12a), remote download parts (13) and archive workspaces (14a).
+func cleanAbandoned(ctx context.Context, uploadSvc *upload.Service, remoteSvc *remotedl.Service, archiveSvc *archive.Service, logger *slog.Logger) (any, error) {
+	res, err := uploadSvc.CleanExpired(ctx)
+	out := map[string]any{"expired": res.Expired, "orphans": res.Orphans, "prunedRows": res.Pruned}
+	if n, rerr := remoteSvc.CleanOrphans(ctx); rerr != nil {
+		logger.Warn("remote download cleanup failed", slog.String("error", rerr.Error()))
+	} else {
+		out["remoteDownloads"] = n
 	}
-	if err := jobs.Add(scheduler.Job{Name: "cleanup_tasks", At: "04:30", Timeout: 15 * time.Minute, Run: func(ctx context.Context) error {
+	if n, aerr := archiveSvc.CleanOrphans(ctx); aerr != nil {
+		logger.Warn("archive workspace cleanup failed", slog.String("error", aerr.Error()))
+	} else {
+		out["archiveWorkspaces"] = n
+	}
+	return out, err
+}
+
+// registerJobs wires the scheduled jobs of SPEC §7.3 that are not admin
+// maintenance actions: cleanup_tasks 04:30, check_shares 02:45 and
+// purge_deleted_users 04:15 (the maintenance jobs come from
+// admin.EnableMaintenance).
+func registerJobs(jobs *scheduler.Scheduler, engine *tasks.Engine, shareSvc *share.Service, trashStore *trash.Store, adminSvc *admin.Service, logger *slog.Logger) error {
+	if err := jobs.Add(scheduler.Job{Name: "cleanup_tasks", At: "04:30", Jitter: admin.JitterMax, Timeout: 15 * time.Minute, Run: func(ctx context.Context) error {
 		n, err := engine.Cleanup(ctx, tasks.Retention)
 		if n > 0 {
 			logger.Info("finished tasks pruned", slog.Int64("rows", n))
@@ -627,29 +664,7 @@ func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *tra
 	}}); err != nil {
 		return err
 	}
-	if err := jobs.Add(scheduler.Job{Name: "purge_trash", At: "03:00", Timeout: time.Hour, Run: func(ctx context.Context) error {
-		if cfg.Runtime().TrashRetentionDays == 0 {
-			return nil
-		}
-		n, freed, err := trashStore.PurgeExpired(ctx, 100)
-		if n > 0 {
-			logger.Info("expired trash purged", slog.Int("items", n), slog.Int64("bytes", freed))
-		}
-		return err
-	}}); err != nil {
-		return err
-	}
-	if err := jobs.Add(scheduler.Job{Name: "recalc_quota", At: "03:30", Timeout: time.Hour, Run: func(ctx context.Context) error {
-		done, failed := quotaSvc.RecalculateAll(ctx, cfg.StorageRoot, cfg.DataDir, 10*time.Minute, func(ctx context.Context, userID string, before, after int64) {
-			auditRec.Record(ctx, audit.Entry{Action: audit.ActionQuotaDrift, TargetType: "user", TargetID: userID,
-				Details: map[string]any{"before": before, "after": after}})
-		})
-		logger.Info("quota recalculated", slog.Int("users", done), slog.Int("failed", failed))
-		return nil
-	}}); err != nil {
-		return err
-	}
-	if err := jobs.Add(scheduler.Job{Name: "check_shares", At: "02:30", Timeout: 30 * time.Minute, Run: func(ctx context.Context) error {
+	if err := jobs.Add(scheduler.Job{Name: "check_shares", At: "02:45", Jitter: admin.JitterMax, Timeout: 30 * time.Minute, Run: func(ctx context.Context) error {
 		n, err := shareSvc.CheckBroken(ctx, share.OpenJailFunc(trashStore.OpenJail))
 		if n > 0 {
 			logger.Info("share broken flags updated", slog.Int("rows", n))
@@ -659,25 +674,10 @@ func registerJobs(jobs *scheduler.Scheduler, cfg *config.Config, trashStore *tra
 		return err
 	}
 	// purged accounts are kept 30 days for the audit trail (SPEC §8.17), then dropped
-	if err := jobs.Add(scheduler.Job{Name: "purge_deleted_users", At: "04:15", Timeout: 15 * time.Minute, Run: func(ctx context.Context) error {
+	return jobs.Add(scheduler.Job{Name: "purge_deleted_users", At: "04:15", Jitter: admin.JitterMax, Timeout: 15 * time.Minute, Run: func(ctx context.Context) error {
 		n, err := adminSvc.PurgeDeletedUsers(ctx, db.FormatTime(time.Now().Add(-30*24*time.Hour)))
 		if n > 0 {
 			logger.Info("deleted accounts dropped", slog.Int("rows", n))
-		}
-		return err
-	}}); err != nil {
-		return err
-	}
-	return jobs.Add(scheduler.Job{Name: "prune_logs", At: "04:00", Timeout: 15 * time.Minute, Run: func(ctx context.Context) error {
-		retention := cfg.Runtime().ActivityRetentionDays
-		n, err := filesSvc.PruneActivity(ctx, time.Duration(retention)*24*time.Hour)
-		if n > 0 {
-			logger.Info("activity journal pruned", slog.Int64("rows", n), slog.Int("retentionDays", retention))
-		}
-		if m, perr := shareSvc.PruneAccessLogs(ctx, time.Duration(retention)*24*time.Hour); perr != nil {
-			return perr
-		} else if m > 0 {
-			logger.Info("share access logs pruned", slog.Int64("rows", m))
 		}
 		return err
 	}})

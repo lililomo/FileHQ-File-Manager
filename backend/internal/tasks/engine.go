@@ -668,6 +668,12 @@ func (e *Engine) Cancel(ctx context.Context, userID, id string) (Task, error) {
 	if err != nil {
 		return Task{}, err
 	}
+	return e.cancel(ctx, t)
+}
+
+// cancel is Cancel once the caller is authorised for t.
+func (e *Engine) cancel(ctx context.Context, t Task) (Task, error) {
+	userID, id := t.UserID, t.ID
 	if t.State.Final() {
 		return t, ErrFinal
 	}

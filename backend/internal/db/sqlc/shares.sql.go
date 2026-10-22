@@ -550,6 +550,103 @@ func (q *Queries) InsertShareRecipient(ctx context.Context, arg InsertShareRecip
 	return err
 }
 
+const listAllShares = `-- name: ListAllShares :many
+SELECT s.id, s.owner_user_id, s.path, s.is_dir, s.mode, s.password_hash IS NOT NULL AS has_password, s.expires_at,
+       s.max_downloads, s.download_count, s.view_count, s.allow_download, s.allow_upload, s.disabled_at, s.disabled_reason,
+       s.broken_at, s.last_access_at, s.created_at, u.username AS owner_username,
+       (SELECT COUNT(*) FROM share_recipients r WHERE r.share_id = s.id) AS recipient_count
+FROM shares s
+JOIN users u ON u.id = s.owner_user_id
+WHERE (?1 = 1 OR s.mode = ?2)
+  AND (?3 = 1 OR s.owner_user_id = ?4)
+  AND (s.created_at < ?5 OR (s.created_at = ?5 AND s.id < ?6))
+ORDER BY s.created_at DESC, s.id DESC
+LIMIT ?7
+`
+
+type ListAllSharesParams struct {
+	AnyMode       interface{} `json:"any_mode"`
+	Mode          string      `json:"mode"`
+	AnyOwner      interface{} `json:"any_owner"`
+	OwnerUserID   string      `json:"owner_user_id"`
+	BeforeCreated string      `json:"before_created"`
+	BeforeID      string      `json:"before_id"`
+	Lim           int64       `json:"lim"`
+}
+
+type ListAllSharesRow struct {
+	ID             string  `json:"id"`
+	OwnerUserID    string  `json:"owner_user_id"`
+	Path           string  `json:"path"`
+	IsDir          int64   `json:"is_dir"`
+	Mode           string  `json:"mode"`
+	HasPassword    bool    `json:"has_password"`
+	ExpiresAt      *string `json:"expires_at"`
+	MaxDownloads   *int64  `json:"max_downloads"`
+	DownloadCount  int64   `json:"download_count"`
+	ViewCount      int64   `json:"view_count"`
+	AllowDownload  int64   `json:"allow_download"`
+	AllowUpload    int64   `json:"allow_upload"`
+	DisabledAt     *string `json:"disabled_at"`
+	DisabledReason *string `json:"disabled_reason"`
+	BrokenAt       *string `json:"broken_at"`
+	LastAccessAt   *string `json:"last_access_at"`
+	CreatedAt      string  `json:"created_at"`
+	OwnerUsername  string  `json:"owner_username"`
+	RecipientCount int64   `json:"recipient_count"`
+}
+
+func (q *Queries) ListAllShares(ctx context.Context, arg ListAllSharesParams) ([]ListAllSharesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAllShares,
+		arg.AnyMode,
+		arg.Mode,
+		arg.AnyOwner,
+		arg.OwnerUserID,
+		arg.BeforeCreated,
+		arg.BeforeID,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllSharesRow{}
+	for rows.Next() {
+		var i ListAllSharesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerUserID,
+			&i.Path,
+			&i.IsDir,
+			&i.Mode,
+			&i.HasPassword,
+			&i.ExpiresAt,
+			&i.MaxDownloads,
+			&i.DownloadCount,
+			&i.ViewCount,
+			&i.AllowDownload,
+			&i.AllowUpload,
+			&i.DisabledAt,
+			&i.DisabledReason,
+			&i.BrokenAt,
+			&i.LastAccessAt,
+			&i.CreatedAt,
+			&i.OwnerUsername,
+			&i.RecipientCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listShareAccessLogs = `-- name: ListShareAccessLogs :many
 SELECT id, share_id, at, ip_trunc, "action", user_id, user_agent, path FROM share_access_logs
 WHERE share_id = ?1 AND id < ?2

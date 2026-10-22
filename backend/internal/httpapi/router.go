@@ -180,7 +180,7 @@ func New(o Options) http.Handler {
 	r.Get("/readyz", s.handleReadyz)
 
 	r.Route("/api/v1", func(api chi.Router) {
-		api.Use(TimeoutExcept(APITimeout, EventsPath, TusPrefix, DownloadPath, RawPath, ZipPath, EntryContentPath, ContentSearchPath, PublicSharePrefix))
+		api.Use(TimeoutExcept(APITimeout, EventsPath, TusPrefix, DownloadPath, RawPath, ZipPath, EntryContentPath, ContentSearchPath, PublicSharePrefix, AuditExportPath, BackupDownloadPrefix))
 		api.Use(MaxBytes(JSONBodyLimit, TusPrefix, ContentPath, PublicShareTusMarker))
 		api.NotFound(func(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, r, CodeNotFound, 0, "endpoint not found", nil)

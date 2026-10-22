@@ -125,9 +125,13 @@ type Querier interface {
 	// another user's upload id answers "not found".
 	InsertUploadSession(ctx context.Context, arg InsertUploadSessionParams) error
 	LatestFileVersion(ctx context.Context, arg LatestFileVersionParams) (FileVersion, error)
+	LatestTaskOfType(ctx context.Context, type_ string) (Task, error)
+	ListActiveTasksOfType(ctx context.Context, type_ string) ([]Task, error)
 	ListActiveUploadIDs(ctx context.Context) ([]string, error)
 	ListActivity(ctx context.Context, arg ListActivityParams) ([]ActivityLog, error)
 	ListActivityFiltered(ctx context.Context, arg ListActivityFilteredParams) ([]ActivityLog, error)
+	ListAllShares(ctx context.Context, arg ListAllSharesParams) ([]ListAllSharesRow, error)
+	ListAllTasks(ctx context.Context, arg ListAllTasksParams) ([]Task, error)
 	ListAudit(ctx context.Context, arg ListAuditParams) ([]AuditLog, error)
 	// Step 19a: purged accounts kept 30 days for the audit trail (SPEC 8.17).
 	ListDeletedUsersBefore(ctx context.Context, before *string) ([]User, error)

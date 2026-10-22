@@ -44,6 +44,12 @@ const (
 	ActionSettingsUpdate    = "settings.update"
 	ActionSettingsReset     = "settings.reset"
 	ActionAdminBrowseUser   = "admin.browse_user"
+	// Step 19b (admin operations)
+	ActionSystemStart       = "system.start"
+	ActionAdminTaskCancel   = "admin.task_cancel"
+	ActionShareAdminRevoked = "share.admin_revoked"
+	// ActionMaintenancePrefix + job name (maintenance.backup_db, ...).
+	ActionMaintenancePrefix = "maintenance."
 )
 
 // Entry is one audit event. Details must never contain secrets; keys that

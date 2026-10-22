@@ -329,6 +329,20 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		{http.MethodPost, "/api/v1/admin/settings/reset"},
 		{http.MethodPost, "/api/v1/admin/branding/logo"},
 		{http.MethodDelete, "/api/v1/admin/branding/logo"},
+		// Step 19b
+		{http.MethodGet, "/api/v1/me/sessions"},
+		{http.MethodDelete, "/api/v1/me/sessions/abcdef01"},
+		{http.MethodPost, "/api/v1/me/sessions/revoke-others"},
+		{http.MethodGet, "/api/v1/admin/audit"},
+		{http.MethodGet, "/api/v1/admin/audit/export.csv"},
+		{http.MethodGet, "/api/v1/admin/tasks"},
+		{http.MethodPost, "/api/v1/admin/tasks/x/cancel"},
+		{http.MethodGet, "/api/v1/admin/shares"},
+		{http.MethodPost, "/api/v1/admin/shares/x/revoke"},
+		{http.MethodGet, "/api/v1/admin/maintenance"},
+		{http.MethodPost, "/api/v1/admin/maintenance/backup-db"},
+		{http.MethodGet, "/api/v1/admin/maintenance/backups"},
+		{http.MethodGet, "/api/v1/admin/maintenance/backups/app-20261022-000000.db"},
 	}
 	for _, b := range blocked {
 		var body any
@@ -452,6 +466,13 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		"GET /api/v1/admin/settings": true, "PUT /api/v1/admin/settings": true, "POST /api/v1/admin/settings/reset": true,
 		"POST /api/v1/admin/branding/logo": true, "DELETE /api/v1/admin/branding/logo": true,
 		"GET /api/v1/branding/logo": true,
+		// Step 19b: sessions, audit, tasks, shares, maintenance (gated above)
+		"GET /api/v1/me/sessions": true, "DELETE /api/v1/me/sessions/{id}": true, "POST /api/v1/me/sessions/revoke-others": true,
+		"GET /api/v1/admin/audit": true, "GET /api/v1/admin/audit/export.csv": true,
+		"GET /api/v1/admin/tasks": true, "POST /api/v1/admin/tasks/{id}/cancel": true,
+		"GET /api/v1/admin/shares": true, "POST /api/v1/admin/shares/{id}/revoke": true,
+		"GET /api/v1/admin/maintenance": true, "POST /api/v1/admin/maintenance/{job}": true,
+		"GET /api/v1/admin/maintenance/backups": true, "GET /api/v1/admin/maintenance/backups/{name}": true,
 	}
 	// the signed endpoints reject cookie-only access: no signature → 403
 	for _, p := range []string{"/api/v1/files/thumb?path=/x&size=128", "/api/v1/files/download?path=/x", "/api/v1/files/raw?path=/x&purpose=media", "/api/v1/files/zip?token=x", "/api/v1/archives/entry-content?path=/x&inner=a", "/api/v1/files/subtitle?path=/x.srt&purpose=media"} {

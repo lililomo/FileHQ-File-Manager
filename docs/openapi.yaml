@@ -243,6 +243,54 @@ paths:
           headers:
             Retry-After: { schema: { type: integer } }
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  /api/v1/me/sessions:
+    get:
+      tags: [me]
+      summary: Sesi aktif milik user (Step 19b)
+      operationId: meSessions
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: Sesi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, description: 8 hex pertama hash sesi }
+                        current: { type: boolean }
+                        ip: { type: string }
+                        deviceLabel: { type: string }
+                        createdAt: { type: string }
+                        lastSeenAt: { type: string }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/me/sessions/{id}:
+    delete:
+      tags: [me]
+      summary: Keluarkan satu sesi lain (sesi lain user → 404; sesi saat ini → 409 current_session)
+      operationId: meSessionDelete
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^[0-9a-f]{8}$" } }
+      responses:
+        "204": { description: Sesi dicabut }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { description: Sesi saat ini (pakai /auth/logout), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/me/sessions/revoke-others:
+    post:
+      tags: [me]
+      summary: Keluar dari semua sesi lain (audit user.revoke_sessions)
+      operationId: meSessionsRevokeOthers
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      responses:
+        "204": { description: Sesi lain dicabut }
+        "401": { $ref: "#/components/responses/Error" }
   /api/v1/me/preferences:
     get:
       tags: [me]
@@ -3450,7 +3498,7 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
     put:
       tags: [admin]
-      summary: Simpan override `{key: value}` — validasi per kunci (tipe, rentang, daftar) dan relasi (chunk ≤ max upload, remote ≤ max upload, absolute ≥ idle); satu kunci salah → seluruh batch ditolak 400 dengan details.key/reason; berlaku langsung tanpa restart (snapshot atomik); audit settings.update {key, old, new}
+      summary: "Simpan override `{key: value}` — validasi per kunci (tipe, rentang, daftar) dan relasi (chunk ≤ max upload, remote ≤ max upload, absolute ≥ idle); satu kunci salah → seluruh batch ditolak 400 dengan details.key/reason; berlaku langsung tanpa restart (snapshot atomik); audit settings.update {key, old, new}"
       operationId: adminSettingsPut
       security: [{ cookieAuth: [], csrfToken: [] }]
       requestBody:
@@ -3509,6 +3557,170 @@ paths:
         "204": { description: Dihapus }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/audit:
+    get:
+      tags: [admin]
+      summary: Audit log (Step 19b) — keyset (at, id) turun; filter actor (username), action (persis atau prefiks `auth.`/`auth.*`), from/to (RFC 3339 atau YYYY-MM-DD di TZ_DEFAULT), q (substring)
+      operationId: adminAuditList
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: actor, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: action, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string, maxLength: 200 } }
+        - { name: cursor, in: query, schema: { type: string, description: "<at>|<id>" } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        "200": { description: Halaman audit, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/AuditEntry" } }, nextCursor: { type: string } } } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/audit/export.csv:
+    get:
+      tags: [admin]
+      summary: Export CSV streaming (BOM UTF-8, RFC 4180 CRLF, escape formula `= + - @ TAB CR` → `'`, maks 1.000.000 baris); filter sama dengan /admin/audit
+      operationId: adminAuditExport
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: actor, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string } }
+      responses:
+        "200": { description: "CSV `id,at,actor,actor_id,action,target_type,target_id,ip,user_agent,details`; Content-Disposition attachment", content: { text/csv: { schema: { type: string } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/tasks:
+    get:
+      tags: [admin]
+      summary: Task semua user + task sistem (Step 19b); user=<username> atau user=system
+      operationId: adminTasksList
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [queued, running, done, failed, cancelled, interrupted] } }
+        - { name: user, in: query, schema: { type: string } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        "200": { description: Halaman task, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/AdminTask" } }, nextCursor: { type: string } } } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/tasks/{id}/cancel:
+    post:
+      tags: [admin]
+      summary: Batalkan task milik siapa pun (audit admin.task_cancel)
+      operationId: adminTaskCancel
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Task, content: { application/json: { schema: { type: object, properties: { task: { $ref: "#/components/schemas/Task" } } } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { description: Task sudah final (reason=final), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/admin/shares:
+    get:
+      tags: [admin]
+      summary: Semua share (metadata saja — tanpa token, link, slug, atau isi) (Step 19b)
+      operationId: adminSharesList
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: owner, in: query, schema: { type: string, description: username } }
+        - { name: mode, in: query, schema: { type: string, enum: [public, users] } }
+        - { name: status, in: query, schema: { type: string, enum: [active, disabled, expired, broken] } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        "200": { description: Halaman share, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/AdminShare" } }, nextCursor: { type: [string, "null"] } } } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/shares/{id}/revoke:
+    post:
+      tags: [admin]
+      summary: Nonaktifkan share (disabled_reason=admin_revoked; pemilik tidak bisa mengaktifkan lagi); notifikasi share_revoked ke penerima dan share_revoked_by_admin ke pemilik; audit share.admin_revoked; idempoten
+      operationId: adminShareRevoke
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Dinonaktifkan }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/maintenance:
+    get:
+      tags: [admin]
+      summary: Jadwal, run terakhir (task) dan daftar backup (Step 19b)
+      operationId: adminMaintenance
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: Status maintenance
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timeZone: { type: string }
+                  jobs: { type: array, items: { $ref: "#/components/schemas/MaintenanceJob" } }
+                  backups: { type: array, items: { $ref: "#/components/schemas/Backup" } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/maintenance/{job}:
+    post:
+      tags: [admin]
+      summary: Jalankan job maintenance sebagai task sistem (audit maintenance.<job>)
+      operationId: adminMaintenanceRun
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: job, in: path, required: true, schema: { type: string, enum: [recalc-quota, clear-thumbs, clean-uploads, purge-trash, integrity-check, backup-db, prune-logs] } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId: { type: string, description: "recalc-quota, clear-thumbs" }
+                force: { type: boolean, description: "purge-trash: semua item (wajib confirm HAPUS)" }
+                confirm: { type: string }
+                prune: { type: boolean, description: "clear-thumbs: pangkas LRU ke anggaran 2 GB" }
+                label: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,31}$", description: "backup-db: tidak dirotasi" }
+      responses:
+        "202": { description: Task dibuat, content: { application/json: { schema: { type: object, properties: { task: { $ref: "#/components/schemas/Task" } } } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { description: Job sama masih queued/running (reason=already_running, details.taskId), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/admin/maintenance/backups:
+    get:
+      tags: [admin]
+      summary: Daftar backup database (DATA_DIR/backups, terbaru dulu)
+      operationId: adminBackups
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: Backup, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Backup" } } } } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/maintenance/backups/{name}:
+    get:
+      tags: [admin]
+      summary: Unduh backup (sesi admin; audit maintenance.backup_download)
+      operationId: adminBackupDownload
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string, pattern: "^app-[0-9]{8}-[0-9]{6}(-[a-z0-9][a-z0-9-]{0,31})?\\.db$" } }
+      responses:
+        "200": { description: File SQLite, content: { application/vnd.sqlite3: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     cookieAuth:
@@ -3521,6 +3733,72 @@ components:
       in: header
       name: X-CSRF-Token
   schemas:
+    AuditEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        at: { type: string }
+        actorUserId: { type: [string, "null"] }
+        actorUsername: { type: [string, "null"] }
+        action: { type: string }
+        targetType: { type: [string, "null"] }
+        targetId: { type: [string, "null"] }
+        ip: { type: string }
+        userAgent: { type: string }
+        details: { type: object, additionalProperties: true }
+    AdminTask:
+      allOf:
+        - $ref: "#/components/schemas/Task"
+        - type: object
+          properties:
+            userId: { type: string, description: kosong untuk task sistem }
+            username: { type: string }
+    AdminShare:
+      type: object
+      properties:
+        id: { type: string }
+        ownerId: { type: string }
+        ownerUsername: { type: string }
+        path: { type: string }
+        name: { type: string }
+        isDir: { type: boolean }
+        mode: { type: string, enum: [public, users] }
+        hasPassword: { type: boolean }
+        expiresAt: { type: [string, "null"] }
+        maxDownloads: { type: [integer, "null"] }
+        downloadCount: { type: integer }
+        viewCount: { type: integer }
+        recipientCount: { type: integer }
+        allowUpload: { type: boolean }
+        status: { type: string, enum: [active, disabled, expired, broken] }
+        disabledReason: { type: [string, "null"] }
+        lastAccessAt: { type: [string, "null"] }
+        createdAt: { type: string }
+    MaintenanceJob:
+      type: object
+      properties:
+        name: { type: string, description: tipe task (§7.1) }
+        slug: { type: string }
+        manual: { type: boolean }
+        schedule:
+          type: object
+          properties:
+            name: { type: string }
+            schedule: { type: string, example: daily 02:30 }
+            timeZone: { type: string }
+            nextRun: { type: string }
+            lastRun: { type: string }
+            lastDurationMs: { type: integer }
+            lastError: { type: string }
+            running: { type: boolean }
+        lastTask: { $ref: "#/components/schemas/Task" }
+    Backup:
+      type: object
+      properties:
+        name: { type: string }
+        size: { type: integer }
+        createdAt: { type: string }
+        label: { type: string }
     AdminUser:
       type: object
       required: [id, username, displayName, role, status, quota, createdAt, mustChangePassword]

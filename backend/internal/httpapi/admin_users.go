@@ -40,6 +40,17 @@ func (s *Server) mountAdmin(api chi.Router) {
 		g.Post("/admin/settings/reset", s.handleAdminSettingsReset)
 		g.Post("/admin/branding/logo", s.handleAdminLogoUpload)
 		g.Delete("/admin/branding/logo", s.handleAdminLogoDelete)
+		// Step 19b
+		g.Get("/admin/audit", s.handleAdminAuditList)
+		g.Get("/admin/audit/export.csv", s.handleAdminAuditExport)
+		g.Get("/admin/tasks", s.handleAdminTasksList)
+		g.Post("/admin/tasks/{id}/cancel", s.handleAdminTaskCancel)
+		g.Get("/admin/shares", s.handleAdminSharesList)
+		g.Post("/admin/shares/{id}/revoke", s.handleAdminShareRevoke)
+		g.Get("/admin/maintenance", s.handleAdminMaintenance)
+		g.Post("/admin/maintenance/{job}", s.handleAdminMaintenanceRun)
+		g.Get("/admin/maintenance/backups", s.handleAdminBackups)
+		g.Get("/admin/maintenance/backups/{name}", s.handleAdminBackupDownload)
 	})
 }
 

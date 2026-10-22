@@ -274,3 +274,9 @@ func truncate(s string, n int) string {
 	}
 	return s[:n]
 }
+
+// ListActive returns userID's live sessions, most recently seen first
+// (profile page, Step 19b).
+func (s *Sessions) ListActive(ctx context.Context, userID string) ([]sqlc.Session, error) {
+	return s.repo.ListUserSessions(ctx, userID, db.FormatTime(s.now()))
+}

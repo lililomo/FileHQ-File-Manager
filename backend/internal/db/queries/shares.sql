@@ -177,3 +177,16 @@ UPDATE shares SET allow_reshare = ? WHERE id = ?;
 SELECT COUNT(*) FROM shares
 WHERE mode = 'public' AND disabled_at IS NULL AND broken_at IS NULL
   AND (expires_at IS NULL OR expires_at > sqlc.arg('now'));
+
+-- name: ListAllShares :many
+SELECT s.id, s.owner_user_id, s.path, s.is_dir, s.mode, s.password_hash IS NOT NULL AS has_password, s.expires_at,
+       s.max_downloads, s.download_count, s.view_count, s.allow_download, s.allow_upload, s.disabled_at, s.disabled_reason,
+       s.broken_at, s.last_access_at, s.created_at, u.username AS owner_username,
+       (SELECT COUNT(*) FROM share_recipients r WHERE r.share_id = s.id) AS recipient_count
+FROM shares s
+JOIN users u ON u.id = s.owner_user_id
+WHERE (sqlc.arg('any_mode') = 1 OR s.mode = sqlc.arg('mode'))
+  AND (sqlc.arg('any_owner') = 1 OR s.owner_user_id = sqlc.arg('owner_user_id'))
+  AND (s.created_at < sqlc.arg('before_created') OR (s.created_at = sqlc.arg('before_created') AND s.id < sqlc.arg('before_id')))
+ORDER BY s.created_at DESC, s.id DESC
+LIMIT sqlc.arg('lim');

@@ -89,3 +89,20 @@ LIMIT sqlc.arg('max_rows');
 
 -- name: CountTaskLogs :one
 SELECT COUNT(*) FROM task_logs WHERE task_id = sqlc.arg('task_id');
+
+-- name: ListAllTasks :many
+SELECT * FROM tasks
+WHERE hidden = 0
+  AND (sqlc.arg('any_state') = 1 OR state = sqlc.arg('state'))
+  AND (sqlc.arg('user_mode') = 0
+       OR (sqlc.arg('user_mode') = 1 AND user_id = sqlc.arg('user_id'))
+       OR (sqlc.arg('user_mode') = 2 AND user_id IS NULL))
+  AND (sqlc.arg('before') = '' OR created_at < sqlc.arg('before') OR (created_at = sqlc.arg('before') AND id < sqlc.arg('before_id')))
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg('max_rows');
+
+-- name: ListActiveTasksOfType :many
+SELECT * FROM tasks WHERE type = sqlc.arg('type') AND state IN ('queued', 'running') ORDER BY created_at, id;
+
+-- name: LatestTaskOfType :one
+SELECT * FROM tasks WHERE type = sqlc.arg('type') ORDER BY created_at DESC, id DESC LIMIT 1;

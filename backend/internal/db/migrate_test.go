@@ -53,7 +53,7 @@ func TestMigrateUpDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const migrations = 13 // 0001..0013 (0013_share_users, Step 18b)
+	const migrations = 14 // 0001..0014 (0014_admin_ops, Step 19b)
 	if len(st) != migrations {
 		t.Fatalf("want %d embedded migrations, got %d", migrations, len(st))
 	}

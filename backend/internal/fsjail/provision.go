@@ -144,3 +144,36 @@ func MoveSys(ctx context.Context, src *SysDir, name string, dst *SysDir, dstName
 	}
 	return true, nil
 }
+
+// HomeEntry is one top-level entry of STORAGE_ROOT (integrity check).
+type HomeEntry struct {
+	Name  string
+	IsDir bool
+}
+
+// ListHomes lists STORAGE_ROOT entries that could be user homes: names
+// starting with "." (.system, DATA_DIR) are skipped (Step 19b integrity
+// check "folders without an account").
+func ListHomes(storageRoot string) ([]HomeEntry, error) {
+	root, err := os.OpenRoot(filepath.Clean(storageRoot))
+	if err != nil {
+		return nil, wrap("open_storage_root", Root, err)
+	}
+	defer func() { _ = root.Close() }()
+	names, err := readDirNames(root, ".")
+	if err != nil {
+		return nil, wrap("list_homes", Root, err)
+	}
+	out := make([]HomeEntry, 0, len(names))
+	for _, n := range names {
+		if n == "" || n[0] == '.' {
+			continue
+		}
+		info, err := root.Lstat(n)
+		if err != nil {
+			continue
+		}
+		out = append(out, HomeEntry{Name: n, IsDir: info.IsDir()})
+	}
+	return out, nil
+}

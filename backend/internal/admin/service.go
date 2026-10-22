@@ -15,6 +15,7 @@ import (
 	"kppbwi.app/filemanager/internal/config"
 	"kppbwi.app/filemanager/internal/db"
 	"kppbwi.app/filemanager/internal/quota"
+	"kppbwi.app/filemanager/internal/share"
 	"kppbwi.app/filemanager/internal/tasks"
 )
 
@@ -32,7 +33,8 @@ type Options struct {
 	Auth   *auth.Service
 	Audit  *audit.Recorder
 	Quota  *quota.Service
-	Tasks  *tasks.Engine // delete_user task; nil = synchronous deletion (tests)
+	Tasks  *tasks.Engine  // delete_user task; nil = synchronous deletion (tests)
+	Shares *share.Service // GET /admin/shares, revoke (Step 19b); nil disables
 	Build  BuildInfo
 	Logger *slog.Logger
 	Now    func() time.Time
@@ -62,6 +64,7 @@ type Service struct {
 	now    func() time.Time
 	o      Options
 	deps   []config.ToolStatus
+	maint  *Maintenance
 }
 
 // New builds the service and installs the effective settings snapshot from

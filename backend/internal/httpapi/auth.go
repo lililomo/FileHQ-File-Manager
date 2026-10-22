@@ -32,6 +32,7 @@ func (s *Server) mountAuth(api chi.Router) {
 				p.Use(RequirePasswordChanged)
 				p.Get("/me/preferences", s.handleGetPreferences)
 				p.Put("/me/preferences", s.handlePutPreferences)
+				s.mountMeSessions(p)
 				s.mountFolderPrefs(p)
 			})
 		})

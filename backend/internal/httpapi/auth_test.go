@@ -265,7 +265,7 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 	}
 	env.dl = download.NewLimiter(0)
 	// Admin (Step 19a): snapshot from the settings table, delete_user task.
-	env.admin, err = admin.New(context.Background(), admin.Options{Cfg: cfg, Repo: store, Auth: svc, Audit: audit.New(store, logger, clock.Now), Quota: env.quota, Tasks: env.tasks,
+	env.admin, err = admin.New(context.Background(), admin.Options{Cfg: cfg, Repo: store, Auth: svc, Audit: audit.New(store, logger, clock.Now), Quota: env.quota, Tasks: env.tasks, Shares: env.share,
 		Build: admin.BuildInfo{Version: "test", Commit: "abc", BuildDate: "2026-10-22"}, Logger: logger, Now: clock.Now,
 		Deps: config.CheckDeps(cfg.ToolValues()),
 		OnSettingsChanged: func(_ *config.Runtime) {
@@ -274,6 +274,11 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 		},
 		OnUserChanged: func(userID string) { env.listing.InvalidateUser(userID) }})
 	if err != nil {
+		t.Fatal(err)
+	}
+	// Maintenance (Step 19b): jobs as system tasks, no schedule in tests.
+	if _, err := env.admin.EnableMaintenance(admin.MaintenanceOptions{DB: database, Trash: env.trash,
+		PruneActivity: env.files.PruneActivity, PruneShareAccess: env.share.PruneAccessLogs}); err != nil {
 		t.Fatal(err)
 	}
 	env.handler = New(Options{Cfg: cfg, Logger: logger, Version: "test", Store: store, Auth: svc, Listing: env.listing, Locks: env.locks, Files: env.files, Quota: env.quota, Meta: env.meta,
