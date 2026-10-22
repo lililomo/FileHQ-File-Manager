@@ -2,6 +2,7 @@
  *  through tus-js-client against TUS_ENDPOINT; only the precheck is JSON. */
 import { api, API_BASE } from '@/lib/api'
 import { isPublicScope, publicApiPath } from '@/lib/public-scope'
+import { isShareScope, shareUploadPrecheckPath } from '@/lib/share-scope'
 
 export const TUS_ENDPOINT = `${API_BASE}/upload/tus/`
 
@@ -48,7 +49,11 @@ export function precheckUpload(
   signal?: AbortSignal,
 ): Promise<PrecheckResult> {
   const opts = { method: 'POST' as const, body: { path, files } }
-  const route = isPublicScope() ? publicApiPath('upload/precheck') : '/upload/precheck'
+  const route = isPublicScope()
+    ? publicApiPath('upload/precheck')
+    : isShareScope()
+      ? shareUploadPrecheckPath()
+      : '/upload/precheck'
   return api<PrecheckResult>(route, signal ? { ...opts, signal } : opts)
 }
 

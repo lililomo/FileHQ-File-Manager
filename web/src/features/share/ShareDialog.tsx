@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import type { Item } from '@/features/browser/api'
 import { errorMessage } from '@/lib/errors'
@@ -45,10 +46,12 @@ import {
   regenerateShareToken,
   sharesByPath,
   sharesByPathKey,
+  updateShare,
   type Share,
   type ShareInput,
 } from './api'
 import { QrCode } from './QrCode'
+import { UserPicker, type PickedUser } from './UserPicker'
 
 export interface ShareDialogProps {
   item: Pick<Item, 'path' | 'name' | 'isDir'>
@@ -115,34 +118,63 @@ export function ShareDialog({ item, onClose, onCloseAutoFocus }: ShareDialogProp
         {created ? (
           <ShareResult share={created} lang={lang} onDone={() => setCreated(null)} />
         ) : (
-          <>
-            <section aria-label={t('share:dialog.existing')} className="space-y-2">
-              <h3 className="text-xs font-semibold tracking-wide text-text-muted uppercase">
-                {t('share:dialog.existing')}
-              </h3>
-              {existing.data && existing.data.items.length === 0 ? (
-                <p className="text-sm text-text-muted" data-testid="share-none">
-                  {t('share:dialog.none')}
-                </p>
-              ) : null}
-              {existing.data?.items.map((s) => (
-                <ShareRow key={s.id} share={s} lang={lang} onChanged={invalidate} />
-              ))}
-            </section>
-            {publicEnabled ? (
-              <ShareForm
-                item={item}
-                requirePassword={requirePassword}
-                allowNoExpiry={allowNoExpiry}
-                onCreated={(s) => {
-                  setCreated(s)
-                  invalidate()
-                }}
-              />
-            ) : (
-              <p className="text-sm text-text-muted">{t('share:dialog.disabledByAdmin')}</p>
-            )}
-          </>
+          <Tabs defaultValue="link">
+            <TabsList className="w-full">
+              <TabsTrigger value="link" className="flex-1" data-testid="share-tab-link">
+                {t('share:dialog.tabLink')}
+              </TabsTrigger>
+              <TabsTrigger value="users" className="flex-1" data-testid="share-tab-users">
+                {t('share:dialog.tabUsers')}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="link" className="space-y-3">
+              <section aria-label={t('share:dialog.existing')} className="space-y-2">
+                <h3 className="text-xs font-semibold tracking-wide text-text-muted uppercase">
+                  {t('share:dialog.existing')}
+                </h3>
+                {existing.data &&
+                existing.data.items.filter((s) => s.mode === 'public').length === 0 ? (
+                  <p className="text-sm text-text-muted" data-testid="share-none">
+                    {t('share:dialog.none')}
+                  </p>
+                ) : null}
+                {existing.data?.items
+                  .filter((s) => s.mode === 'public')
+                  .map((s) => (
+                    <ShareRow key={s.id} share={s} lang={lang} onChanged={invalidate} />
+                  ))}
+              </section>
+              {publicEnabled ? (
+                <ShareForm
+                  item={item}
+                  requirePassword={requirePassword}
+                  allowNoExpiry={allowNoExpiry}
+                  onCreated={(s) => {
+                    setCreated(s)
+                    invalidate()
+                  }}
+                />
+              ) : (
+                <p className="text-sm text-text-muted">{t('share:dialog.disabledByAdmin')}</p>
+              )}
+            </TabsContent>
+            <TabsContent value="users" className="space-y-3">
+              <section aria-label={t('share:dialog.tabUsers')} className="space-y-2">
+                {existing.data &&
+                existing.data.items.filter((s) => s.mode === 'users').length === 0 ? (
+                  <p className="text-sm text-text-muted" data-testid="share-no-users">
+                    {t('share:dialog.noUsers')}
+                  </p>
+                ) : null}
+                {existing.data?.items
+                  .filter((s) => s.mode === 'users')
+                  .map((s) => (
+                    <ShareRow key={s.id} share={s} lang={lang} onChanged={invalidate} />
+                  ))}
+              </section>
+              <ShareToUsersForm item={item} allowNoExpiry={allowNoExpiry} onCreated={invalidate} />
+            </TabsContent>
+          </Tabs>
         )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
@@ -469,8 +501,9 @@ function ShareRow({
             : ''}
         </span>
       </div>
+      {share.mode === 'users' ? <RecipientsEditor share={share} onChanged={onChanged} /> : null}
       <div className="mt-1 flex items-center gap-1">
-        {share.url ? (
+        {share.mode === 'users' ? null : share.url ? (
           <Input
             readOnly
             value={share.url}
@@ -533,9 +566,11 @@ function ShareRow({
             {t('row.disable')}
           </Button>
         )}
-        <Button variant="outline" size="sm" onClick={() => setConfirm('regenerate')}>
-          {t('row.regenerate')}
-        </Button>
+        {share.mode === 'public' ? (
+          <Button variant="outline" size="sm" onClick={() => setConfirm('regenerate')}>
+            {t('row.regenerate')}
+          </Button>
+        ) : null}
         <Button
           variant="destructive"
           size="sm"
@@ -570,6 +605,171 @@ function ShareRow({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  )
+}
+
+/** "Ke user" (SPEC §8.15): recipients with a permission each, optional
+ *  expiry and note, allowReshare. */
+function ShareToUsersForm({
+  item,
+  allowNoExpiry,
+  onCreated,
+}: {
+  item: Pick<Item, 'path' | 'isDir'>
+  allowNoExpiry: boolean
+  onCreated: () => void
+}) {
+  const { t } = useTranslation(['share', 'errors'])
+  const [recipients, setRecipients] = useState<PickedUser[]>([])
+  const [expiry, setExpiry] = useState<Expiry>('never')
+  const [expiryDate, setExpiryDate] = useState('')
+  const [allowReshare, setAllowReshare] = useState(false)
+  const [note, setNote] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const create = useMutation({
+    mutationFn: (input: ShareInput) => createShare(input),
+    onSuccess: (_res, input) => {
+      toast.success(t('share:users.created', { count: input.recipients?.length ?? 0 }))
+      setRecipients([])
+      setNote('')
+      onCreated()
+    },
+    onError: (e) => setError(errorMessage(e)),
+  })
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    if (recipients.length === 0) {
+      setError(t('share:users.requiredOne'))
+      return
+    }
+    const input: ShareInput = {
+      path: item.path,
+      mode: 'users',
+      recipients: recipients.map((r) => ({ username: r.username, permission: r.permission })),
+      allowReshare,
+      ...(note.trim() ? { note: note.trim() } : {}),
+    }
+    if (expiry === 'custom') input.expiresAt = new Date(expiryDate).toISOString()
+    else if (expiry !== 'never') input.expiresInDays = Number(expiry)
+    create.mutate(input)
+  }
+  return (
+    <form
+      onSubmit={submit}
+      className="space-y-3 border-t border-border pt-3"
+      data-testid="share-users-form"
+    >
+      <h3 className="text-xs font-semibold tracking-wide text-text-muted uppercase">
+        {t('share:dialog.newUsers')}
+      </h3>
+      <div className="space-y-1">
+        <Label>{t('share:users.recipients')}</Label>
+        <UserPicker value={recipients} onChange={setRecipients} disabled={create.isPending} />
+        <p className="text-xs text-text-muted">
+          {t('share:users.viewer')}: {t('share:users.viewerHint')} · {t('share:users.editor')}:{' '}
+          {t('share:users.editorHint')}
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label htmlFor="share-users-expiry">{t('share:users.expiry')}</Label>
+          <Select value={expiry} onValueChange={(v) => setExpiry(v as Expiry)}>
+            <SelectTrigger id="share-users-expiry" data-testid="share-users-expiry">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {allowNoExpiry ? (
+                <SelectItem value="never">{t('share:field.expiryNever')}</SelectItem>
+              ) : null}
+              <SelectItem value="7">{t('share:field.expiry7')}</SelectItem>
+              <SelectItem value="30">{t('share:field.expiry30')}</SelectItem>
+              <SelectItem value="custom">{t('share:field.expiryCustom')}</SelectItem>
+            </SelectContent>
+          </Select>
+          {expiry === 'custom' ? (
+            <Input
+              type="datetime-local"
+              value={expiryDate}
+              onChange={(e) => setExpiryDate(e.target.value)}
+              required
+              aria-label={t('share:field.expiryDate')}
+            />
+          ) : null}
+        </div>
+        <label className="flex items-center gap-2 self-end text-sm">
+          <Switch
+            checked={allowReshare}
+            onCheckedChange={setAllowReshare}
+            data-testid="share-allow-reshare"
+          />
+          {t('share:users.allowReshare')}
+        </label>
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="share-users-note">{t('share:users.note')}</Label>
+        <Textarea
+          id="share-users-note"
+          rows={2}
+          maxLength={500}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      </div>
+      {error ? (
+        <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      ) : null}
+      <Button type="submit" disabled={create.isPending} data-testid="share-users-create">
+        {create.isPending ? t('share:dialog.sharing') : t('share:dialog.share')}
+      </Button>
+    </form>
+  )
+}
+
+/** Recipients of an existing users share: chips with permission, remove,
+ *  add more (PATCH sends the full set). */
+function RecipientsEditor({ share, onChanged }: { share: Share; onChanged: () => void }) {
+  const { t } = useTranslation('share')
+  const current: PickedUser[] = (share.recipients ?? []).map((r) => ({
+    username: r.username,
+    displayName: r.displayName,
+    permission: r.permission,
+  }))
+  const [value, setValue] = useState<PickedUser[]>(current)
+  const dirty =
+    value.length !== current.length ||
+    value.some((v) => {
+      const c = current.find((x) => x.username === v.username)
+      return !c || c.permission !== v.permission
+    })
+  const save = useMutation({
+    mutationFn: () =>
+      updateShare(share.id, {
+        recipients: value.map((v) => ({ username: v.username, permission: v.permission })),
+      }),
+    onSuccess: () => {
+      toast.success(t('users.updated'))
+      onChanged()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <div className="mt-2 space-y-2" data-testid="share-recipients">
+      <UserPicker value={value} onChange={setValue} disabled={save.isPending} />
+      {dirty ? (
+        <Button
+          size="sm"
+          onClick={() => save.mutate()}
+          disabled={save.isPending || value.length === 0}
+          data-testid="share-recipients-save"
+        >
+          {t('dialog.share')}
+        </Button>
+      ) : null}
+      {share.allowReshare ? <Badge variant="outline">{t('users.allowReshare')}</Badge> : null}
     </div>
   )
 }

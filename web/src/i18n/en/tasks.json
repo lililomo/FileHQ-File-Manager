@@ -71,7 +71,8 @@
       "task_failed": "Task failed",
       "share_received": "Shared with you",
       "share_upload": "Upload to your share",
-      "system": "System"
+      "system": "System",
+      "share_revoked": "Share access revoked"
     }
   }
 }

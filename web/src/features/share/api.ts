@@ -31,6 +31,24 @@ export interface Share {
   /** the public link; empty when the stored token cannot be decrypted any more */
   url: string
   status: ShareStatus
+  /** mode users (Step 18b) */
+  allowReshare: boolean
+  recipients?: ShareRecipient[]
+}
+
+export interface ShareRecipient {
+  username: string
+  displayName: string
+  permission: 'viewer' | 'editor'
+  note: string | null
+  createdAt: string
+  inactive?: boolean
+}
+
+export interface ShareRecipientInput {
+  username: string
+  permission?: 'viewer' | 'editor'
+  note?: string
 }
 
 /** Create/update payload. `null` removes a value (password, slug, note, expiry). */
@@ -48,6 +66,9 @@ export interface ShareInput {
   hideListing?: boolean
   note?: string | null
   disabled?: boolean
+  /** mode users (Step 18b): the full set on PATCH */
+  recipients?: ShareRecipientInput[]
+  allowReshare?: boolean
 }
 
 export interface SharePage {

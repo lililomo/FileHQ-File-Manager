@@ -37,6 +37,7 @@ import { listDir, listQueryKey, type Item } from '@/features/browser/api'
 import { parentPath } from '@/features/browser/path'
 import { useFileOps } from '@/features/file-ops/useFileOps'
 import { NewItemDialog } from '@/features/file-ops/NewItemDialog'
+import { getShareScope } from '@/lib/share-scope'
 import { cn } from '@/lib/utils'
 import { useEditorStore } from '@/stores/editor'
 import { useWorkspace } from './controller'
@@ -179,7 +180,7 @@ export function Explorer({ reveal, find, onFindChange }: ExplorerProps) {
         >
           <Node
             path="/"
-            name={t('explorer.root')}
+            name={getShareScope()?.name ?? t('explorer.root')}
             isDir
             depth={0}
             expanded={expanded}

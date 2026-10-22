@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { PlaceholderPage } from '@/components/PlaceholderPage'
+import { MySharesPage } from '@/features/share/MySharesPage'
 
+/** `/shares` ("Share saya"): every share of the user with its stats and actions (SPEC §8.15). */
 export const Route = createFileRoute('/_app/shares')({
-  component: () => <PlaceholderPage step="18b" titleKey="myShares" />,
+  component: MySharesPage,
 })

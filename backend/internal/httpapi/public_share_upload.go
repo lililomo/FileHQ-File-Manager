@@ -73,6 +73,11 @@ func (l *locationRewriter) WriteHeader(code int) {
 	l.ResponseWriter.WriteHeader(code)
 }
 
+// Unwrap lets http.ResponseController reach the underlying writer (tusd
+// sets read deadlines per request; without it tusd logs "feature not
+// supported" on every POST/PATCH).
+func (l *locationRewriter) Unwrap() http.ResponseWriter { return l.ResponseWriter }
+
 func (l *locationRewriter) Write(b []byte) (int, error) {
 	if !l.done {
 		l.WriteHeader(http.StatusOK)

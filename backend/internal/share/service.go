@@ -930,12 +930,14 @@ func (s *Service) ByPath(ctx context.Context, ownerID string, p fsjail.VPath) ([
 
 // AccessLogEntry is one access-log row for the owner.
 type AccessLogEntry struct {
-	ID        int64   `json:"id"`
-	At        string  `json:"at"`
-	IPTrunc   string  `json:"ipTrunc"`
-	Action    string  `json:"action"`
-	Path      *string `json:"path"`
-	UserID    *string `json:"userId"`
+	ID      int64   `json:"id"`
+	At      string  `json:"at"`
+	IPTrunc string  `json:"ipTrunc"`
+	Action  string  `json:"action"`
+	Path    *string `json:"path"`
+	UserID  *string `json:"userId"`
+	// Username of a signed-in recipient (Step 18b); nil for guests.
+	Username  *string `json:"username"`
 	UserAgent string  `json:"userAgent"`
 }
 
@@ -966,8 +968,20 @@ func (s *Service) AccessLogs(ctx context.Context, ownerID, id, cursor string) (*
 	if more {
 		rows = rows[:AccessLogPageSize]
 	}
+	names := map[string]*string{}
 	for _, r := range rows {
-		out.Items = append(out.Items, AccessLogEntry{ID: r.ID, At: r.At, IPTrunc: r.IpTrunc, Action: r.Action, Path: r.Path, UserID: r.UserID, UserAgent: r.UserAgent})
+		e := AccessLogEntry{ID: r.ID, At: r.At, IPTrunc: r.IpTrunc, Action: r.Action, Path: r.Path, UserID: r.UserID, UserAgent: r.UserAgent}
+		if r.UserID != nil {
+			name, ok := names[*r.UserID]
+			if !ok {
+				if u, uerr := s.repo.GetUserByID(ctx, *r.UserID); uerr == nil {
+					name = &u.Username
+				}
+				names[*r.UserID] = name
+			}
+			e.Username = name
+		}
+		out.Items = append(out.Items, e)
 	}
 	if more {
 		c := fmt.Sprintf("%d", rows[len(rows)-1].ID)

@@ -595,6 +595,7 @@ Index `(user_id, path, version_no DESC)`, unique `(user_id, path, version_no)`. 
 | expires_at | TEXT NULL | deleted + TRASH_RETENTION_DAYS; NULL jika retensi 0 |
 | batch_id | TEXT NULL | satu aksi delete banyak item → satu batch (untuk undo) |
 | restored_at, purged_at | TEXT NULL | baris dipertahankan 7 hari setelah purge untuk aktivitas, lalu dihapus |
+| deleted_by | TEXT NULL | (Step 18b, migrasi 0013) user id penerima share ber-izin editor yang menghapus; NULL = pemilik sendiri |
 
 Index `(user_id, deleted_at DESC)`, `(expires_at)`.
 
@@ -843,7 +844,7 @@ Jika tujuan sudah punya baris (mis. memindah `a` ke lokasi yang punya catatan la
 - Base path `/api/v1`. Request/response JSON UTF-8 (`Content-Type: application/json`), kecuali endpoint streaming (raw/download/zip/thumb/SSE/NDJSON) dan tus.
 - Autentikasi: cookie sesi (`fm_session`). Endpoint ditandai **S** = butuh sesi valid; **S+P** = sesi valid dan tidak sedang `must_change_password`; **A** = admin; **Sig** = signed URL (tanpa cookie); **Pub** = publik (dengan rate limit); **Shr** = publik + cookie share jika ber-password.
 - Semua non-GET (termasuk tus `POST/PATCH/DELETE`) wajib header `X-CSRF-Token` (§8.1). GET tidak pernah mengubah state.
-- `path` di query/body = path virtual. Parameter opsional `share=<share_id>` mengubah scope ke item yang dibagikan ke user (path relatif terhadap item; untuk share file tunggal `path` harus `/`). Admin dengan `ADMIN_CAN_BROWSE_USERS=true` boleh `as_user=<username>`.
+- `path` di query/body = path virtual. Parameter opsional `share=<share_id>` mengubah scope ke item yang dibagikan ke user (path relatif terhadap item; untuk share file tunggal `path` harus `/` — nama berkas juga diterima — dan respons memakai `/<nama>`). (Step 18b) Scope diterima oleh `files/list|stat|mkdir|create|rename|copy|move|duplicate|delete`, `files/content` GET/PUT, `files/sign`, `files/zip`, `files/media-info`, `versions` (list/content/restore) dan `upload/precheck`; request berjalan di `fsjail.SubRoot` pemilik pada folder yang dibagikan (read-only untuk viewer), id share yang tidak dikenal atau bukan milik penerima → `404`, viewer yang menulis → `403 FORBIDDEN reason=share_permission`. `chmod`, `symlink`, `batch-rename`, `delete-permanent`, `undo`, `trash/*`, `archives/*`, `search/*`, `meta/*`, `me/*` dan `shares` menolak scope (`400 not_implemented`/owner-only); kompres/ekstrak/pencarian di dalam share menyusul (task memerlukan scope, catatan 18b). Admin dengan `ADMIN_CAN_BROWSE_USERS=true` boleh `as_user=<username>`.
 - Paging: `limit` (≤ `LISTING_PAGE_SIZE`) + `cursor` opaque (base64url JSON, ditandatangani HMAC 8 byte agar tidak dimanipulasi, tidak bersifat rahasia). Response `{"items":[…],"nextCursor":"…"|null,"total":N}`.
 - Operasi batch menerima array dan mengembalikan `{"results":[{"path","ok","code"?,"message"?}], "taskId"?}`; jika estimasi > 200 item atau > 256 MB → berjalan sebagai task dan response `202 {task}`.
 - Idempotency: `POST` yang membuat task menerima header `Idempotency-Key` (UUID) opsional; key sama dalam 10 menit mengembalikan task yang sama.
@@ -1050,8 +1051,10 @@ Kolom "Auth" memakai kode §6.1. Request/response ditulis ringkas; skema lengkap
 | `GET /shares/{id}/qr` | | `image/png` QR dari URL (perlu library QR Go, verifikasi) |
 | `GET /shares/by-path?path` | | share aktif untuk item (badge) |
 | `GET /shares/user-suggest?q` | ≥ 2 karakter, maks 8 hasil `{username, displayName}` hanya user aktif, tidak termasuk diri sendiri | |
-| `GET /shared-with-me?cursor` | | `200 {groups:[{owner:{username, displayName}, items:[{shareId, name, isDir, permission, note, expiresAt, broken, favorite, pinned}]}]}` |
-| `DELETE /shared-with-me/{shareId}` | penerima menyembunyikan/keluar dari share | |
+| `GET /shared-with-me` | | `200 {groups:[{owner:{username, displayName}, items:[{shareId, name, isDir, permission, note, expiresAt, allowReshare, receivedAt, status, reason?}]}]}` — tanpa cursor (jumlah share per penerima kecil); `status` active/disabled/expired/broken + `reason`; favorit/pin item share ditunda (lihat Deviasi 18b) |
+| `GET /shared-with-me/{shareId}` | | header untuk browser penerima: `{shareId, name, isDir, permission, note, expiresAt, allowReshare, allowDownload, owner:{username, displayName}}` — tanpa path pemilik |
+| `DELETE /shared-with-me/{shareId}` | penerima keluar dari share | `204` |
+| `POST /upload/share/{shareId}/precheck` · `POST /upload/share/{shareId}/tus[/]` · `HEAD/PATCH/DELETE …/tus/{id}` | editor share: unggah sebagai pemilik ke folder share (`path` metadata relatif ke share, policy klien dihormati, kuota pemilik, pemilik mendapat notifikasi `share_upload` bernama pengunggah) | seperti tus biasa; id upload share lain → `404` |
 
 **Publik (`/api/v1/public/shares/{token}`)** — **Pub/Shr**; `{token}` = token atau slug.
 
@@ -1589,6 +1592,8 @@ dijalankan dengan `Dir` = host path folder (via `HostPath`), `nice`, timeout 30 
 
 **"Dibagikan ke saya"** (`/shared-with-me`): dikelompokkan per pemilik; item folder dibuka di `/shared-with-me/:shareId/*` dengan browser penuh dalam scope share (`?share=`): Viewer = lihat/preview/download/zip/Quick Look/favorit/pin; Editor = + upload, buat, rename, edit (editor), move/copy **di dalam** share, delete (ke trash pemilik), compress/extract di dalam share; tidak ada: share ulang (kecuali `allowReshare` → hanya mode `users`), melihat kuota pemilik, melihat path di atas item, chmod. Penerima bisa "keluar" dari share. Share rusak/expired tampil abu dengan alasan.
 
+(Step 18b) Implementasi penerima: jail = `SubRoot` pemilik pada folder share (file tunggal → sub-root folder induk dengan satu-satunya path `/<nama>`), sehingga `..`, symlink keluar folder dan path pemilik tidak pernah terjangkau; state penyimpanan tetap milik pemilik dan dikunci path absolut pemilik lewat `fsjail.Jail.Abs/RelOf` (trash `original_path` + `deleted_by`, versi, aktivitas pemilik, lock, invalidasi listing, thumbnail/media cache). Penerima mendapat entri aktivitas sendiri dengan path relatif share + `shareId`; **undo tidak ditawarkan** di dalam share. Signed URL penerima memakai scope `r:<share_id>:<user_id>` (TTL sama) dan diperiksa ulang terhadap share pada setiap pemakaian; pencabutan membuat URL mati. Log akses share mencatat `user_id` penerima untuk `list`/`download`/`zip`/`upload`. Transfer besar (> batas sinkron) di dalam share ditolak `413 task_required` sampai task membawa scope.
+
 **"Share saya"** (`/shares`): tabel: Item (ikon + nama + path), Mode (link/user), Penerima (chip), Permission, Proteksi (ikon password/expiry/limit), Kedaluwarsa, View/Download, Akses terakhir, Status (aktif/nonaktif/kedaluwarsa/rusak); aksi: Salin link, QR, Edit, Nonaktifkan/Aktifkan, Regenerate link, Hapus; detail → log akses ringkas (waktu, IP terpotong, aksi, path). Badge di kolom Nama & kolom "Status share".
 
 **Admin**: `/admin/shares` melihat semua share publik (pemilik, nama item, dibuat, expiry, hitungan) tanpa isi; "Cabut" → `disabled_reason=admin_revoked` + audit `share.admin_revoked` + notifikasi pemilik.
@@ -1597,7 +1602,7 @@ dijalankan dengan `Dir` = host path folder (via `HostPath`), `nice`, timeout 30 
 
 ### 8.16 Notifikasi & aktivitas
 
-**Notifikasi** (`notifications`): tipe `task_done` (judul task + link ke folder), `task_failed`, `share_received` ("budi membagikan folder Laporan ke Anda" → link `/shared-with-me`), `share_upload` ("Seseorang mengunggah 3 file ke share 'Drop' Anda"), `share_revoked_by_admin`, `system` (admin broadcast, fase akhir). Bell di top bar dengan badge unread (SSE `notification`), popover 20 terakhir, "Tandai semua dibaca", halaman penuh tidak diperlukan. Task tersembunyi (`thumbnail_batch`) tidak membuat notifikasi; task yang selesai saat user melihat panel task tetap membuat notifikasi tetapi langsung `read` jika tab aktif (client memanggil `read`).
+**Notifikasi** (`notifications`): tipe `task_done` (judul task + link ke folder), `task_failed`, `share_received` ("budi membagikan folder Laporan ke Anda" → link `/shared-with-me`), `share_upload` ("Seseorang mengunggah 3 file ke share 'Drop' Anda"; dari penerima: "budi mengunggah …"), `share_revoked` (penerima dicabut/share dihapus, Step 18b), `share_revoked_by_admin`, `system` (admin broadcast, fase akhir). Bell di top bar dengan badge unread (SSE `notification`), popover 20 terakhir, "Tandai semua dibaca", halaman penuh tidak diperlukan. Task tersembunyi (`thumbnail_batch`) tidak membuat notifikasi; task yang selesai saat user melihat panel task tetap membuat notifikasi tetapi langsung `read` jika tab aktif (client memanggil `read`).
 
 **Aktivitas user** (`activity_logs`, halaman `/activity`): aksi `open`, `edit`, `create`, `upload`, `download` (hanya file tunggal via signed URL yang dibuat user), `rename`, `move`, `copy`, `delete`, `restore`, `purge`, `purge_auto`, `compress`, `extract`, `remote`, `replace`, `share_create`, `share_update`, `share_delete`, `chmod`, `batch_rename`; kolom waktu, aksi, item (link jika masih ada), tujuan, detail; filter aksi/tanggal; pencarian path; tombol "Hapus riwayat saya" (hanya aktivitas, bukan audit).
 

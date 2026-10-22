@@ -71,7 +71,8 @@
       "task_failed": "Task gagal",
       "share_received": "Dibagikan ke Anda",
       "share_upload": "Unggahan ke share",
-      "system": "Sistem"
+      "system": "Sistem",
+      "share_revoked": "Akses share dicabut"
     }
   }
 }

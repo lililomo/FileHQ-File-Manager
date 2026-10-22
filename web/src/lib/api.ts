@@ -3,6 +3,7 @@
  *  ApiError, 401 → unauthorized handler, 403 PASSWORD_CHANGE_REQUIRED →
  *  password-change handler. */
 import { useSessionStore } from '@/stores/session'
+import { shareParamFor } from '@/lib/share-scope'
 
 export const API_BASE = '/api/v1'
 
@@ -71,12 +72,14 @@ export function setApiHandlers(h: Handlers): void {
 
 function buildUrl(path: string, query?: Query): string {
   const url = path.startsWith('/') ? API_BASE + path : `${API_BASE}/${path}`
-  if (!query) return url
   const params = new URLSearchParams()
-  for (const [k, v] of Object.entries(query)) {
+  for (const [k, v] of Object.entries(query ?? {})) {
     if (v === undefined || v === null) continue
     params.set(k, String(v))
   }
+  // inside a received share (Step 18b) the scoped routes carry ?share=<id>
+  const share = shareParamFor(path)
+  if (share && !params.has('share')) params.set('share', share)
   const qs = params.toString()
   return qs ? `${url}?${qs}` : url
 }

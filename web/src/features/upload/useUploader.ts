@@ -12,6 +12,7 @@ import type { Conflict, ConflictPolicy } from '@/features/file-ops/api'
 import { askConflicts, askUploadPrecheck } from '@/features/file-ops/store'
 import { useSessionStore } from '@/stores/session'
 import { isPublicScope, publicBase } from '@/lib/public-scope'
+import { isShareScope, shareUploadBase } from '@/lib/share-scope'
 import {
   useTransfersStore,
   type Transfer,
@@ -327,7 +328,11 @@ class Uploader {
     const cfgChunk = useSessionStore.getState().config?.chunkSize
     if (cfgChunk && cfgChunk > 0) this.chunkSize = cfgChunk
     const options: UploadOptions = {
-      endpoint: isPublicScope() ? `${publicBase()}/upload/tus/` : TUS_ENDPOINT,
+      endpoint: isPublicScope()
+        ? `${publicBase()}/upload/tus/`
+        : isShareScope()
+          ? `${shareUploadBase()}/tus/`
+          : TUS_ENDPOINT,
       chunkSize: this.chunkSize,
       retryDelays: RETRY_DELAYS,
       parallelUploads: 1,
