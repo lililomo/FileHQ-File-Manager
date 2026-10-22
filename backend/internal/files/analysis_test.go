@@ -121,7 +121,7 @@ func TestAnalyze(t *testing.T) {
 		t.Fatal("second call not cached")
 	}
 	e.write("new.txt", "zz")
-	e.svc.changed(ctx, e.uid, "/new.txt", false)
+	e.svc.changed(ctx, e.j, e.uid, "/new.txt", false)
 	third, _ := e.svc.Analyze(ctx, e.j, e.uid, false)
 	if third.Cached || third.Total != res.Total+2 {
 		t.Fatalf("after change: cached=%v total=%d", third.Cached, third.Total)

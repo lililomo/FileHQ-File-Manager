@@ -49,15 +49,22 @@ func (s *Server) versionsPath(w http.ResponseWriter, r *http.Request) (fsjail.VP
 }
 
 func (s *Server) handleVersionsList(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
+	j, sc, release, ok := s.scoped(w, r)
+	if !ok {
 		return
 	}
+	defer release()
 	vp, ok := s.versionsPath(w, r)
 	if !ok {
 		return
 	}
-	u, _ := UserFrom(r.Context())
-	items, err := s.versions.List(r.Context(), u.ID, vp)
+	if sc.FileShare() {
+		if vp, ok = sc.path(w, r, string(vp)); !ok {
+			return
+		}
+	}
+	u := sc.Owner
+	items, err := s.versions.List(r.Context(), u.ID, j.Abs(vp))
 	if err != nil {
 		s.writeSearchError(w, r, err)
 		return
@@ -68,10 +75,15 @@ func (s *Server) handleVersionsList(w http.ResponseWriter, r *http.Request) {
 // handleVersionContent: GET /versions/{id}/content?encoding= — the blob
 // decoded like /files/content (read-only, etag "v-<id>").
 func (s *Server) handleVersionContent(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
+	j, sc, release, ok := s.scoped(w, r)
+	if !ok {
 		return
 	}
-	u, _ := UserFrom(r.Context())
+	defer release()
+	u := sc.Owner
+	if sc.Shared() && !s.versionInScope(w, r, j, sc, chi.URLParam(r, "id")) {
+		return
+	}
 	opts := files.ContentOptions{MaxSize: s.cfg.EditorMaxFileSize}
 	if enc := r.URL.Query().Get("encoding"); enc != "" {
 		n := files.NormalizeEncoding(enc)
@@ -121,15 +133,16 @@ func (s *Server) handleVersionDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleVersionRestore(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
-		return
-	}
 	id := chi.URLParam(r, "id")
-	j, u, release, ok := s.userJail(w, r)
+	j, sc, release, ok := s.scoped(w, r)
 	if !ok {
 		return
 	}
 	defer release()
+	if !sc.requireEditor(w, r) {
+		return
+	}
+	u := sc.Owner
 	v, err := s.versions.Get(r.Context(), u.ID, id)
 	if err != nil {
 		s.writeSearchError(w, r, err)
@@ -138,6 +151,11 @@ func (s *Server) handleVersionRestore(w http.ResponseWriter, r *http.Request) {
 	vp, err := fsjail.Clean(v.Path)
 	if err != nil {
 		s.writeSearchError(w, r, err)
+		return
+	}
+	rel, inScope := j.RelOf(vp)
+	if !inScope || (sc.FileShare() && rel != sc.Base) {
+		WriteError(w, r, CodeNotFound, 0, "version not found", nil)
 		return
 	}
 	if s.locks != nil {
@@ -153,14 +171,33 @@ func (s *Server) handleVersionRestore(w http.ResponseWriter, r *http.Request) {
 		s.writeSearchError(w, r, err)
 		return
 	}
-	if s.files != nil {
-		s.files.RecordActivity(r.Context(), u.ID, files.ActRestore, res.Path, "", map[string]any{"versionId": id, "versionNo": v.No})
-	}
+	s.activityScoped(r, j, sc, files.ActRestore, rel, "", map[string]any{"versionId": id, "versionNo": v.No})
 	if s.search != nil {
 		s.search.InvalidateNames(u.ID)
 	}
 	w.Header().Set("ETag", res.Etag)
 	WriteJSON(w, http.StatusOK, res)
+}
+
+// versionInScope refuses a version id whose file lies outside the share
+// (recipients may only read versions of what they can see).
+func (s *Server) versionInScope(w http.ResponseWriter, r *http.Request, j *fsjail.Jail, sc *reqScope, id string) bool {
+	v, err := s.versions.Get(r.Context(), sc.Owner.ID, id)
+	if err != nil {
+		s.writeSearchError(w, r, err)
+		return false
+	}
+	vp, err := fsjail.Clean(v.Path)
+	if err != nil {
+		WriteError(w, r, CodeNotFound, 0, "version not found", nil)
+		return false
+	}
+	rel, ok := j.RelOf(vp)
+	if !ok || (sc.FileShare() && rel != sc.Base) {
+		WriteError(w, r, CodeNotFound, 0, "version not found", nil)
+		return false
+	}
+	return true
 }
 
 func (s *Server) handleVersionDelete(w http.ResponseWriter, r *http.Request) {

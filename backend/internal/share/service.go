@@ -279,6 +279,9 @@ type View struct {
 	URL string `json:"url"`
 	// Status: active | disabled | expired | broken
 	Status string `json:"status"`
+	// Mode users (Step 18b): recipients and the reshare flag.
+	AllowReshare bool        `json:"allowReshare"`
+	Recipients   []Recipient `json:"recipients,omitempty"`
 }
 
 // Status classifies a row (SPEC §8.15 "Share saya" status column).
@@ -330,9 +333,11 @@ func (s *Service) View(row sqlc.Share) *View {
 		AllowDownload: row.AllowDownload == 1, AllowUpload: row.AllowUpload == 1, HideOwner: row.HideOwner == 1,
 		HideListing: row.HideListing == 1, Note: row.Note, DisabledAt: row.DisabledAt, DisabledReason: row.DisabledReason,
 		BrokenAt: row.BrokenAt, LastAccessAt: row.LastAccessAt, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
-		URL: s.URL(row), Status: s.Status(row),
+		URL: s.URL(row), Status: s.Status(row), AllowReshare: row.AllowReshare == 1,
 	}
 }
+
+func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
 
 func boolInt(b bool) int64 {
 	if b {
@@ -481,8 +486,11 @@ func (s *Service) Create(ctx context.Context, j *fsjail.Jail, owner sqlc.User, i
 	if in.Mode == "" {
 		in.Mode = ModePublic
 	}
-	if in.Mode == ModeUsers || len(in.Recipients) > 0 || in.AllowReshare != nil {
-		return nil, fieldErr("mode", "not_implemented", "sharing to users arrives in Step 18b")
+	if in.Mode == ModeUsers {
+		return s.createUsers(ctx, j, owner, in)
+	}
+	if len(in.Recipients) > 0 || in.AllowReshare != nil {
+		return nil, fieldErr("mode", "invalid", "recipients and allowReshare need mode users")
 	}
 	if in.Mode != ModePublic {
 		return nil, fieldErr("mode", "invalid", "mode must be public")
@@ -585,11 +593,14 @@ func (s *Service) Update(ctx context.Context, ownerID, id string, in Input) (*Vi
 	if in.Mode != "" && in.Mode != row.Mode {
 		return nil, fieldErr("mode", "immutable", "mode cannot be changed")
 	}
-	if len(in.Recipients) > 0 || in.AllowReshare != nil {
-		return nil, fieldErr("recipients", "not_implemented", "sharing to users arrives in Step 18b")
-	}
 	if in.Path != "" && in.Path != row.Path {
 		return nil, fieldErr("path", "immutable", "path cannot be changed; create a new share")
+	}
+	if row.Mode == ModeUsers {
+		return s.updateUsers(ctx, ownerID, row, in)
+	}
+	if len(in.Recipients) > 0 || in.AllowReshare != nil {
+		return nil, fieldErr("recipients", "not_applicable", "recipients belong to mode users")
 	}
 	st := s.Settings(ctx)
 	hasPw := row.PasswordHash != nil && *row.PasswordHash != ""
@@ -728,11 +739,80 @@ func (s *Service) Delete(ctx context.Context, ownerID, id string) (sqlc.Share, e
 	if err != nil {
 		return row, err
 	}
+	var recipients []sqlc.ListShareRecipientsRow
+	if row.Mode == ModeUsers {
+		recipients, _ = s.repo.ListShareRecipients(ctx, row.ID)
+	}
 	if _, err := s.repo.DeleteShare(ctx, ownerID, id); err != nil {
 		return row, fmt.Errorf("share: delete: %w", err)
 	}
 	s.changed(ownerID, fsjail.VPath(row.Path))
+	if len(recipients) > 0 {
+		if owner, oerr := s.repo.GetUserByID(ctx, ownerID); oerr == nil {
+			for _, r := range recipients {
+				s.notifyRevoked(ctx, owner, r.RecipientUserID, row)
+			}
+		}
+	}
 	return row, nil
+}
+
+// updateUsers is Update for mode=users: expiry, note, disabled, recipients
+// and allowReshare; the public-link fields are refused.
+func (s *Service) updateUsers(ctx context.Context, ownerID string, row sqlc.Share, in Input) (*View, error) {
+	if in.Slug.Set || in.Password.Set || in.MaxDownloads.Set || in.AllowUpload != nil || in.HideOwner != nil || in.HideListing != nil {
+		return nil, fieldErr("mode", "not_applicable", "slug, password, download limits and file-request options belong to public links")
+	}
+	st := s.Settings(ctx)
+	exp, expChanged, ferr := s.expiry(st, in, false)
+	if ferr != nil {
+		return nil, ferr
+	}
+	note, noteChanged, ferr := checkNote(in)
+	if ferr != nil {
+		return nil, ferr
+	}
+	p := sqlc.UpdateShareParams{
+		Slug: row.Slug, PasswordHash: row.PasswordHash, ExpiresAt: row.ExpiresAt, MaxDownloads: row.MaxDownloads,
+		AllowDownload: row.AllowDownload, AllowUpload: row.AllowUpload, HideOwner: row.HideOwner, HideListing: row.HideListing,
+		Note: row.Note, UpdatedAt: db.FormatTime(s.now()), ID: row.ID, OwnerUserID: ownerID,
+	}
+	if expChanged {
+		p.ExpiresAt = exp
+	}
+	if noteChanged {
+		p.Note = note
+	}
+	if in.AllowDownload != nil {
+		p.AllowDownload = boolInt(*in.AllowDownload)
+	}
+	if _, err := s.repo.UpdateShare(ctx, p); err != nil {
+		return nil, fmt.Errorf("share: update: %w", err)
+	}
+	owner, oerr := s.repo.GetUserByID(ctx, ownerID)
+	if oerr != nil {
+		return nil, fmt.Errorf("share: owner: %w", oerr)
+	}
+	if err := s.updateRecipients(ctx, owner, row, in); err != nil {
+		return nil, err
+	}
+	if in.Disabled != nil {
+		if *in.Disabled {
+			if _, err := s.Disable(ctx, ownerID, row.ID, ReasonManual); err != nil {
+				return nil, err
+			}
+		} else if _, err := s.Enable(ctx, ownerID, row.ID); err != nil {
+			return nil, err
+		}
+	}
+	updated, err := s.Get(ctx, ownerID, row.ID)
+	if err != nil {
+		return nil, err
+	}
+	s.changed(ownerID, fsjail.VPath(updated.Path))
+	v := s.View(updated)
+	s.fillRecipients(ctx, []*View{v})
+	return v, nil
 }
 
 // RegenerateToken replaces the token (the old link stops working) and
@@ -820,6 +900,7 @@ func (s *Service) List(ctx context.Context, ownerID, cursor, mode, status string
 			out.Items = append(out.Items, v)
 		}
 		if !more {
+			s.fillRecipients(ctx, out.Items)
 			return out, nil
 		}
 		last := rows[len(rows)-1]
@@ -827,6 +908,7 @@ func (s *Service) List(ctx context.Context, ownerID, cursor, mode, status string
 		if len(out.Items) >= ListPageSize {
 			c := encodeCursor(created, id)
 			out.NextCursor = &c
+			s.fillRecipients(ctx, out.Items)
 			return out, nil
 		}
 	}
@@ -842,6 +924,7 @@ func (s *Service) ByPath(ctx context.Context, ownerID string, p fsjail.VPath) ([
 	for _, row := range rows {
 		out = append(out, s.View(row))
 	}
+	s.fillRecipients(ctx, out)
 	return out, nil
 }
 

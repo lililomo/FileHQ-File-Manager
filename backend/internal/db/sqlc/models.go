@@ -269,6 +269,7 @@ type TrashItem struct {
 	BatchID      *string `json:"batch_id"`
 	RestoredAt   *string `json:"restored_at"`
 	PurgedAt     *string `json:"purged_at"`
+	DeletedBy    *string `json:"deleted_by"`
 }
 
 type UploadSession struct {

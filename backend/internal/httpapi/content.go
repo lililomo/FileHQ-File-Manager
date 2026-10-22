@@ -73,12 +73,17 @@ func (s *Server) writeContentError(w http.ResponseWriter, r *http.Request, err e
 // "Membuka file"). tail=N (or tail=true → 1000) opens a file beyond
 // EDITOR_MAX_FILE_SIZE read-only with its last N lines.
 func (s *Server) handleContentGet(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
+	q := r.URL.Query()
+	j, sc, release, ok := s.scoped(w, r)
+	if !ok {
 		return
 	}
-	q := r.URL.Query()
-	vp, err := fsjail.Clean(q.Get("path"))
-	if err != nil || vp.IsRoot() {
+	defer release()
+	vp, ok := sc.path(w, r, q.Get("path"))
+	if !ok {
+		return
+	}
+	if vp.IsRoot() {
 		WriteError(w, r, CodePathInvalid, 0, "path is not valid", map[string]any{"fields": map[string]any{"path": "invalid"}})
 		return
 	}
@@ -104,13 +109,9 @@ func (s *Server) handleContentGet(w http.ResponseWriter, r *http.Request) {
 			opts.Tail = n
 		}
 	}
-	j, u, release, ok := s.userJail(w, r)
-	if !ok {
-		return
-	}
-	defer release()
+	u := sc.Owner
 	if s.locks != nil {
-		unlock, lerr := s.locks.TryAcquire(u.ID, fsjail.Read, "editor", vp)
+		unlock, lerr := s.locks.TryAcquire(u.ID, fsjail.Read, "editor", j.Abs(vp))
 		if lerr != nil {
 			WriteError(w, r, CodeOperationInProgress, http.StatusLocked, "another operation is running on this file", map[string]any{"path": string(vp)})
 			return
@@ -143,19 +144,28 @@ type contentPutRequest struct {
 // (reason save|force_save), atomic write keeping the mode, quota delta.
 // Identical bytes → 200 noop without a write or a version.
 func (s *Server) handleContentPut(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
-		return
-	}
 	r.Body = http.MaxBytesReader(w, r.Body, s.contentBodyLimit())
 	var req contentPutRequest
 	if !ReadJSON(w, r, &req) {
 		return
 	}
-	vp, err := fsjail.Clean(req.Path)
-	if err != nil || vp.IsRoot() {
+	j, sc, release, ok := s.scoped(w, r)
+	if !ok {
+		return
+	}
+	defer release()
+	if !sc.requireEditor(w, r) {
+		return
+	}
+	vp, ok := sc.path(w, r, req.Path)
+	if !ok {
+		return
+	}
+	if vp.IsRoot() {
 		WriteError(w, r, CodePathInvalid, 0, "path is not valid", map[string]any{"fields": map[string]any{"path": "invalid"}})
 		return
 	}
+	var err error
 	enc := files.EncUTF8
 	if req.Encoding != "" {
 		if enc = files.NormalizeEncoding(req.Encoding); enc == "" {
@@ -186,12 +196,8 @@ func (s *Server) handleContentPut(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	j, u, release, ok := s.userJail(w, r)
-	if !ok {
-		return
-	}
-	defer release()
-	unlock, ok := s.lockTarget(w, r, u.ID, "editor", vp)
+	u := sc.Owner
+	unlock, ok := s.lockTarget(w, r, u.ID, "editor", j.Abs(vp))
 	if !ok {
 		return
 	}
@@ -276,18 +282,16 @@ func (s *Server) handleContentPut(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	s.invalidateUpTo(u.ID, vp.Dir(), false)
-	s.OnChange(r, u.ID, vp, false)
+	s.invalidateScoped(j, sc, vp.Dir(), false)
+	s.OnChange(r, u.ID, j.Abs(vp), false)
 	if s.search != nil {
 		s.search.InvalidateNames(u.ID)
 	}
-	if s.files != nil {
-		action := files.ActEdit
-		if !exists {
-			action = files.ActCreate
-		}
-		s.files.RecordActivity(r.Context(), u.ID, action, string(vp), "", map[string]any{"size": len(data), "encoding": enc, "eol": eol, "force": req.Force, "editor": true})
+	action := files.ActEdit
+	if !exists {
+		action = files.ActCreate
 	}
+	s.activityScoped(r, j, sc, action, vp, "", map[string]any{"size": len(data), "encoding": enc, "eol": eol, "force": req.Force, "editor": true})
 	after, err := j.Lstat(vp)
 	if err != nil {
 		s.writeListingError(w, r, err, string(vp))

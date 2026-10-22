@@ -61,6 +61,8 @@ type Querier interface {
 	DeleteSetting(ctx context.Context, key string) error
 	DeleteShare(ctx context.Context, arg DeleteShareParams) (int64, error)
 	DeleteShareAccessLogsBefore(ctx context.Context, at string) (int64, error)
+	DeleteShareRecipient(ctx context.Context, arg DeleteShareRecipientParams) (int64, error)
+	DeleteShareRecipients(ctx context.Context, shareID string) (int64, error)
 	DeleteSharesPrefix(ctx context.Context, arg DeleteSharesPrefixParams) (int64, error)
 	DeleteTrashItemRow(ctx context.Context, arg DeleteTrashItemRowParams) error
 	DeleteUploadSessionsBefore(ctx context.Context, before string) (int64, error)
@@ -84,6 +86,8 @@ type Querier interface {
 	GetShareByID(ctx context.Context, id string) (Share, error)
 	GetShareBySlug(ctx context.Context, slug *string) (Share, error)
 	GetShareByTokenHash(ctx context.Context, tokenHash *string) (Share, error)
+	GetShareForRecipient(ctx context.Context, arg GetShareForRecipientParams) (GetShareForRecipientRow, error)
+	GetShareRecipient(ctx context.Context, arg GetShareRecipientParams) (ShareRecipient, error)
 	GetTask(ctx context.Context, id string) (Task, error)
 	GetTrashItem(ctx context.Context, arg GetTrashItemParams) (TrashItem, error)
 	GetUploadSession(ctx context.Context, id string) (UploadSession, error)
@@ -106,6 +110,8 @@ type Querier interface {
 	// prefix = path || '/', prefix_len = len(prefix), from_pos = len(path) + 1.
 	InsertShare(ctx context.Context, arg InsertShareParams) (Share, error)
 	InsertShareAccessLog(ctx context.Context, arg InsertShareAccessLogParams) error
+	// Step 18b: recipients of mode=users shares.
+	InsertShareRecipient(ctx context.Context, arg InsertShareRecipientParams) error
 	// Task engine persistence (SPEC 4.2 tasks / task_logs, 7.3). Comments are
 	// ASCII only (sqlc 1.31 offset bug). Every per-user query filters on user_id
 	// so another user's id answers "not found".
@@ -150,9 +156,12 @@ type Querier interface {
 	ListSearchHistory(ctx context.Context, arg ListSearchHistoryParams) ([]SearchHistory, error)
 	ListSettings(ctx context.Context) ([]Setting, error)
 	ListShareAccessLogs(ctx context.Context, arg ListShareAccessLogsParams) ([]ShareAccessLog, error)
+	ListShareRecipients(ctx context.Context, shareID string) ([]ListShareRecipientsRow, error)
+	ListShareRecipientsForShares(ctx context.Context, ids []string) ([]ListShareRecipientsForSharesRow, error)
 	ListSharesByOwner(ctx context.Context, arg ListSharesByOwnerParams) ([]Share, error)
 	ListSharesByOwnerPath(ctx context.Context, arg ListSharesByOwnerPathParams) ([]Share, error)
 	ListSharesForCheck(ctx context.Context, arg ListSharesForCheckParams) ([]ListSharesForCheckRow, error)
+	ListSharesForRecipient(ctx context.Context, recipientUserID string) ([]ListSharesForRecipientRow, error)
 	ListSharesInDir(ctx context.Context, arg ListSharesInDirParams) ([]ListSharesInDirRow, error)
 	ListSharesUnderPath(ctx context.Context, arg ListSharesUnderPathParams) ([]Share, error)
 	ListTaskLogs(ctx context.Context, arg ListTaskLogsParams) ([]TaskLog, error)
@@ -185,6 +194,7 @@ type Querier interface {
 	SetMustChangePassword(ctx context.Context, arg SetMustChangePasswordParams) error
 	SetQuotaDirty(ctx context.Context, arg SetQuotaDirtyParams) error
 	SetQuotaUsage(ctx context.Context, arg SetQuotaUsageParams) error
+	SetShareAllowReshare(ctx context.Context, arg SetShareAllowReshareParams) error
 	SetShareBroken(ctx context.Context, arg SetShareBrokenParams) error
 	SetShareDisabled(ctx context.Context, arg SetShareDisabledParams) (int64, error)
 	SetShareEnabled(ctx context.Context, arg SetShareEnabledParams) (int64, error)
@@ -197,6 +207,10 @@ type Querier interface {
 	SetUploadSessionState(ctx context.Context, arg SetUploadSessionStateParams) (int64, error)
 	SetUserTOTP(ctx context.Context, arg SetUserTOTPParams) error
 	SoftDeleteUser(ctx context.Context, arg SoftDeleteUserParams) error
+	// Step 18b: username autocomplete for sharing (active users only, never the
+	// caller). Username prefix or display-name substring; the parser has no
+	// LIKE ... ESCAPE, so prefix_len/prefix/needle are computed in Go.
+	SuggestUsers(ctx context.Context, arg SuggestUsersParams) ([]SuggestUsersRow, error)
 	SumActiveUploadSizes(ctx context.Context, userID string) (interface{}, error)
 	SumFileVersionBytes(ctx context.Context, userID string) (interface{}, error)
 	SumQuotaUsed(ctx context.Context) (interface{}, error)

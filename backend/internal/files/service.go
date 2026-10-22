@@ -133,13 +133,20 @@ func (s *Service) hook(op string) {
 	}
 }
 
-func (s *Service) changed(ctx context.Context, userID string, p fsjail.VPath, isDir bool) {
+// changed invalidates caches after a mutation at p. The keys are the owner's
+// absolute path: j may be a share sub-root (Step 18b).
+func (s *Service) changed(ctx context.Context, j *fsjail.Jail, userID string, p fsjail.VPath, isDir bool) {
+	abs := j.Abs(p)
 	if s.onChange != nil {
-		s.onChange(ctx, userID, p, isDir)
+		s.onChange(ctx, userID, abs, isDir)
 	}
-	s.invalidateDir(userID, p.Dir())
-	s.dirSizes.invalidate(userID, p)
-	s.checksums.invalidate(userID, p)
+	s.invalidateDir(userID, abs.Dir())
+	if !j.Base().IsRoot() {
+		// the recipient's listing cache is keyed by the sub-root path
+		s.invalidateDir(userID, p.Dir())
+	}
+	s.dirSizes.invalidate(userID, abs)
+	s.checksums.invalidate(userID, abs)
 	s.analyses.invalidate(userID)
 }
 
@@ -206,7 +213,16 @@ func isNotFound(err error) bool {
 // manager); it fails fast with fsjail.ErrLocked (OPERATION_IN_PROGRESS).
 // Inside a task (WithTask) it waits for the paths instead, so a queued
 // task simply runs after the synchronous operation holding them.
-func (s *Service) lock(ctx context.Context, userID, owner string, mode fsjail.Mode, paths ...fsjail.VPath) (func(), error) {
+// lock takes the per-user path locks; paths are translated to the owner's
+// root so a recipient inside a share sub-root coordinates with the owner.
+func (s *Service) lock(ctx context.Context, j *fsjail.Jail, userID, owner string, mode fsjail.Mode, paths ...fsjail.VPath) (func(), error) {
+	if !j.Base().IsRoot() {
+		abs := make([]fsjail.VPath, len(paths))
+		for i, p := range paths {
+			abs[i] = j.Abs(p)
+		}
+		paths = abs
+	}
 	if unbounded(ctx) {
 		return s.locks.Acquire(ctx, userID, mode, "task:"+owner, paths...)
 	}
@@ -232,9 +248,12 @@ type Result struct {
 	Warnings  []string     `json:"warnings,omitempty"`
 }
 
-func (s *Service) withUndo(ctx context.Context, res *Result, userID string, info UndoInfo) {
+func (s *Service) withUndo(ctx context.Context, j *fsjail.Jail, res *Result, userID string, info UndoInfo) {
 	if unbounded(ctx) {
 		return // tasks are not undoable (SPEC §8.5)
+	}
+	if !j.Base().IsRoot() {
+		return // share recipients have no undo: the token would mix two roots (Step 18b)
 	}
 	res.UndoToken = s.undo.Put(userID, info)
 	cp := info

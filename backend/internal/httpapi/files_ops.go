@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"kppbwi.app/filemanager/internal/db/sqlc"
 	"kppbwi.app/filemanager/internal/files"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/quota"
@@ -130,7 +131,8 @@ func cleanPaths(w http.ResponseWriter, r *http.Request, raw []string) ([]fsjail.
 }
 
 // opView adds the Item of path (when it still exists) to a Result.
-func (s *Server) opView(r *http.Request, j *fsjail.Jail, userID string, res *files.Result, itemPath fsjail.VPath) map[string]any {
+func (s *Server) opView(r *http.Request, j *fsjail.Jail, sc *reqScope, res *files.Result, itemPath fsjail.VPath) map[string]any {
+	userID := sc.Owner.ID
 	out := map[string]any{"results": res.Results, "undo": res.Undo}
 	if res.UndoToken != "" {
 		out["undoToken"] = res.UndoToken
@@ -142,7 +144,7 @@ func (s *Server) opView(r *http.Request, j *fsjail.Jail, userID string, res *fil
 		out["warnings"] = res.Warnings
 	}
 	if itemPath != "" {
-		if it, err := s.listing.Stat(j, userID, scopeOwn, itemPath); err == nil {
+		if it, err := s.listing.Stat(j, userID, sc.Listing, itemPath); err == nil {
 			out["item"] = it
 		} else {
 			s.logger.DebugContext(r.Context(), "stat after operation failed", slog.String("path", string(itemPath)), slog.String("error", err.Error()))
@@ -174,14 +176,19 @@ type renameRequest struct {
 }
 
 func (s *Server) handleFilesRename(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
-		return
-	}
 	var req renameRequest
 	if !ReadJSON(w, r, &req) {
 		return
 	}
-	p, ok := cleanPath(w, r, req.Path)
+	j, sc, release, ok := s.scoped(w, r)
+	if !ok {
+		return
+	}
+	defer release()
+	if !sc.requireEditor(w, r) {
+		return
+	}
+	p, ok := sc.path(w, r, req.Path)
 	if !ok {
 		return
 	}
@@ -194,17 +201,13 @@ func (s *Server) handleFilesRename(w http.ResponseWriter, r *http.Request) {
 		s.writeBlockedExtension(w, r, p, ext)
 		return
 	}
-	j, u, release, ok := s.userJail(w, r)
-	if !ok {
-		return
-	}
-	defer release()
-	res, err := s.files.Rename(r.Context(), j, u.ID, p, newName)
+	res, err := s.files.Rename(r.Context(), j, sc.Owner.ID, p, newName)
 	if err != nil {
-		s.writeOpsError(w, r, err)
+		s.writeOpsErrorScoped(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, s.opView(r, j, u.ID, res, fsjail.VPath(res.Results[0].To)))
+	s.recipientActivity(r, sc, files.ActRename, p, fsjail.VPath(res.Results[0].To), nil)
+	WriteJSON(w, http.StatusOK, s.opView(r, j, sc, res, fsjail.VPath(res.Results[0].To)))
 }
 
 type transferRequest struct {
@@ -275,18 +278,19 @@ func (s *Server) handleFilesMove(w http.ResponseWriter, r *http.Request) {
 // handleTransfer runs copy/move synchronously within the limits of SPEC
 // §8.5; beyond them it enqueues a task and answers 202 {task} (Step 11).
 func (s *Server) handleTransfer(w http.ResponseWriter, r *http.Request, action string) {
-	if rejectScope(w, r) {
-		return
-	}
 	paths, to, pol, ok := s.parseTransfer(w, r)
 	if !ok {
 		return
 	}
-	j, u, release, ok := s.userJail(w, r)
+	j, sc, release, ok := s.scoped(w, r)
 	if !ok {
 		return
 	}
 	defer release()
+	if !sc.requireEditor(w, r) || !sc.requireFolderShare(w, r) {
+		return
+	}
+	u := sc.Owner
 	var (
 		res *files.Result
 		err error
@@ -297,6 +301,12 @@ func (s *Server) handleTransfer(w http.ResponseWriter, r *http.Request, action s
 		res, err = s.files.Copy(r.Context(), j, u.ID, paths, to, pol)
 	}
 	var te *files.TooLargeError
+	if errors.As(err, &te) && s.tasks != nil && sc.Shared() {
+		// background transfers run in the owner's root; a recipient's large
+		// transfer is refused until tasks carry a share scope (Step 21/R-E)
+		WriteError(w, r, CodePayloadTooLarge, 0, "selection too large for a shared folder", map[string]any{"reason": "task_required", "entries": te.Entries, "bytes": te.Bytes})
+		return
+	}
 	if errors.As(err, &te) && s.tasks != nil {
 		payload := files.TransferPayload{Paths: make([]string, 0, len(paths)), To: string(to), OnConflict: string(pol.Default)}
 		for _, p := range paths {
@@ -322,10 +332,13 @@ func (s *Server) handleTransfer(w http.ResponseWriter, r *http.Request, action s
 		return
 	}
 	if err != nil {
-		s.writeOpsError(w, r, err)
+		s.writeOpsErrorScoped(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, s.opView(r, j, u.ID, res, ""))
+	for _, it := range res.Results {
+		s.recipientActivity(r, sc, action, fsjail.VPath(it.Path), fsjail.VPath(it.To), map[string]any{"status": it.Status})
+	}
+	WriteJSON(w, http.StatusOK, s.opView(r, j, sc, res, ""))
 }
 
 type pathRequest struct {
@@ -333,28 +346,29 @@ type pathRequest struct {
 }
 
 func (s *Server) handleFilesDuplicate(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
-		return
-	}
 	var req pathRequest
 	if !ReadJSON(w, r, &req) {
 		return
 	}
-	p, ok := cleanPath(w, r, req.Path)
-	if !ok {
-		return
-	}
-	j, u, release, ok := s.userJail(w, r)
+	j, sc, release, ok := s.scoped(w, r)
 	if !ok {
 		return
 	}
 	defer release()
-	res, err := s.files.Duplicate(r.Context(), j, u.ID, p)
-	if err != nil {
-		s.writeOpsError(w, r, err)
+	if !sc.requireEditor(w, r) || !sc.requireFolderShare(w, r) {
 		return
 	}
-	WriteJSON(w, http.StatusCreated, s.opView(r, j, u.ID, res, fsjail.VPath(res.Results[0].To)))
+	p, ok := sc.path(w, r, req.Path)
+	if !ok {
+		return
+	}
+	res, err := s.files.Duplicate(r.Context(), j, sc.Owner.ID, p)
+	if err != nil {
+		s.writeOpsErrorScoped(w, r, err)
+		return
+	}
+	s.recipientActivity(r, sc, files.ActCopy, p, fsjail.VPath(res.Results[0].To), nil)
+	WriteJSON(w, http.StatusCreated, s.opView(r, j, sc, res, fsjail.VPath(res.Results[0].To)))
 }
 
 type symlinkRequest struct {
@@ -388,7 +402,7 @@ func (s *Server) handleFilesSymlink(w http.ResponseWriter, r *http.Request) {
 		s.writeOpsError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusCreated, s.opView(r, j, u.ID, res, link))
+	WriteJSON(w, http.StatusCreated, s.opView(r, j, ownScope(u), res, link))
 }
 
 type chmodRequest struct {
@@ -435,7 +449,7 @@ func (s *Server) handleFilesChmod(w http.ResponseWriter, r *http.Request) {
 		s.writeOpsError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, s.opView(r, j, u.ID, res, ""))
+	WriteJSON(w, http.StatusOK, s.opView(r, j, ownScope(u), res, ""))
 }
 
 type pathsRequest struct {
@@ -443,28 +457,40 @@ type pathsRequest struct {
 }
 
 func (s *Server) handleFilesDelete(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
-		return
-	}
 	var req pathsRequest
 	if !ReadJSON(w, r, &req) {
 		return
 	}
-	paths, ok := cleanPaths(w, r, req.Paths)
-	if !ok {
-		return
-	}
-	j, u, release, ok := s.userJail(w, r)
+	j, sc, release, ok := s.scoped(w, r)
 	if !ok {
 		return
 	}
 	defer release()
-	res, err := s.files.Delete(r.Context(), j, u.ID, paths)
-	if err != nil {
-		s.writeOpsError(w, r, err)
+	if !sc.requireEditor(w, r) {
 		return
 	}
-	WriteJSON(w, http.StatusOK, s.opView(r, j, u.ID, res, ""))
+	paths, ok := sc.paths(w, r, req.Paths)
+	if !ok {
+		return
+	}
+	var (
+		res *files.Result
+		err error
+	)
+	if sc.Shared() {
+		// into the owner's Recycle Bin, deleted_by = the recipient (SPEC §8.15)
+		res, err = s.files.DeleteAs(r.Context(), j, sc.Owner.ID, sc.Actor.ID, paths)
+	} else {
+		res, err = s.files.Delete(r.Context(), j, sc.Owner.ID, paths)
+	}
+	if err != nil {
+		s.writeOpsErrorScoped(w, r, err)
+		return
+	}
+	for _, it := range res.Results {
+		s.recipientActivity(r, sc, files.ActDelete, fsjail.VPath(it.Path), "", map[string]any{"trashId": it.TrashID})
+	}
+	WriteJSON(w, http.StatusOK, s.opView(r, j, sc, res, ""))
 }
 
 type batchRenameRequest struct {
@@ -526,7 +552,7 @@ func (s *Server) handleBatchRename(w http.ResponseWriter, r *http.Request) {
 		s.writeOpsError(w, r, err)
 		return
 	}
-	out := s.opView(r, j, u.ID, res, "")
+	out := s.opView(r, j, ownScope(u), res, "")
 	out["items"] = preview
 	WriteJSON(w, http.StatusOK, out)
 }
@@ -560,5 +586,24 @@ func (s *Server) handleFilesUndo(w http.ResponseWriter, r *http.Request) {
 		s.writeOpsError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, s.opView(r, j, u.ID, res, ""))
+	WriteJSON(w, http.StatusOK, s.opView(r, j, ownScope(u), res, ""))
+}
+
+// ownScope is the scope of an owner-only handler (no ?share=).
+func ownScope(u sqlc.User) *reqScope {
+	return &reqScope{Actor: u, Owner: u, Perm: permOwner, Base: fsjail.Root, Listing: scopeOwn}
+}
+
+// recipientActivity records an operation done through a share for the
+// recipient's own Recent/Activity (the owner's entry is written by
+// files.Service with the absolute path).
+func (s *Server) recipientActivity(r *http.Request, sc *reqScope, action string, p, p2 fsjail.VPath, details map[string]any) {
+	if !sc.Shared() || s.files == nil {
+		return
+	}
+	d := map[string]any{"shareId": sc.Share.ID, "owner": sc.Owner.Username}
+	for k, v := range details {
+		d[k] = v
+	}
+	s.files.RecordActivity(r.Context(), sc.Actor.ID, action, string(p), string(p2), d)
 }

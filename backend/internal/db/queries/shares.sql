@@ -121,3 +121,53 @@ SELECT COUNT(*) FROM share_access_logs WHERE share_id = ? AND action = ? AND at 
 
 -- name: DeleteShareAccessLogsBefore :execrows
 DELETE FROM share_access_logs WHERE at < ?;
+
+-- Step 18b: recipients of mode=users shares.
+
+-- name: InsertShareRecipient :exec
+INSERT INTO share_recipients (share_id, recipient_user_id, permission, note, created_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (share_id, recipient_user_id) DO UPDATE SET permission = excluded.permission, note = excluded.note;
+
+-- name: DeleteShareRecipient :execrows
+DELETE FROM share_recipients WHERE share_id = ? AND recipient_user_id = ?;
+
+-- name: DeleteShareRecipients :execrows
+DELETE FROM share_recipients WHERE share_id = ?;
+
+-- name: GetShareRecipient :one
+SELECT * FROM share_recipients WHERE share_id = ? AND recipient_user_id = ?;
+
+-- name: ListShareRecipients :many
+SELECT sr.share_id, sr.recipient_user_id, sr.permission, sr.note, sr.created_at,
+       u.username, u.display_name, u.status AS user_status
+FROM share_recipients sr
+JOIN users u ON u.id = sr.recipient_user_id
+WHERE sr.share_id = ?
+ORDER BY u.username;
+
+-- name: ListShareRecipientsForShares :many
+SELECT sr.share_id, sr.recipient_user_id, sr.permission, sr.note, sr.created_at,
+       u.username, u.display_name, u.status AS user_status
+FROM share_recipients sr
+JOIN users u ON u.id = sr.recipient_user_id
+WHERE sr.share_id IN (sqlc.slice('ids'))
+ORDER BY sr.share_id, u.username;
+
+-- name: ListSharesForRecipient :many
+SELECT s.*, sr.permission, sr.note AS recipient_note, sr.created_at AS received_at,
+       o.username AS owner_username, o.display_name AS owner_display_name, o.status AS owner_status, o.deleted_at AS owner_deleted_at
+FROM share_recipients sr
+JOIN shares s ON s.id = sr.share_id
+JOIN users o ON o.id = s.owner_user_id
+WHERE sr.recipient_user_id = ?
+ORDER BY o.username, s.created_at DESC, s.id DESC;
+
+-- name: GetShareForRecipient :one
+SELECT s.*, sr.permission
+FROM share_recipients sr
+JOIN shares s ON s.id = sr.share_id
+WHERE sr.recipient_user_id = ? AND s.id = ?;
+
+-- name: SetShareAllowReshare :exec
+UPDATE shares SET allow_reshare = ? WHERE id = ?;

@@ -34,10 +34,10 @@ func (s *Server) mountSubtitle(api chi.Router) {
 }
 
 // subtitleURL signs path (a subtitle file) for the subtitle route: purpose
-// media (MEDIA_URL_TTL), user scope.
-func (s *Server) subtitleURL(userID string, path fsjail.VPath) string {
+// media (MEDIA_URL_TTL) in the given scope ("u:<id>" or "r:<share>:<user>").
+func (s *Server) subtitleURL(scope string, path fsjail.VPath) string {
 	p := download.Params{
-		Scope: download.UserScope(userID), Path: string(path), Purpose: download.PurposeMedia,
+		Scope: scope, Path: string(path), Purpose: download.PurposeMedia,
 		Exp: s.signer.Expiry(download.TTLFor(download.PurposeMedia, s.cfg.SignedURLTTL, s.cfg.MediaURLTTL)),
 	}
 	return SubtitlePath + "?" + s.signer.Query(p).Encode()
@@ -45,7 +45,7 @@ func (s *Server) subtitleURL(userID string, path fsjail.VPath) string {
 
 // subtitlesFor lists the sidecar subtitles of a video (same folder, see
 // media.FindSidecars) with signed URLs. Errors leave the list empty.
-func (s *Server) subtitlesFor(j *fsjail.Jail, userID string, video fsjail.Info) []subtitleTrack {
+func (s *Server) subtitlesFor(j *fsjail.Jail, scope string, video fsjail.Info) []subtitleTrack {
 	out := []subtitleTrack{}
 	if s.signer == nil {
 		return out
@@ -72,7 +72,7 @@ func (s *Server) subtitlesFor(j *fsjail.Jail, userID string, video fsjail.Info) 
 		}
 		out = append(out, subtitleTrack{
 			Path: string(p), Name: sc.Name, Lang: sc.Lang, Label: label, Format: sc.Format,
-			URL: s.subtitleURL(userID, p),
+			URL: s.subtitleURL(scope, p),
 		})
 	}
 	return out
@@ -87,11 +87,7 @@ func (s *Server) handleFilesSubtitle(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, CodeDependencyMissing, 0, "signed urls are not available", nil)
 		return
 	}
-	p, userID, ok := s.verifySigned(w, r, download.PurposeMedia)
-	if !ok {
-		return
-	}
-	u, ok := s.signedUser(w, r, userID)
+	p, ss, ok := s.verifySigned(w, r, download.PurposeMedia)
 	if !ok {
 		return
 	}
@@ -99,7 +95,7 @@ func (s *Server) handleFilesSubtitle(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, CodeValidationFailed, 0, "not a subtitle file", map[string]any{"fields": map[string]any{"path": "not_a_subtitle"}})
 		return
 	}
-	j, release, info, ok := s.openRegular(w, r, u, p.Path)
+	j, release, info, ok := s.signedFile(w, r, ss, p.Path, true)
 	if !ok {
 		return
 	}

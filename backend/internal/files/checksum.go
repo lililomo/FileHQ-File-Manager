@@ -196,7 +196,7 @@ func (s *Service) Checksum(ctx context.Context, j *fsjail.Jail, userID string, p
 		out[a] = hex.EncodeToString(h.Sum(nil))
 	}
 	s.checksums.put(userID, p, key, out)
-	s.logActivity(ctx, s.repo, userID, ActChecksum, string(p), "", map[string]any{"algos": missing, "size": info.Size}, "")
+	s.logActivity(ctx, s.repo, userID, ActChecksum, string(j.Abs(p)), "", map[string]any{"algos": missing, "size": info.Size}, "")
 	return out, nil
 }
 

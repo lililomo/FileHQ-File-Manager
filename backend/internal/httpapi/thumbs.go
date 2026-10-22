@@ -61,12 +61,17 @@ func (s *Server) mountThumbs(api chi.Router) {
 }
 
 // verifySigned parses and verifies a signed URL of the given purpose and
-// resolves its user scope. On failure the error is written and ok=false.
-func (s *Server) verifySigned(w http.ResponseWriter, r *http.Request, purpose download.Purpose) (download.Params, string, bool) {
+// resolves its scope: the user ("u:<id>") or a share recipient
+// ("r:<share>:<user>", Step 18b). On failure the error is written.
+func (s *Server) verifySigned(w http.ResponseWriter, r *http.Request, purpose download.Purpose) (download.Params, *signedScope, bool) {
+	inactive := CodeForbidden
+	if purpose == download.PurposeThumb {
+		inactive = CodeNotFound
+	}
 	p, sig, err := download.FromQuery(r.URL.Query())
 	if err != nil || p.Purpose != purpose {
 		WriteError(w, r, CodeSignatureInvalid, 0, "invalid signed url", nil)
-		return p, "", false
+		return p, nil, false
 	}
 	if err := s.signer.Verify(p, sig); err != nil {
 		if errors.Is(err, download.ErrSignatureExpired) {
@@ -74,15 +79,13 @@ func (s *Server) verifySigned(w http.ResponseWriter, r *http.Request, purpose do
 		} else {
 			WriteError(w, r, CodeSignatureInvalid, 0, "invalid signed url", nil)
 		}
-		return p, "", false
+		return p, nil, false
 	}
-	userID, ok := strings.CutPrefix(p.Scope, "u:")
-	if !ok || userID == "" {
-		// share scopes arrive in Step 18a
-		WriteError(w, r, CodeSignatureInvalid, 0, "unsupported scope", nil)
-		return p, "", false
+	ss, ok := s.resolveSignedScope(w, r, p.Scope, inactive)
+	if !ok {
+		return p, nil, false
 	}
-	return p, userID, true
+	return p, ss, true
 }
 
 func (s *Server) handleFilesThumb(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +93,7 @@ func (s *Server) handleFilesThumb(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, CodeDependencyMissing, 0, "thumbnails are not available", nil)
 		return
 	}
-	p, userID, ok := s.verifySigned(w, r, download.PurposeThumb)
+	p, ss, ok := s.verifySigned(w, r, download.PurposeThumb)
 	if !ok {
 		return
 	}
@@ -103,41 +106,20 @@ func (s *Server) handleFilesThumb(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, CodeValidationFailed, 0, "invalid size", map[string]any{"fields": map[string]any{"size": "must be 128, 256 or 512"}})
 		return
 	}
-	u, err := s.store.GetUserByID(r.Context(), userID)
-	if err != nil || u.Status != "active" || u.DeletedAt != nil {
-		WriteError(w, r, CodeNotFound, 0, fsMessages[CodeNotFound], nil)
-		return
-	}
-	if !s.thumbLimit.acquire(u.ID) {
+	u := ss.User
+	if !s.thumbLimit.acquire(ss.Actor.ID) {
 		w.Header().Set("Retry-After", "1")
 		WriteError(w, r, CodeRateLimited, 0, "too many thumbnail requests", map[string]any{"limit": thumbMaxParallelPerUser})
 		return
 	}
-	defer s.thumbLimit.release(u.ID)
+	defer s.thumbLimit.release(ss.Actor.ID)
 
-	vp, ok := cleanPath(w, r, p.Path)
+	_, release, info, ok := s.signedFile(w, r, ss, p.Path, false)
 	if !ok {
 		return
 	}
-	j, release, err := s.jails.acquire(s.cfg.StorageRoot, u)
-	if err != nil {
-		if !WriteFSError(w, r, err) {
-			WriteError(w, r, CodeInternal, 0, "storage unavailable", nil)
-		}
-		return
-	}
 	defer release()
-	info, err := j.Lstat(vp)
-	if err != nil {
-		if !WriteFSError(w, r, err) {
-			WriteError(w, r, CodeNotFound, 0, fsMessages[CodeNotFound], nil)
-		}
-		return
-	}
-	if info.IsSymlink || !info.IsRegular() {
-		WriteError(w, r, CodeNotFound, 0, "no thumbnail for this item", map[string]any{"reason": "not_a_file"})
-		return
-	}
+	vp := info.Path
 	if !thumbs.Thumbable(string(files.Lookup(info.Name).Category)) {
 		WriteError(w, r, CodeNotFound, 0, "no thumbnail for this type", map[string]any{"reason": "unsupported"})
 		return

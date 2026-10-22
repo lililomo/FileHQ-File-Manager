@@ -143,6 +143,38 @@ func (j *Jail) ReadOnly() bool { return j.readOnly }
 // home itself).
 func (j *Jail) Base() VPath { return j.base }
 
+// Abs maps a path of this jail to the owner's root: identity for the home
+// jail, base + p for a sub-root (Step 18b: bookkeeping keyed by the owner's
+// absolute path — trash, versions, activity, locks, thumbnails — while a
+// recipient works inside a share sub-root).
+func (j *Jail) Abs(p VPath) VPath {
+	if j.base.IsRoot() {
+		if p.IsRoot() {
+			return Root
+		}
+		return p
+	}
+	if p.IsRoot() {
+		return j.base
+	}
+	return VPath(string(j.base) + string(p))
+}
+
+// RelOf is the inverse of Abs: the position of an owner-absolute path inside
+// this jail. ok=false when abs lies outside the sub-root.
+func (j *Jail) RelOf(abs VPath) (VPath, bool) {
+	if j.base.IsRoot() {
+		return abs, true
+	}
+	if abs == j.base {
+		return Root, true
+	}
+	if !abs.HasPrefix(j.base) {
+		return "", false
+	}
+	return VPath(strings.TrimPrefix(string(abs), string(j.base))), true
+}
+
 // check validates p (see checkVPath) and refuses use after Close with
 // ErrClosed instead of dereferencing a nil root (review A).
 func (j *Jail) check(p VPath) error {

@@ -31,12 +31,12 @@ func (s *Service) copy(ctx context.Context, j *fsjail.Jail, userID string, paths
 	}
 	// Read locks on sources, write locks on destinations. A destination
 	// inside a source (copy /a into /a/b is rejected by plan) cannot occur.
-	releaseR, err := s.lock(ctx, userID, action, fsjail.Read, srcs...)
+	releaseR, err := s.lock(ctx, j, userID, action, fsjail.Read, srcs...)
 	if err != nil {
 		return nil, err
 	}
 	defer releaseR()
-	releaseW, err := s.lock(ctx, userID, action, fsjail.Write, dsts...)
+	releaseW, err := s.lock(ctx, j, userID, action, fsjail.Write, dsts...)
 	if err != nil {
 		return nil, err
 	}
@@ -108,9 +108,9 @@ func (s *Service) copy(ctx context.Context, j *fsjail.Jail, userID string, paths
 		after, ok := s.sizeOf(ctx, j, dst)
 		incomplete = incomplete || !ok
 		applied += after - before
-		s.logActivity(ctx, s.repo, userID, action, string(it.src), string(dst), map[string]any{"op": action, "status": r.Status, "isDir": it.info.IsDir, "size": after}, "")
+		s.logActivity(ctx, s.repo, userID, action, string(j.Abs(it.src)), string(j.Abs(dst)), map[string]any{"op": action, "status": r.Status, "isDir": it.info.IsDir, "size": after}, "")
 		if r.Status == "overwritten" || r.Status == "merged" {
-			s.changed(ctx, userID, dst, it.info.IsDir)
+			s.changed(ctx, j, userID, dst, it.info.IsDir)
 		}
 		s.invalidateDir(userID, to)
 		s.dirSizes.invalidate(userID, dst)
@@ -120,7 +120,7 @@ func (s *Service) copy(ctx context.Context, j *fsjail.Jail, userID string, paths
 		}
 	}
 	if len(created) > 0 {
-		s.withUndo(ctx, res, userID, UndoInfo{Kind: "delete_created", Created: created})
+		s.withUndo(ctx, j, res, userID, UndoInfo{Kind: "delete_created", Created: created})
 	}
 	return res, nil
 }
@@ -144,7 +144,7 @@ func (s *Service) copyOne(ctx context.Context, j *fsjail.Jail, userID string, it
 			return err
 		}
 		return s.repo.WithTx(ctx, func(tx db.Repository) error {
-			return DeleteReferences(ctx, tx, userID, string(dst))
+			return DeleteReferences(ctx, tx, userID, string(j.Abs(dst)))
 		})
 	}
 	var err error
@@ -204,7 +204,7 @@ func (s *Service) mergeCopy(ctx context.Context, j *fsjail.Jail, userID string, 
 			return fmt.Errorf("files: merge %s: %w", from, err)
 		}
 		if status == "overwritten" {
-			s.changed(ctx, userID, target, false)
+			s.changed(ctx, j, userID, target, false)
 		}
 	}
 	return nil

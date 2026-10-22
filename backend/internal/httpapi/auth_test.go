@@ -249,7 +249,11 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 		Versions: env.versions, EditorMaxFileSize: cfg.EditorMaxFileSize,
 		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) },
 		OnShareUpload: func(_ context.Context, p upload.Principal, path fsjail.VPath, size int64) {
-			env.share.RecordUpload(p.ShareID, p.UserID, p.IP, p.UserAgent, string(p.ShareDest), string(path), size)
+			var byID *string
+			if p.RecipientID != "" {
+				byID = &p.RecipientID
+			}
+			env.share.RecordUploadBy(p.ShareID, p.UserID, p.IP, p.UserAgent, string(p.ShareDest), string(path), size, p.Recipient, byID)
 		},
 		Publish: env.events.Publish, RequestID: RequestIDFrom, Logger: logger, Now: clock.Now})
 	if err != nil {

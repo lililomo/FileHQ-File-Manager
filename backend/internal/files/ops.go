@@ -34,7 +34,7 @@ func (s *Service) rename(ctx context.Context, j *fsjail.Jail, userID string, p f
 	if newPath == p {
 		return nil, &ValidationError{Reason: "same_name", Path: string(p), Fields: map[string]string{"newName": "unchanged"}}
 	}
-	release, err := s.lock(ctx, userID, "rename", fsjail.Write, p, newPath)
+	release, err := s.lock(ctx, j, userID, "rename", fsjail.Write, p, newPath)
 	if err != nil {
 		return nil, err
 	}
@@ -57,10 +57,10 @@ func (s *Service) rename(ctx context.Context, j *fsjail.Jail, userID string, p f
 		action = ActUndo
 	}
 	if err := s.repo.WithTx(ctx, func(tx db.Repository) error {
-		if err := UpdateReferences(ctx, tx, userID, string(p), string(newPath)); err != nil {
+		if err := UpdateReferences(ctx, tx, userID, string(j.Abs(p)), string(j.Abs(newPath))); err != nil {
 			return err
 		}
-		s.logActivity(ctx, tx, userID, action, string(p), string(newPath), map[string]any{"op": ActRename, "isDir": info.IsDir}, "")
+		s.logActivity(ctx, tx, userID, action, string(j.Abs(p)), string(j.Abs(newPath)), map[string]any{"op": ActRename, "isDir": info.IsDir}, "")
 		return nil
 	}); err != nil {
 		s.logger.ErrorContext(ctx, "reference update failed; rolling back rename", slog.String("path", string(p)), slog.String("error", err.Error()))
@@ -69,13 +69,13 @@ func (s *Service) rename(ctx context.Context, j *fsjail.Jail, userID string, p f
 		}
 		return nil, fmt.Errorf("files: rename references: %w", err)
 	}
-	s.changed(ctx, userID, p, info.IsDir)
+	s.changed(ctx, j, userID, p, info.IsDir)
 	res := &Result{Results: []ItemResult{{Path: string(p), To: string(newPath), Status: "ok", IsDir: info.IsDir, Warnings: warnings}}, Warnings: warnings}
 	if res.Warnings == nil {
 		res.Warnings = []string{}
 	}
 	if recordUndo {
-		s.withUndo(ctx, res, userID, UndoInfo{Kind: "rename", Path: string(newPath), NewName: p.Base()})
+		s.withUndo(ctx, j, res, userID, UndoInfo{Kind: "rename", Path: string(newPath), NewName: p.Base()})
 	}
 	return res, nil
 }
@@ -202,7 +202,7 @@ func (s *Service) move(ctx context.Context, j *fsjail.Jail, userID string, paths
 	for _, it := range items {
 		lockPaths = append(lockPaths, it.src, it.dst)
 	}
-	release, err := s.lock(ctx, userID, "move", fsjail.Write, lockPaths...)
+	release, err := s.lock(ctx, j, userID, "move", fsjail.Write, lockPaths...)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +287,7 @@ func (s *Service) move(ctx context.Context, j *fsjail.Jail, userID string, paths
 				progress(itemBytes) // same-device rename moved everything at once
 			}
 			if err := s.repo.WithTx(ctx, func(tx db.Repository) error {
-				return UpdateReferences(ctx, tx, userID, string(it.src), string(dst))
+				return UpdateReferences(ctx, tx, userID, string(j.Abs(it.src)), string(j.Abs(dst)))
 			}); err != nil {
 				s.logger.ErrorContext(ctx, "reference update failed; rolling back move", slog.String("path", string(it.src)), slog.String("error", err.Error()))
 				if rerr := j.MoveTree(ctx, dst, it.src, nil); rerr != nil {
@@ -308,10 +308,10 @@ func (s *Service) move(ctx context.Context, j *fsjail.Jail, userID string, paths
 				}
 			}
 		}
-		s.logActivity(ctx, s.repo, userID, action, string(it.src), string(dst), map[string]any{"op": ActMove, "status": r.Status, "isDir": it.info.IsDir}, "")
-		s.changed(ctx, userID, it.src, it.info.IsDir)
+		s.logActivity(ctx, s.repo, userID, action, string(j.Abs(it.src)), string(j.Abs(dst)), map[string]any{"op": ActMove, "status": r.Status, "isDir": it.info.IsDir}, "")
+		s.changed(ctx, j, userID, it.src, it.info.IsDir)
 		if r.Status == "overwritten" || r.Status == "merged" {
-			s.changed(ctx, userID, dst, it.info.IsDir)
+			s.changed(ctx, j, userID, dst, it.info.IsDir)
 		}
 		s.invalidateDir(userID, to)
 		res.Results = append(res.Results, r)
@@ -320,7 +320,7 @@ func (s *Service) move(ctx context.Context, j *fsjail.Jail, userID string, paths
 		}
 	}
 	if recordUndo && len(undoItems) > 0 {
-		s.withUndo(ctx, res, userID, UndoInfo{Kind: "move", Items: undoItems})
+		s.withUndo(ctx, j, res, userID, UndoInfo{Kind: "move", Items: undoItems})
 	}
 	return res, nil
 }
@@ -343,7 +343,7 @@ func onSameDevice(j *fsjail.Jail, items []plannedItem, to fsjail.VPath) bool {
 // moveExact moves from to the exact path to (undo of a move, which may have
 // given the item a "(n)" name). The destination must be free.
 func (s *Service) moveExact(ctx context.Context, j *fsjail.Jail, userID string, from, to fsjail.VPath) (*ItemResult, error) {
-	release, err := s.lock(ctx, userID, "undo", fsjail.Write, from, to)
+	release, err := s.lock(ctx, j, userID, "undo", fsjail.Write, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -366,10 +366,10 @@ func (s *Service) moveExact(ctx context.Context, j *fsjail.Jail, userID string, 
 		return nil, err
 	}
 	if err := s.repo.WithTx(ctx, func(tx db.Repository) error {
-		if err := UpdateReferences(ctx, tx, userID, string(from), string(to)); err != nil {
+		if err := UpdateReferences(ctx, tx, userID, string(j.Abs(from)), string(j.Abs(to))); err != nil {
 			return err
 		}
-		s.logActivity(ctx, tx, userID, ActUndo, string(from), string(to), map[string]any{"op": ActMove}, "")
+		s.logActivity(ctx, tx, userID, ActUndo, string(j.Abs(from)), string(j.Abs(to)), map[string]any{"op": ActMove}, "")
 		return nil
 	}); err != nil {
 		if rerr := j.MoveTree(ctx, to, from, nil); rerr != nil {
@@ -377,7 +377,7 @@ func (s *Service) moveExact(ctx context.Context, j *fsjail.Jail, userID string, 
 		}
 		return nil, fmt.Errorf("files: undo move references: %w", err)
 	}
-	s.changed(ctx, userID, from, info.IsDir)
+	s.changed(ctx, j, userID, from, info.IsDir)
 	s.invalidateDir(userID, to.Dir())
 	return &ItemResult{Path: string(from), To: string(to), Status: "ok", IsDir: info.IsDir}, nil
 }
@@ -422,7 +422,7 @@ func (s *Service) mergeMove(ctx context.Context, j *fsjail.Jail, userID string, 
 			return err
 		}
 		if err := s.repo.WithTx(ctx, func(tx db.Repository) error {
-			return UpdateReferences(ctx, tx, userID, string(from), string(target))
+			return UpdateReferences(ctx, tx, userID, string(j.Abs(from)), string(j.Abs(target)))
 		}); err != nil {
 			s.logger.ErrorContext(ctx, "reference update failed; rolling back merged entry", slog.String("path", string(from)), slog.String("error", err.Error()))
 			if rerr := j.MoveTree(ctx, target, from, nil); rerr != nil {
@@ -430,7 +430,7 @@ func (s *Service) mergeMove(ctx context.Context, j *fsjail.Jail, userID string, 
 			}
 			return fmt.Errorf("files: merge references: %w", err)
 		}
-		s.changed(ctx, userID, from, e.IsDir)
+		s.changed(ctx, j, userID, from, e.IsDir)
 	}
 	// The merged folder itself disappears; its own metadata goes with it.
 	if err := j.Remove(src); err != nil {
@@ -440,7 +440,7 @@ func (s *Service) mergeMove(ctx context.Context, j *fsjail.Jail, userID string, 
 		return err
 	}
 	return s.repo.WithTx(ctx, func(tx db.Repository) error {
-		return DeleteReferences(ctx, tx, userID, string(src))
+		return DeleteReferences(ctx, tx, userID, string(j.Abs(src)))
 	})
 }
 
@@ -469,7 +469,7 @@ func (s *Service) Symlink(ctx context.Context, j *fsjail.Jail, userID string, li
 	if strings.HasPrefix(target, "/") {
 		return nil, &ValidationError{Reason: "target_absolute", Path: string(link), Fields: map[string]string{"target": "must be relative"}}
 	}
-	release, err := s.lock(ctx, userID, "symlink", fsjail.Write, link)
+	release, err := s.lock(ctx, j, userID, "symlink", fsjail.Write, link)
 	if err != nil {
 		return nil, err
 	}
@@ -483,13 +483,13 @@ func (s *Service) Symlink(ctx context.Context, j *fsjail.Jail, userID string, li
 	if err := j.Symlink(target, link); err != nil {
 		return nil, err
 	}
-	s.logActivity(ctx, s.repo, userID, ActSymlink, string(link), "", map[string]any{"target": target}, "")
+	s.logActivity(ctx, s.repo, userID, ActSymlink, string(j.Abs(link)), "", map[string]any{"target": target}, "")
 	s.invalidateDir(userID, link.Dir())
 	if warnings == nil {
 		warnings = []string{}
 	}
 	res := &Result{Results: []ItemResult{{Path: string(link), Status: "ok", Warnings: warnings}}, Warnings: warnings}
-	s.withUndo(ctx, res, userID, UndoInfo{Kind: "delete_created", Created: []string{string(link)}})
+	s.withUndo(ctx, j, res, userID, UndoInfo{Kind: "delete_created", Created: []string{string(link)}})
 	return res, nil
 }
 
@@ -527,7 +527,7 @@ func (s *Service) Chmod(ctx context.Context, j *fsjail.Jail, userID string, req 
 			return nil, &ValidationError{Reason: "root", Path: string(p), Fields: map[string]string{"paths": "root"}}
 		}
 	}
-	release, err := s.lock(ctx, userID, "chmod", fsjail.Write, paths...)
+	release, err := s.lock(ctx, j, userID, "chmod", fsjail.Write, paths...)
 	if err != nil {
 		return nil, err
 	}
@@ -573,7 +573,7 @@ func (s *Service) Chmod(ctx context.Context, j *fsjail.Jail, userID string, req 
 				return res, err
 			}
 		}
-		s.logActivity(ctx, s.repo, userID, ActChmod, string(p), "", map[string]any{"mode": fmt.Sprintf("%04o", req.Mode), "recursive": req.Recursive && info.IsDir}, "")
+		s.logActivity(ctx, s.repo, userID, ActChmod, string(j.Abs(p)), "", map[string]any{"mode": fmt.Sprintf("%04o", req.Mode), "recursive": req.Recursive && info.IsDir}, "")
 		s.invalidateDir(userID, p.Dir())
 		if req.Recursive && info.IsDir {
 			s.invalidateDir(userID, p)
@@ -585,10 +585,17 @@ func (s *Service) Chmod(ctx context.Context, j *fsjail.Jail, userID string, req 
 
 // Delete moves paths to the Recycle Bin (SPEC §8.5 "Delete ke Recycle Bin").
 func (s *Service) Delete(ctx context.Context, j *fsjail.Jail, userID string, paths []fsjail.VPath) (*Result, error) {
-	return s.delete(ctx, j, userID, paths, true)
+	return s.delete(ctx, j, userID, paths, true, "")
 }
 
-func (s *Service) delete(ctx context.Context, j *fsjail.Jail, userID string, paths []fsjail.VPath, recordUndo bool) (*Result, error) {
+// DeleteAs is Delete performed by actorID on userID's files (a share
+// recipient with editor permission, Step 18b): the items land in the owner's
+// Recycle Bin with deleted_by = actorID.
+func (s *Service) DeleteAs(ctx context.Context, j *fsjail.Jail, userID, actorID string, paths []fsjail.VPath) (*Result, error) {
+	return s.delete(ctx, j, userID, paths, true, actorID)
+}
+
+func (s *Service) delete(ctx context.Context, j *fsjail.Jail, userID string, paths []fsjail.VPath, recordUndo bool, deletedBy string) (*Result, error) {
 	if s.trash == nil {
 		return nil, errors.New("files: trash store not configured")
 	}
@@ -606,7 +613,7 @@ func (s *Service) delete(ctx context.Context, j *fsjail.Jail, userID string, pat
 	}
 	// A nested selection (/a and /a/b) only needs the ancestor.
 	paths = dropDescendants(paths)
-	release, err := s.lock(ctx, userID, "delete", fsjail.Write, paths...)
+	release, err := s.lock(ctx, j, userID, "delete", fsjail.Write, paths...)
 	if err != nil {
 		return nil, err
 	}
@@ -624,20 +631,20 @@ func (s *Service) delete(ctx context.Context, j *fsjail.Jail, userID string, pat
 		if err != nil {
 			return res, err
 		}
-		row, err := s.trash.MoveToTrash(ctx, j, userID, p, TrashKind(p.Base(), info.IsDir), batchID)
+		row, err := s.trash.MoveToTrashBy(ctx, j, userID, p, TrashKind(p.Base(), info.IsDir), batchID, deletedBy)
 		if err != nil {
 			return res, err
 		}
 		if s.TrashHook != nil {
-			s.TrashHook.Trashed(ctx, userID, string(p))
+			s.TrashHook.Trashed(ctx, userID, string(j.Abs(p)))
 		}
-		s.logActivity(ctx, s.repo, userID, action, string(p), "", map[string]any{"op": ActDelete, "trashId": row.ID, "size": row.SizeBytes, "isDir": info.IsDir}, batchID)
-		s.changed(ctx, userID, p, info.IsDir)
+		s.logActivity(ctx, s.repo, userID, action, string(j.Abs(p)), "", map[string]any{"op": ActDelete, "trashId": row.ID, "size": row.SizeBytes, "isDir": info.IsDir, "deletedBy": deletedBy}, batchID)
+		s.changed(ctx, j, userID, p, info.IsDir)
 		res.Results = append(res.Results, ItemResult{Path: string(p), Status: "ok", IsDir: info.IsDir, TrashID: row.ID})
 		undoItems = append(undoItems, UndoTrashItem{ID: row.ID, Path: string(p)})
 	}
 	if recordUndo && len(undoItems) > 0 {
-		s.withUndo(ctx, res, userID, UndoInfo{Kind: "restore", BatchID: batchID, Trash: undoItems})
+		s.withUndo(ctx, j, res, userID, UndoInfo{Kind: "restore", BatchID: batchID, Trash: undoItems})
 	}
 	return res, nil
 }
@@ -707,7 +714,7 @@ func (s *Service) Undo(ctx context.Context, j *fsjail.Jail, userID, token string
 			if perr != nil {
 				return nil, perr
 			}
-			release, lerr := s.lock(ctx, userID, "restore", fsjail.Write, p)
+			release, lerr := s.lock(ctx, j, userID, "restore", fsjail.Write, p)
 			if lerr != nil {
 				return res, lerr
 			}
@@ -717,11 +724,11 @@ func (s *Service) Undo(ctx context.Context, j *fsjail.Jail, userID, token string
 				err = rerr
 				break
 			}
-			s.logActivity(ctx, s.repo, userID, ActRestore, string(p), "", map[string]any{"trashId": t.ID, "undo": true}, info.BatchID)
+			s.logActivity(ctx, s.repo, userID, ActRestore, string(j.Abs(p)), "", map[string]any{"trashId": t.ID, "undo": true}, info.BatchID)
 			if s.TrashHook != nil {
-				s.TrashHook.Restored(ctx, userID, string(p))
+				s.TrashHook.Restored(ctx, userID, string(j.Abs(p)))
 			}
-			s.changed(ctx, userID, p, false)
+			s.changed(ctx, j, userID, p, false)
 			res.Results = append(res.Results, ItemResult{Path: string(p), Status: "ok", TrashID: t.ID})
 		}
 	case "delete_created":
@@ -733,7 +740,7 @@ func (s *Service) Undo(ctx context.Context, j *fsjail.Jail, userID, token string
 			}
 			paths = append(paths, p)
 		}
-		res, err = s.delete(ctx, j, userID, paths, false)
+		res, err = s.delete(ctx, j, userID, paths, false, "")
 	case "batch_rename":
 		pairs := make([]renamePair, 0, len(info.Items))
 		for _, it := range info.Items {

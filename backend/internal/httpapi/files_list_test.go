@@ -153,7 +153,7 @@ func TestFilesListAC(t *testing.T) {
 		{"path=/&limit=1001", "VALIDATION_FAILED", 400},
 		{"path=/&types=nope", "VALIDATION_FAILED", 400},
 		{"path=/&cursor=garbage", "VALIDATION_FAILED", 400},
-		{"path=/&share=abc", "VALIDATION_FAILED", 400},
+		{"path=/&share=abc", "NOT_FOUND", 404}, // Step 18b: unknown share id
 	} {
 		r = env.call(http.MethodGet, "/api/v1/files/list?"+c.q, "203.0.113.5:1", nil, nil, ck)
 		if r.rec.Code != c.status || r.code(t) != c.code {

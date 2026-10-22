@@ -71,3 +71,14 @@ UPDATE users SET deleted_at = ?, status = 'disabled', updated_at = ? WHERE id = 
 
 -- name: HardDeleteUser :exec
 DELETE FROM users WHERE id = ?;
+
+-- name: SuggestUsers :many
+-- Step 18b: username autocomplete for sharing (active users only, never the
+-- caller). Username prefix or display-name substring; the parser has no
+-- LIKE ... ESCAPE, so prefix_len/prefix/needle are computed in Go.
+SELECT id, username, display_name FROM users
+WHERE deleted_at IS NULL AND status = 'active' AND id <> sqlc.arg('self_id')
+  AND (substr(username, 1, sqlc.arg('prefix_len')) = sqlc.arg('prefix')
+       OR instr(lower(display_name), sqlc.arg('needle')) > 0)
+ORDER BY username
+LIMIT sqlc.arg('lim');

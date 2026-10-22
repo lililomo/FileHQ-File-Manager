@@ -222,6 +222,8 @@ func (s *Server) mountAPI(api chi.Router) {
 		s.mountSubtitle(api)
 		s.mountMediaPosition(api)
 		s.mountShares(api)
+		s.mountSharedWithMe(api)
+		s.mountShareUpload(api)
 		s.mountPublicShares(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {

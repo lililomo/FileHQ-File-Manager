@@ -361,6 +361,61 @@ func (q *Queries) SoftDeleteUser(ctx context.Context, arg SoftDeleteUserParams) 
 	return err
 }
 
+const suggestUsers = `-- name: SuggestUsers :many
+SELECT id, username, display_name FROM users
+WHERE deleted_at IS NULL AND status = 'active' AND id <> ?1
+  AND (substr(username, 1, ?2) = ?3
+       OR instr(lower(display_name), ?4) > 0)
+ORDER BY username
+LIMIT ?5
+`
+
+type SuggestUsersParams struct {
+	SelfID    string `json:"self_id"`
+	PrefixLen int64  `json:"prefix_len"`
+	Prefix    string `json:"prefix"`
+	Needle    string `json:"needle"`
+	Lim       int64  `json:"lim"`
+}
+
+type SuggestUsersRow struct {
+	ID          string `json:"id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+}
+
+// Step 18b: username autocomplete for sharing (active users only, never the
+// caller). Username prefix or display-name substring; the parser has no
+// LIKE ... ESCAPE, so prefix_len/prefix/needle are computed in Go.
+func (q *Queries) SuggestUsers(ctx context.Context, arg SuggestUsersParams) ([]SuggestUsersRow, error) {
+	rows, err := q.db.QueryContext(ctx, suggestUsers,
+		arg.SelfID,
+		arg.PrefixLen,
+		arg.Prefix,
+		arg.Needle,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SuggestUsersRow{}
+	for rows.Next() {
+		var i SuggestUsersRow
+		if err := rows.Scan(&i.ID, &i.Username, &i.DisplayName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateUserPassword = `-- name: UpdateUserPassword :exec
 UPDATE users
 SET password_hash = ?, must_change_password = ?, password_changed_at = ?, updated_at = ?

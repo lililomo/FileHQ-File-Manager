@@ -147,14 +147,15 @@ func (s *Server) handleArchiveEntryContent(w http.ResponseWriter, r *http.Reques
 		WriteError(w, r, CodeDependencyMissing, 0, "archive preview is not available", nil)
 		return
 	}
-	p, userID, ok := s.verifySigned(w, r, download.PurposeEntry)
+	p, ss, ok := s.verifySigned(w, r, download.PurposeEntry)
 	if !ok {
 		return
 	}
-	u, ok := s.signedUser(w, r, userID)
-	if !ok {
+	if ss.Share != nil {
+		WriteError(w, r, CodeSignatureInvalid, 0, "unsupported scope", nil)
 		return
 	}
+	u := ss.User
 	password, encoding := "", "auto"
 	if id := r.URL.Query().Get("sess"); id != "" {
 		sess, ok := s.archives.Session(id, u.ID, p.Path)

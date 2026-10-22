@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"kppbwi.app/filemanager/internal/files"
+	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/listing"
 	"kppbwi.app/filemanager/internal/media"
 )
@@ -44,11 +45,13 @@ type mediaInfoExif struct {
 
 // handleFilesMediaInfo: GET /files/media-info?path&include_gps=1.
 func (s *Server) handleFilesMediaInfo(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
+	q := r.URL.Query()
+	j, sc, release, ok := s.scoped(w, r)
+	if !ok {
 		return
 	}
-	q := r.URL.Query()
-	p, ok := cleanPath(w, r, q.Get("path"))
+	defer release()
+	p, ok := sc.path(w, r, q.Get("path"))
 	if !ok {
 		return
 	}
@@ -57,11 +60,7 @@ func (s *Server) handleFilesMediaInfo(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, CodeValidationFailed, 0, "include_gps must be a boolean", map[string]any{"fields": map[string]any{"include_gps": "invalid"}})
 		return
 	}
-	j, u, release, ok := s.userJail(w, r)
-	if !ok {
-		return
-	}
-	defer release()
+	u := sc.Owner
 	// symlinks to files inside the jail are followed, like /files/raw
 	info, err := j.Stat(p)
 	if err != nil {
@@ -80,6 +79,26 @@ func (s *Server) handleFilesMediaInfo(w http.ResponseWriter, r *http.Request) {
 	if s.media == nil || !media.Probeable(string(ti.Category)) {
 		WriteJSON(w, http.StatusOK, out)
 		return
+	}
+	subtitleJail, subtitleScope := j, sc.signScope()
+	if sc.Shared() {
+		// the metadata cache is keyed by the owner's absolute path: probe
+		// through the owner's jail after the sub-root check above
+		abs := j.Abs(p)
+		oj, orelease, err := s.jails.acquire(s.cfg.StorageRoot, sc.Owner)
+		if err != nil {
+			WriteJSON(w, http.StatusOK, out)
+			return
+		}
+		defer orelease()
+		ainfo, err := oj.Stat(abs)
+		if err != nil {
+			WriteJSON(w, http.StatusOK, out)
+			return
+		}
+		ainfo.Path = abs
+		j, info = oj, ainfo
+		includeGPS = false // recipients never get the location (like guests)
 	}
 	row, _, err := s.media.Ensure(r.Context(), j, u.ID, info)
 	if err != nil {
@@ -114,7 +133,11 @@ func (s *Server) handleFilesMediaInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if out.Kind == media.KindVideo {
-		out.Subtitles = s.subtitlesFor(j, u.ID, info)
+		if sc.FileShare() {
+			out.Subtitles = []subtitleTrack{}
+		} else {
+			out.Subtitles = s.subtitlesFor(subtitleJail, subtitleScope, sidecarInfo(info, p))
+		}
 	}
 	if out.Kind == media.KindImage {
 		if ex := s.media.ExifFor(r.Context(), j, u.ID, info, row); ex != nil {
@@ -125,4 +148,11 @@ func (s *Server) handleFilesMediaInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	WriteJSON(w, http.StatusOK, out)
+}
+
+// sidecarInfo is the video's Info addressed inside the jail used for sidecar
+// lookup (the share sub-root uses the relative path).
+func sidecarInfo(info fsjail.Info, p fsjail.VPath) fsjail.Info {
+	info.Path = p
+	return info
 }

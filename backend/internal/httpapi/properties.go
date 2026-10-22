@@ -48,7 +48,7 @@ func (s *Server) handleFilesDeletePermanent(w http.ResponseWriter, r *http.Reque
 		s.writeOpsError(w, r, err)
 		return
 	}
-	out := s.opView(r, j, u.ID, &res.Result, "")
+	out := s.opView(r, j, ownScope(u), &res.Result, "")
 	out["deleted"] = res.Deleted
 	out["bytesFreed"] = res.BytesFreed
 	WriteJSON(w, http.StatusOK, out)

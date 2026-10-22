@@ -34,6 +34,51 @@ type ShareRepo interface {
 	ListShareAccessLogs(ctx context.Context, shareID string, beforeID, limit int64) ([]sqlc.ShareAccessLog, error)
 	CountShareAccessLogs(ctx context.Context, shareID, action, since string) (int64, error)
 	DeleteShareAccessLogsBefore(ctx context.Context, before string) (int64, error)
+	// Step 18b: recipients of mode=users shares.
+	InsertShareRecipient(ctx context.Context, p sqlc.InsertShareRecipientParams) error
+	DeleteShareRecipient(ctx context.Context, shareID, userID string) (int64, error)
+	DeleteShareRecipients(ctx context.Context, shareID string) (int64, error)
+	GetShareRecipient(ctx context.Context, shareID, userID string) (sqlc.ShareRecipient, error)
+	ListShareRecipients(ctx context.Context, shareID string) ([]sqlc.ListShareRecipientsRow, error)
+	ListShareRecipientsForShares(ctx context.Context, ids []string) ([]sqlc.ListShareRecipientsForSharesRow, error)
+	ListSharesForRecipient(ctx context.Context, userID string) ([]sqlc.ListSharesForRecipientRow, error)
+	GetShareForRecipient(ctx context.Context, userID, shareID string) (sqlc.GetShareForRecipientRow, error)
+	SetShareAllowReshare(ctx context.Context, id string, allow int64) error
+}
+
+func (s *Store) InsertShareRecipient(ctx context.Context, p sqlc.InsertShareRecipientParams) error {
+	return s.w.InsertShareRecipient(ctx, p)
+}
+
+func (s *Store) DeleteShareRecipient(ctx context.Context, shareID, userID string) (int64, error) {
+	return s.w.DeleteShareRecipient(ctx, sqlc.DeleteShareRecipientParams{ShareID: shareID, RecipientUserID: userID})
+}
+
+func (s *Store) DeleteShareRecipients(ctx context.Context, shareID string) (int64, error) {
+	return s.w.DeleteShareRecipients(ctx, shareID)
+}
+
+func (s *Store) GetShareRecipient(ctx context.Context, shareID, userID string) (sqlc.ShareRecipient, error) {
+	return s.r.GetShareRecipient(ctx, sqlc.GetShareRecipientParams{ShareID: shareID, RecipientUserID: userID})
+}
+
+func (s *Store) ListShareRecipients(ctx context.Context, shareID string) ([]sqlc.ListShareRecipientsRow, error) {
+	return s.r.ListShareRecipients(ctx, shareID)
+}
+
+func (s *Store) ListShareRecipientsForShares(ctx context.Context, ids []string) ([]sqlc.ListShareRecipientsForSharesRow, error) {
+	if len(ids) == 0 {
+		return []sqlc.ListShareRecipientsForSharesRow{}, nil
+	}
+	return s.r.ListShareRecipientsForShares(ctx, ids)
+}
+
+func (s *Store) ListSharesForRecipient(ctx context.Context, userID string) ([]sqlc.ListSharesForRecipientRow, error) {
+	return s.r.ListSharesForRecipient(ctx, userID)
+}
+
+func (s *Store) GetShareForRecipient(ctx context.Context, userID, shareID string) (sqlc.GetShareForRecipientRow, error) {
+	return s.r.GetShareForRecipient(ctx, sqlc.GetShareForRecipientParams{RecipientUserID: userID, ID: shareID})
 }
 
 func (s *Store) InsertShare(ctx context.Context, p sqlc.InsertShareParams) (sqlc.Share, error) {
@@ -140,4 +185,12 @@ func (s *Store) CountShareAccessLogs(ctx context.Context, shareID, action, since
 
 func (s *Store) DeleteShareAccessLogsBefore(ctx context.Context, before string) (int64, error) {
 	return s.w.DeleteShareAccessLogsBefore(ctx, before)
+}
+
+func (s *Store) SuggestUsers(ctx context.Context, selfID, prefix, needle string, limit int64) ([]sqlc.SuggestUsersRow, error) {
+	return s.r.SuggestUsers(ctx, sqlc.SuggestUsersParams{SelfID: selfID, PrefixLen: int64(len(prefix)), Prefix: prefix, Needle: needle, Lim: limit})
+}
+
+func (s *Store) SetShareAllowReshare(ctx context.Context, id string, allow int64) error {
+	return s.w.SetShareAllowReshare(ctx, sqlc.SetShareAllowReshareParams{AllowReshare: allow, ID: id})
 }

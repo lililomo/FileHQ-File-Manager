@@ -257,3 +257,14 @@ func checkVPath(p VPath) error {
 	}
 	return nil
 }
+
+// JoinPath appends a cleaned relative path to dir ("/" + "/a/b" → "/a/b").
+func (v VPath) JoinPath(rel VPath) VPath {
+	if rel.IsRoot() {
+		return v
+	}
+	if v.IsRoot() {
+		return rel
+	}
+	return VPath(string(v) + string(rel))
+}

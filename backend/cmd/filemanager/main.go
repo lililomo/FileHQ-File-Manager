@@ -425,7 +425,11 @@ func runServe(envFile string, noMigrate bool) int {
 			}
 		},
 		OnShareUpload: func(_ context.Context, p upload.Principal, path fsjail.VPath, size int64) {
-			shareSvc.RecordUpload(p.ShareID, p.UserID, p.IP, p.UserAgent, string(p.ShareDest), string(path), size)
+			var byID *string
+			if p.RecipientID != "" {
+				byID = &p.RecipientID
+			}
+			shareSvc.RecordUploadBy(p.ShareID, p.UserID, p.IP, p.UserAgent, string(p.ShareDest), string(path), size, p.Recipient, byID)
 		},
 		Publish:   broker.Publish,
 		RequestID: httpapi.RequestIDFrom,

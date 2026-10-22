@@ -39,6 +39,10 @@ type UserRepo interface {
 	CreateUser(ctx context.Context, p sqlc.CreateUserParams) (sqlc.User, error)
 	GetUserByID(ctx context.Context, id string) (sqlc.User, error)
 	GetUserByUsername(ctx context.Context, username string) (sqlc.User, error)
+	// SuggestUsers is the sharing autocomplete (Step 18b): active users whose
+	// username starts with prefix or whose display name contains needle
+	// (lower-case), never selfID.
+	SuggestUsers(ctx context.Context, selfID, prefix, needle string, limit int64) ([]sqlc.SuggestUsersRow, error)
 	ListUsers(ctx context.Context, f UserFilter, limit, offset int64) ([]sqlc.User, error)
 	CountUsers(ctx context.Context, f UserFilter) (int64, error)
 	CountAllUsers(ctx context.Context) (int64, error)

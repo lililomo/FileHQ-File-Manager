@@ -113,12 +113,15 @@ func (s *Server) handleUploadPrecheck(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	j, u, release, ok := s.userJail(w, r)
+	j, sc, release, ok := s.scoped(w, r)
 	if !ok {
 		return
 	}
 	defer release()
-	res, uerr := s.upload.Precheck(r.Context(), j, u.ID, dest, req.Files)
+	if !sc.requireEditor(w, r) || !sc.requireFolderShare(w, r) {
+		return
+	}
+	res, uerr := s.upload.Precheck(r.Context(), j, sc.Owner.ID, dest, req.Files)
 	if uerr != nil {
 		s.writeUploadError(w, r, uerr)
 		return

@@ -212,7 +212,16 @@ func (s *Store) markDirty(ctx context.Context, userID string) {
 // (SPEC §4.3 ordering: DB soft, then FS; the row is removed if the move
 // fails). kind must be one of Kinds; batchID groups one request. The quota
 // moves size from used to trash.
+// MoveToTrash is MoveToTrashBy without an actor (the owner deleted it).
 func (s *Store) MoveToTrash(ctx context.Context, j *fsjail.Jail, userID string, p fsjail.VPath, kind, batchID string) (sqlc.TrashItem, error) {
+	return s.MoveToTrashBy(ctx, j, userID, p, kind, batchID, "")
+}
+
+// MoveToTrashBy moves p into userID's Recycle Bin. deletedBy is the acting
+// user when it is not the owner (a share recipient with editor permission,
+// Step 18b). original_path is keyed by the owner's root even when j is a
+// share sub-root.
+func (s *Store) MoveToTrashBy(ctx context.Context, j *fsjail.Jail, userID string, p fsjail.VPath, kind, batchID, deletedBy string) (sqlc.TrashItem, error) {
 	if !Kinds[kind] {
 		kind = "other"
 	}
@@ -227,7 +236,7 @@ func (s *Store) MoveToTrash(ctx context.Context, j *fsjail.Jail, userID string, 
 	bytes, count, complete := s.Measure(ctx, j, info)
 	now := s.now()
 	row := sqlc.TrashItem{
-		ID: db.NewID(), UserID: userID, OriginalPath: string(p), Name: p.Base(), SizeBytes: bytes, ItemCount: count,
+		ID: db.NewID(), UserID: userID, OriginalPath: string(j.Abs(p)), Name: p.Base(), SizeBytes: bytes, ItemCount: count,
 		Kind: kind, DeletedAt: db.FormatTime(now),
 	}
 	if info.IsDir {
@@ -242,10 +251,13 @@ func (s *Store) MoveToTrash(ctx context.Context, j *fsjail.Jail, userID string, 
 	if batchID != "" {
 		row.BatchID = &batchID
 	}
+	if deletedBy != "" && deletedBy != userID {
+		row.DeletedBy = &deletedBy
+	}
 	if err := s.repo.InsertTrashItem(ctx, sqlc.InsertTrashItemParams{
 		ID: row.ID, UserID: row.UserID, OriginalPath: row.OriginalPath, Name: row.Name, IsDir: row.IsDir,
 		SizeBytes: row.SizeBytes, ItemCount: row.ItemCount, Kind: row.Kind, DeletedAt: row.DeletedAt,
-		ExpiresAt: row.ExpiresAt, BatchID: row.BatchID,
+		ExpiresAt: row.ExpiresAt, BatchID: row.BatchID, DeletedBy: row.DeletedBy,
 	}); err != nil {
 		return sqlc.TrashItem{}, fmt.Errorf("trash: insert row: %w", err)
 	}

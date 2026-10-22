@@ -70,6 +70,11 @@ type Principal struct {
 	ShareDest fsjail.VPath
 	IP        string
 	UserAgent string
+	// Recipient (Step 18b): a share recipient with editor permission uploads
+	// as the owner into the shared folder; the client path is relative to
+	// the share, the conflict policy is honoured, the recipient is journaled.
+	Recipient   string // username
+	RecipientID string
 }
 
 type ctxKey int
@@ -368,6 +373,30 @@ func (s *Service) parseMetadata(md handler.MetaData, p Principal) (metadata, *Er
 		return m, newErr(CodeNameInvalid, http.StatusBadRequest, "invalid file name", map[string]any{"reason": reason, "name": name, "fields": map[string]string{"filename": reason}})
 	}
 	m.Name, m.Warnings = name, warnings
+	if p.ShareID != "" && p.RecipientID != "" {
+		// share recipient (editor): destination = shared folder + client path
+		rel, cerr := fsjail.Clean(pick(md, "path", "dest"))
+		if cerr != nil {
+			return m, newErr(CodePathInvalid, http.StatusBadRequest, "invalid destination path", map[string]any{"fields": map[string]string{"path": "invalid"}})
+		}
+		m.Dest = p.ShareDest.JoinPath(rel)
+		segs, perr := splitRelative(pick(md, "relativePath", "relPath"))
+		if perr != nil {
+			return m, perr
+		}
+		m.RelPath = segs
+		pol, ok := files.ParsePolicy(pick(md, "onConflict", "conflict"))
+		if !ok {
+			pol = files.PolicyRename
+		}
+		m.Policy = pol
+		if raw := pick(md, "lastModified"); raw != "" {
+			if ms, err := strconv.ParseInt(raw, 10, 64); err == nil && ms >= 0 {
+				m.LastModified = &ms
+			}
+		}
+		return m, nil
+	}
 	if p.ShareID != "" {
 		// file request: the destination is the shared folder, conflicts always
 		// rename (a guest can never overwrite), only relativePath/lastModified

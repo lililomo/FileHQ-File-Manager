@@ -18,6 +18,7 @@ import (
 	"kppbwi.app/filemanager/internal/media"
 	"kppbwi.app/filemanager/internal/meta"
 	"kppbwi.app/filemanager/internal/quota"
+	"kppbwi.app/filemanager/internal/share"
 )
 
 // scopeOwn is the listing scope of a user's own files; share/as_user scopes
@@ -116,9 +117,6 @@ func (s *Server) writeListingError(w http.ResponseWriter, r *http.Request, err e
 }
 
 func (s *Server) handleFilesList(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
-		return
-	}
 	q := r.URL.Query()
 	dir, ok := cleanPath(w, r, q.Get("path"))
 	if !ok {
@@ -178,13 +176,17 @@ func (s *Server) handleFilesList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	j, u, release, ok := s.userJail(w, r)
+	j, sc, release, ok := s.scoped(w, r)
 	if !ok {
 		return
 	}
 	defer release()
+	if !sc.requireFolderShare(w, r) {
+		return
+	}
+	u := sc.Owner
 	res, err := s.listing.List(r.Context(), j, listing.ListRequest{
-		UserID: u.ID, Scope: scopeOwn, Dir: dir, Sort: spec, Cursor: q.Get("cursor"), Limit: limit,
+		UserID: u.ID, Scope: sc.Listing, Dir: dir, Sort: spec, Cursor: q.Get("cursor"), Limit: limit,
 		Hidden: hidden, Filter: filter, Types: types, Tag: tag, Counts: counts, Locale: s.userLocale(r, u.ID),
 	})
 	if err != nil {
@@ -195,6 +197,9 @@ func (s *Server) handleFilesList(w http.ResponseWriter, r *http.Request) {
 		// Dimensi/Durasi columns: probe up to MaxSyncProbes files of this page
 		// now; the rest was queued by Annotate (SPEC §8.4, PROMPT Step 8 task 5).
 		s.media.FillPage(r.Context(), j, u.ID, res.Items, media.MaxSyncProbes)
+	}
+	if sc.Shared() && q.Get("cursor") == "" {
+		s.shareAccessLog(r, sc, share.ActList, dir)
 	}
 	WriteJSON(w, http.StatusOK, res)
 }
@@ -269,43 +274,45 @@ func (s *Server) writeBlockedExtension(w http.ResponseWriter, r *http.Request, t
 }
 
 func (s *Server) handleFilesStat(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
-		return
-	}
-	p, ok := cleanPath(w, r, r.URL.Query().Get("path"))
-	if !ok {
-		return
-	}
-	j, u, release, ok := s.userJail(w, r)
+	j, sc, release, ok := s.scoped(w, r)
 	if !ok {
 		return
 	}
 	defer release()
-	it, err := s.listing.Stat(j, u.ID, scopeOwn, p)
+	p, ok := sc.path(w, r, r.URL.Query().Get("path"))
+	if !ok {
+		return
+	}
+	u := sc.Owner
+	it, err := s.listing.Stat(j, u.ID, sc.Listing, p)
 	if err != nil {
 		s.writeListingError(w, r, err, string(p))
 		return
-	}
-	if !p.IsRoot() {
-		s.annotateItems(r, u.ID, []*listing.Item{it})
 	}
 	extra := map[string]any{
 		"stat":          it.StatView(),
 		"warnings":      nameWarnings(p),
 		"versionsCount": 0,
-		"shares":        s.sharesForStat(r, u.ID, p),
+		"shares":        []any{},
 	}
+	if !sc.Shared() {
+		if !p.IsRoot() {
+			s.annotateItems(r, u.ID, []*listing.Item{it})
+		}
+		extra["shares"] = s.sharesForStat(r, u.ID, p)
+	}
+	abs := j.Abs(p)
 	if s.files != nil && !it.IsDir {
 		if info, lerr := j.Lstat(p); lerr == nil {
-			if sums := s.files.CachedChecksums(u.ID, p, info); len(sums) > 0 {
+			if sums := s.files.CachedChecksums(u.ID, abs, info); len(sums) > 0 {
 				extra["checksums"] = sums
 			}
 		}
-		if ds, ok := s.files.CachedDirSize(u.ID, p); ok {
+		if ds, ok := s.files.CachedDirSize(u.ID, abs); ok {
 			extra["dirSize"] = ds
 		}
 	} else if s.files != nil {
-		if ds, ok := s.files.CachedDirSize(u.ID, p); ok {
+		if ds, ok := s.files.CachedDirSize(u.ID, abs); ok {
 			extra["dirSize"] = ds
 		}
 	}
@@ -393,9 +400,6 @@ type mkdirRequest struct {
 }
 
 func (s *Server) handleFilesMkdir(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
-		return
-	}
 	var req mkdirRequest
 	if !ReadJSON(w, r, &req) {
 		return
@@ -404,12 +408,16 @@ func (s *Server) handleFilesMkdir(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	j, u, release, ok := s.userJail(w, r)
+	j, sc, release, ok := s.scoped(w, r)
 	if !ok {
 		return
 	}
 	defer release()
-	unlock, ok := s.lockTarget(w, r, u.ID, "mkdir", target)
+	if !sc.requireEditor(w, r) || !sc.requireFolderShare(w, r) {
+		return
+	}
+	u := sc.Owner
+	unlock, ok := s.lockTarget(w, r, u.ID, "mkdir", j.Abs(target))
 	if !ok {
 		return
 	}
@@ -428,11 +436,9 @@ func (s *Server) handleFilesMkdir(w http.ResponseWriter, r *http.Request) {
 		s.writeListingError(w, r, err, string(target))
 		return
 	}
-	s.invalidateUpTo(u.ID, target.Dir(), req.Parents)
-	if s.files != nil {
-		s.files.RecordActivity(r.Context(), u.ID, files.ActCreate, string(target), "", map[string]any{"isDir": true})
-	}
-	it, err := s.listing.Stat(j, u.ID, scopeOwn, target)
+	s.invalidateScoped(j, sc, target.Dir(), req.Parents)
+	s.activityScoped(r, j, sc, files.ActCreate, target, "", map[string]any{"isDir": true})
+	it, err := s.listing.Stat(j, u.ID, sc.Listing, target)
 	if err != nil {
 		s.writeListingError(w, r, err, string(target))
 		return
@@ -447,9 +453,6 @@ type createRequest struct {
 }
 
 func (s *Server) handleFilesCreate(w http.ResponseWriter, r *http.Request) {
-	if rejectScope(w, r) {
-		return
-	}
 	var req createRequest
 	if !ReadJSON(w, r, &req) {
 		return
@@ -478,12 +481,16 @@ func (s *Server) handleFilesCreate(w http.ResponseWriter, r *http.Request) {
 		s.writeBlockedExtension(w, r, target, ext)
 		return
 	}
-	j, u, release, ok := s.userJail(w, r)
+	j, sc, release, ok := s.scoped(w, r)
 	if !ok {
 		return
 	}
 	defer release()
-	unlock, ok := s.lockTarget(w, r, u.ID, "create", target)
+	if !sc.requireEditor(w, r) || !sc.requireFolderShare(w, r) {
+		return
+	}
+	u := sc.Owner
+	unlock, ok := s.lockTarget(w, r, u.ID, "create", j.Abs(target))
 	if !ok {
 		return
 	}
@@ -522,11 +529,9 @@ func (s *Server) handleFilesCreate(w http.ResponseWriter, r *http.Request) {
 			s.logger.ErrorContext(r.Context(), "quota commit after create failed", slog.String("path", string(target)), slog.String("error", err.Error()))
 		}
 	}
-	s.invalidateUpTo(u.ID, target.Dir(), false)
-	if s.files != nil {
-		s.files.RecordActivity(r.Context(), u.ID, files.ActCreate, string(target), "", map[string]any{"isDir": false, "size": len(content), "template": req.Template})
-	}
-	it, err := s.listing.Stat(j, u.ID, scopeOwn, target)
+	s.invalidateScoped(j, sc, target.Dir(), false)
+	s.activityScoped(r, j, sc, files.ActCreate, target, "", map[string]any{"isDir": false, "size": len(content), "template": req.Template})
+	it, err := s.listing.Stat(j, u.ID, sc.Listing, target)
 	if err != nil {
 		s.writeListingError(w, r, err, string(target))
 		return

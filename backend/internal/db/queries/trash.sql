@@ -1,8 +1,8 @@
 -- name: InsertTrashItem :exec
 INSERT INTO trash_items (
   id, user_id, original_path, name, is_dir, size_bytes, item_count, kind,
-  deleted_at, expires_at, batch_id
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+  deleted_at, expires_at, batch_id, deleted_by
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetTrashItem :one
 SELECT * FROM trash_items WHERE user_id = ? AND id = ?;

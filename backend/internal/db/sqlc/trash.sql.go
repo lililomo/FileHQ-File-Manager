@@ -49,7 +49,7 @@ func (q *Queries) DeleteTrashItemRow(ctx context.Context, arg DeleteTrashItemRow
 }
 
 const getTrashItem = `-- name: GetTrashItem :one
-SELECT id, user_id, original_path, name, is_dir, size_bytes, item_count, kind, deleted_at, expires_at, batch_id, restored_at, purged_at FROM trash_items WHERE user_id = ? AND id = ?
+SELECT id, user_id, original_path, name, is_dir, size_bytes, item_count, kind, deleted_at, expires_at, batch_id, restored_at, purged_at, deleted_by FROM trash_items WHERE user_id = ? AND id = ?
 `
 
 type GetTrashItemParams struct {
@@ -74,6 +74,7 @@ func (q *Queries) GetTrashItem(ctx context.Context, arg GetTrashItemParams) (Tra
 		&i.BatchID,
 		&i.RestoredAt,
 		&i.PurgedAt,
+		&i.DeletedBy,
 	)
 	return i, err
 }
@@ -81,8 +82,8 @@ func (q *Queries) GetTrashItem(ctx context.Context, arg GetTrashItemParams) (Tra
 const insertTrashItem = `-- name: InsertTrashItem :exec
 INSERT INTO trash_items (
   id, user_id, original_path, name, is_dir, size_bytes, item_count, kind,
-  deleted_at, expires_at, batch_id
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  deleted_at, expires_at, batch_id, deleted_by
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertTrashItemParams struct {
@@ -97,6 +98,7 @@ type InsertTrashItemParams struct {
 	DeletedAt    string  `json:"deleted_at"`
 	ExpiresAt    *string `json:"expires_at"`
 	BatchID      *string `json:"batch_id"`
+	DeletedBy    *string `json:"deleted_by"`
 }
 
 func (q *Queries) InsertTrashItem(ctx context.Context, arg InsertTrashItemParams) error {
@@ -112,12 +114,13 @@ func (q *Queries) InsertTrashItem(ctx context.Context, arg InsertTrashItemParams
 		arg.DeletedAt,
 		arg.ExpiresAt,
 		arg.BatchID,
+		arg.DeletedBy,
 	)
 	return err
 }
 
 const listExpiredTrash = `-- name: ListExpiredTrash :many
-SELECT id, user_id, original_path, name, is_dir, size_bytes, item_count, kind, deleted_at, expires_at, batch_id, restored_at, purged_at FROM trash_items
+SELECT id, user_id, original_path, name, is_dir, size_bytes, item_count, kind, deleted_at, expires_at, batch_id, restored_at, purged_at, deleted_by FROM trash_items
 WHERE expires_at IS NOT NULL AND expires_at < ?1
   AND restored_at IS NULL AND purged_at IS NULL
 ORDER BY expires_at, id
@@ -152,6 +155,7 @@ func (q *Queries) ListExpiredTrash(ctx context.Context, arg ListExpiredTrashPara
 			&i.BatchID,
 			&i.RestoredAt,
 			&i.PurgedAt,
+			&i.DeletedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -167,7 +171,7 @@ func (q *Queries) ListExpiredTrash(ctx context.Context, arg ListExpiredTrashPara
 }
 
 const listTrashByBatch = `-- name: ListTrashByBatch :many
-SELECT id, user_id, original_path, name, is_dir, size_bytes, item_count, kind, deleted_at, expires_at, batch_id, restored_at, purged_at FROM trash_items
+SELECT id, user_id, original_path, name, is_dir, size_bytes, item_count, kind, deleted_at, expires_at, batch_id, restored_at, purged_at, deleted_by FROM trash_items
 WHERE user_id = ? AND batch_id = ? AND restored_at IS NULL AND purged_at IS NULL
 ORDER BY deleted_at, id
 `
@@ -200,6 +204,7 @@ func (q *Queries) ListTrashByBatch(ctx context.Context, arg ListTrashByBatchPara
 			&i.BatchID,
 			&i.RestoredAt,
 			&i.PurgedAt,
+			&i.DeletedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -215,7 +220,7 @@ func (q *Queries) ListTrashByBatch(ctx context.Context, arg ListTrashByBatchPara
 }
 
 const listTrashItems = `-- name: ListTrashItems :many
-SELECT id, user_id, original_path, name, is_dir, size_bytes, item_count, kind, deleted_at, expires_at, batch_id, restored_at, purged_at FROM trash_items
+SELECT id, user_id, original_path, name, is_dir, size_bytes, item_count, kind, deleted_at, expires_at, batch_id, restored_at, purged_at, deleted_by FROM trash_items
 WHERE user_id = ? AND restored_at IS NULL AND purged_at IS NULL
 ORDER BY deleted_at DESC, id
 `
@@ -243,6 +248,7 @@ func (q *Queries) ListTrashItems(ctx context.Context, userID string) ([]TrashIte
 			&i.BatchID,
 			&i.RestoredAt,
 			&i.PurgedAt,
+			&i.DeletedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -258,7 +264,7 @@ func (q *Queries) ListTrashItems(ctx context.Context, userID string) ([]TrashIte
 }
 
 const listTrashItemsByIDs = `-- name: ListTrashItemsByIDs :many
-SELECT id, user_id, original_path, name, is_dir, size_bytes, item_count, kind, deleted_at, expires_at, batch_id, restored_at, purged_at FROM trash_items
+SELECT id, user_id, original_path, name, is_dir, size_bytes, item_count, kind, deleted_at, expires_at, batch_id, restored_at, purged_at, deleted_by FROM trash_items
 WHERE user_id = ? AND id IN (/*SLICE:ids*/?)
 `
 
@@ -301,6 +307,7 @@ func (q *Queries) ListTrashItemsByIDs(ctx context.Context, arg ListTrashItemsByI
 			&i.BatchID,
 			&i.RestoredAt,
 			&i.PurgedAt,
+			&i.DeletedBy,
 		); err != nil {
 			return nil, err
 		}

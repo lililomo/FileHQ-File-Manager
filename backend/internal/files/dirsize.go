@@ -135,7 +135,7 @@ func (s *Service) DirSize(ctx context.Context, j *fsjail.Jail, userID string, p 
 	if !res.Partial {
 		s.dirSizes.put(userID, p, res)
 	}
-	s.logActivity(ctx, s.repo, userID, ActDirSize, string(p), "", map[string]any{"size": res.Size, "files": res.Files, "dirs": res.Dirs, "partial": res.Partial}, "")
+	s.logActivity(ctx, s.repo, userID, ActDirSize, string(j.Abs(p)), "", map[string]any{"size": res.Size, "files": res.Files, "dirs": res.Dirs, "partial": res.Partial}, "")
 	return res, nil
 }
 

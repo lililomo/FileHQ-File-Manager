@@ -268,7 +268,7 @@ func (s *Service) applyPairs(ctx context.Context, j *fsjail.Jail, userID string,
 	for _, p := range pairs {
 		lockPaths = append(lockPaths, p.from, p.to)
 	}
-	release, err := s.lock(ctx, userID, "batch_rename", fsjail.Write, lockPaths...)
+	release, err := s.lock(ctx, j, userID, "batch_rename", fsjail.Write, lockPaths...)
 	if err != nil {
 		return nil, err
 	}
@@ -324,17 +324,17 @@ func (s *Service) applyPairs(ctx context.Context, j *fsjail.Jail, userID string,
 	if err := s.repo.WithTx(ctx, func(tx db.Repository) error {
 		// Two phases in the DB as well: old → temp, temp → new.
 		for i, p := range pairs {
-			if err := UpdateReferences(ctx, tx, userID, string(p.from), string(tmpNames[i])); err != nil {
+			if err := UpdateReferences(ctx, tx, userID, string(j.Abs(p.from)), string(j.Abs(tmpNames[i]))); err != nil {
 				return err
 			}
 		}
 		for i, p := range pairs {
-			if err := UpdateReferences(ctx, tx, userID, string(tmpNames[i]), string(p.to)); err != nil {
+			if err := UpdateReferences(ctx, tx, userID, string(j.Abs(tmpNames[i])), string(j.Abs(p.to))); err != nil {
 				return err
 			}
 		}
 		for _, p := range pairs {
-			s.logActivity(ctx, tx, userID, action, string(p.from), string(p.to), map[string]any{"op": ActBatchRename}, batchID)
+			s.logActivity(ctx, tx, userID, action, string(j.Abs(p.from)), string(j.Abs(p.to)), map[string]any{"op": ActBatchRename}, batchID)
 		}
 		return nil
 	}); err != nil {
@@ -348,14 +348,14 @@ func (s *Service) applyPairs(ctx context.Context, j *fsjail.Jail, userID string,
 	var undoItems []UndoItem
 	for _, p := range pairs {
 		info, _ := j.Lstat(p.to)
-		s.changed(ctx, userID, p.from, info.IsDir)
+		s.changed(ctx, j, userID, p.from, info.IsDir)
 		s.invalidateDir(userID, p.to.Dir())
 		res.Results = append(res.Results, ItemResult{Path: string(p.from), To: string(p.to), Status: "ok", IsDir: info.IsDir})
 		undoItems = append(undoItems, UndoItem{From: string(p.to), To: string(p.from)})
 	}
 	res.BatchID = batchID
 	if recordUndo {
-		s.withUndo(ctx, res, userID, UndoInfo{Kind: "batch_rename", BatchID: batchID, Items: undoItems})
+		s.withUndo(ctx, j, res, userID, UndoInfo{Kind: "batch_rename", BatchID: batchID, Items: undoItems})
 	}
 	return res, nil
 }

@@ -45,6 +45,7 @@ type guards struct {
 	unlockIP     *auth.RateLimiter
 	notFound     *auth.RateLimiter
 	traffic      *auth.RateLimiter
+	suggest      *auth.RateLimiter
 	fails        *auth.WindowLimiter
 	now          func() time.Time
 
@@ -60,6 +61,7 @@ func newGuards(now func() time.Time) *guards {
 		unlockIP:     auth.NewRateLimiter(UnlockPerIP, 10*time.Minute, now),
 		notFound:     auth.NewRateLimiter(NotFoundPerIP, time.Minute, now),
 		traffic:      auth.NewRateLimiter(TrafficPerLinkIP, time.Minute, now),
+		suggest:      suggestLimiter(now),
 		fails:        auth.NewWindowLimiter(FailsBeforeLock, time.Hour, now),
 		now:          now,
 		locked:       map[string]time.Time{},
@@ -285,17 +287,27 @@ func (s *Service) PruneAccessLogs(ctx context.Context, retention time.Duration) 
 // last access and the owner's share_upload notification (SPEC §8.16).
 // The request context has ended with the tus PATCH, hence Background.
 func (s *Service) RecordUpload(shareID, ownerID, ip, ua, dest, path string, size int64) {
+	s.RecordUploadBy(shareID, ownerID, ip, ua, dest, path, size, "", nil)
+}
+
+// RecordUploadBy is RecordUpload with the acting recipient (Step 18b): the
+// journal carries the user id and the owner is told who uploaded.
+func (s *Service) RecordUploadBy(shareID, ownerID, ip, ua, dest, path string, size int64, by string, byID *string) {
 	ctx := context.Background()
 	rel := strings.TrimPrefix(path, strings.TrimSuffix(dest, "/"))
-	s.Log(ctx, shareID, ActUpload, ip, ua, &rel, nil)
+	s.Log(ctx, shareID, ActUpload, ip, ua, &rel, byID)
 	s.Touch(ctx, shareID)
 	if s.notify != nil {
 		name := dest
 		if i := strings.LastIndex(name, "/"); i >= 0 {
 			name = name[i+1:]
 		}
-		s.notify(ctx, ownerID, "share_upload", "Unggahan baru lewat file request",
-			fmt.Sprintf("Seseorang mengunggah %s (%s) ke folder %q.", strings.TrimPrefix(rel, "/"), humanBytes(size), name), "/files"+dest)
+		who, title := "Seseorang", "Unggahan baru lewat file request"
+		if by != "" {
+			who, title = by, "Unggahan baru di folder yang Anda bagikan"
+		}
+		s.notify(ctx, ownerID, "share_upload", title,
+			fmt.Sprintf("%s mengunggah %s (%s) ke folder %q.", who, strings.TrimPrefix(rel, "/"), humanBytes(size), name), "/files"+dest)
 	}
 }
 

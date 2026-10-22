@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"strings"
 )
 
 const countShareAccessLogs = `-- name: CountShareAccessLogs :one
@@ -49,6 +50,35 @@ DELETE FROM share_access_logs WHERE at < ?
 
 func (q *Queries) DeleteShareAccessLogsBefore(ctx context.Context, at string) (int64, error) {
 	result, err := q.db.ExecContext(ctx, deleteShareAccessLogsBefore, at)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteShareRecipient = `-- name: DeleteShareRecipient :execrows
+DELETE FROM share_recipients WHERE share_id = ? AND recipient_user_id = ?
+`
+
+type DeleteShareRecipientParams struct {
+	ShareID         string `json:"share_id"`
+	RecipientUserID string `json:"recipient_user_id"`
+}
+
+func (q *Queries) DeleteShareRecipient(ctx context.Context, arg DeleteShareRecipientParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteShareRecipient, arg.ShareID, arg.RecipientUserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteShareRecipients = `-- name: DeleteShareRecipients :execrows
+DELETE FROM share_recipients WHERE share_id = ?
+`
+
+func (q *Queries) DeleteShareRecipients(ctx context.Context, shareID string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteShareRecipients, shareID)
 	if err != nil {
 		return 0, err
 	}
@@ -234,6 +264,103 @@ func (q *Queries) GetShareByTokenHash(ctx context.Context, tokenHash *string) (S
 	return i, err
 }
 
+const getShareForRecipient = `-- name: GetShareForRecipient :one
+SELECT s.id, s.owner_user_id, s.path, s.is_dir, s.mode, s.token_hash, s.slug, s.password_hash, s.expires_at, s.max_downloads, s.download_count, s.view_count, s.allow_download, s.allow_upload, s.allow_reshare, s.hide_owner, s.hide_listing, s.note, s.token_enc, s.disabled_at, s.disabled_reason, s.broken_at, s.last_access_at, s.created_at, s.updated_at, sr.permission
+FROM share_recipients sr
+JOIN shares s ON s.id = sr.share_id
+WHERE sr.recipient_user_id = ? AND s.id = ?
+`
+
+type GetShareForRecipientParams struct {
+	RecipientUserID string `json:"recipient_user_id"`
+	ID              string `json:"id"`
+}
+
+type GetShareForRecipientRow struct {
+	ID             string  `json:"id"`
+	OwnerUserID    string  `json:"owner_user_id"`
+	Path           string  `json:"path"`
+	IsDir          int64   `json:"is_dir"`
+	Mode           string  `json:"mode"`
+	TokenHash      *string `json:"token_hash"`
+	Slug           *string `json:"slug"`
+	PasswordHash   *string `json:"password_hash"`
+	ExpiresAt      *string `json:"expires_at"`
+	MaxDownloads   *int64  `json:"max_downloads"`
+	DownloadCount  int64   `json:"download_count"`
+	ViewCount      int64   `json:"view_count"`
+	AllowDownload  int64   `json:"allow_download"`
+	AllowUpload    int64   `json:"allow_upload"`
+	AllowReshare   int64   `json:"allow_reshare"`
+	HideOwner      int64   `json:"hide_owner"`
+	HideListing    int64   `json:"hide_listing"`
+	Note           *string `json:"note"`
+	TokenEnc       []byte  `json:"token_enc"`
+	DisabledAt     *string `json:"disabled_at"`
+	DisabledReason *string `json:"disabled_reason"`
+	BrokenAt       *string `json:"broken_at"`
+	LastAccessAt   *string `json:"last_access_at"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
+	Permission     string  `json:"permission"`
+}
+
+func (q *Queries) GetShareForRecipient(ctx context.Context, arg GetShareForRecipientParams) (GetShareForRecipientRow, error) {
+	row := q.db.QueryRowContext(ctx, getShareForRecipient, arg.RecipientUserID, arg.ID)
+	var i GetShareForRecipientRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.Path,
+		&i.IsDir,
+		&i.Mode,
+		&i.TokenHash,
+		&i.Slug,
+		&i.PasswordHash,
+		&i.ExpiresAt,
+		&i.MaxDownloads,
+		&i.DownloadCount,
+		&i.ViewCount,
+		&i.AllowDownload,
+		&i.AllowUpload,
+		&i.AllowReshare,
+		&i.HideOwner,
+		&i.HideListing,
+		&i.Note,
+		&i.TokenEnc,
+		&i.DisabledAt,
+		&i.DisabledReason,
+		&i.BrokenAt,
+		&i.LastAccessAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Permission,
+	)
+	return i, err
+}
+
+const getShareRecipient = `-- name: GetShareRecipient :one
+SELECT share_id, recipient_user_id, permission, note, created_at FROM share_recipients WHERE share_id = ? AND recipient_user_id = ?
+`
+
+type GetShareRecipientParams struct {
+	ShareID         string `json:"share_id"`
+	RecipientUserID string `json:"recipient_user_id"`
+}
+
+func (q *Queries) GetShareRecipient(ctx context.Context, arg GetShareRecipientParams) (ShareRecipient, error) {
+	row := q.db.QueryRowContext(ctx, getShareRecipient, arg.ShareID, arg.RecipientUserID)
+	var i ShareRecipient
+	err := row.Scan(
+		&i.ShareID,
+		&i.RecipientUserID,
+		&i.Permission,
+		&i.Note,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const incrementShareDownload = `-- name: IncrementShareDownload :execrows
 UPDATE shares SET download_count = download_count + 1, last_access_at = ?1
 WHERE id = ?2 AND (max_downloads IS NULL OR download_count < max_downloads)
@@ -382,6 +509,33 @@ func (q *Queries) InsertShareAccessLog(ctx context.Context, arg InsertShareAcces
 	return err
 }
 
+const insertShareRecipient = `-- name: InsertShareRecipient :exec
+
+INSERT INTO share_recipients (share_id, recipient_user_id, permission, note, created_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (share_id, recipient_user_id) DO UPDATE SET permission = excluded.permission, note = excluded.note
+`
+
+type InsertShareRecipientParams struct {
+	ShareID         string  `json:"share_id"`
+	RecipientUserID string  `json:"recipient_user_id"`
+	Permission      string  `json:"permission"`
+	Note            *string `json:"note"`
+	CreatedAt       string  `json:"created_at"`
+}
+
+// Step 18b: recipients of mode=users shares.
+func (q *Queries) InsertShareRecipient(ctx context.Context, arg InsertShareRecipientParams) error {
+	_, err := q.db.ExecContext(ctx, insertShareRecipient,
+		arg.ShareID,
+		arg.RecipientUserID,
+		arg.Permission,
+		arg.Note,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const listShareAccessLogs = `-- name: ListShareAccessLogs :many
 SELECT id, share_id, at, ip_trunc, "action", user_id, user_agent, path FROM share_access_logs
 WHERE share_id = ?1 AND id < ?2
@@ -413,6 +567,120 @@ func (q *Queries) ListShareAccessLogs(ctx context.Context, arg ListShareAccessLo
 			&i.UserID,
 			&i.UserAgent,
 			&i.Path,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listShareRecipients = `-- name: ListShareRecipients :many
+SELECT sr.share_id, sr.recipient_user_id, sr.permission, sr.note, sr.created_at,
+       u.username, u.display_name, u.status AS user_status
+FROM share_recipients sr
+JOIN users u ON u.id = sr.recipient_user_id
+WHERE sr.share_id = ?
+ORDER BY u.username
+`
+
+type ListShareRecipientsRow struct {
+	ShareID         string  `json:"share_id"`
+	RecipientUserID string  `json:"recipient_user_id"`
+	Permission      string  `json:"permission"`
+	Note            *string `json:"note"`
+	CreatedAt       string  `json:"created_at"`
+	Username        string  `json:"username"`
+	DisplayName     string  `json:"display_name"`
+	UserStatus      string  `json:"user_status"`
+}
+
+func (q *Queries) ListShareRecipients(ctx context.Context, shareID string) ([]ListShareRecipientsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listShareRecipients, shareID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListShareRecipientsRow{}
+	for rows.Next() {
+		var i ListShareRecipientsRow
+		if err := rows.Scan(
+			&i.ShareID,
+			&i.RecipientUserID,
+			&i.Permission,
+			&i.Note,
+			&i.CreatedAt,
+			&i.Username,
+			&i.DisplayName,
+			&i.UserStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listShareRecipientsForShares = `-- name: ListShareRecipientsForShares :many
+SELECT sr.share_id, sr.recipient_user_id, sr.permission, sr.note, sr.created_at,
+       u.username, u.display_name, u.status AS user_status
+FROM share_recipients sr
+JOIN users u ON u.id = sr.recipient_user_id
+WHERE sr.share_id IN (/*SLICE:ids*/?)
+ORDER BY sr.share_id, u.username
+`
+
+type ListShareRecipientsForSharesRow struct {
+	ShareID         string  `json:"share_id"`
+	RecipientUserID string  `json:"recipient_user_id"`
+	Permission      string  `json:"permission"`
+	Note            *string `json:"note"`
+	CreatedAt       string  `json:"created_at"`
+	Username        string  `json:"username"`
+	DisplayName     string  `json:"display_name"`
+	UserStatus      string  `json:"user_status"`
+}
+
+func (q *Queries) ListShareRecipientsForShares(ctx context.Context, ids []string) ([]ListShareRecipientsForSharesRow, error) {
+	query := listShareRecipientsForShares
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListShareRecipientsForSharesRow{}
+	for rows.Next() {
+		var i ListShareRecipientsForSharesRow
+		if err := rows.Scan(
+			&i.ShareID,
+			&i.RecipientUserID,
+			&i.Permission,
+			&i.Note,
+			&i.CreatedAt,
+			&i.Username,
+			&i.DisplayName,
+			&i.UserStatus,
 		); err != nil {
 			return nil, err
 		}
@@ -603,6 +871,107 @@ func (q *Queries) ListSharesForCheck(ctx context.Context, arg ListSharesForCheck
 	return items, nil
 }
 
+const listSharesForRecipient = `-- name: ListSharesForRecipient :many
+SELECT s.id, s.owner_user_id, s.path, s.is_dir, s.mode, s.token_hash, s.slug, s.password_hash, s.expires_at, s.max_downloads, s.download_count, s.view_count, s.allow_download, s.allow_upload, s.allow_reshare, s.hide_owner, s.hide_listing, s.note, s.token_enc, s.disabled_at, s.disabled_reason, s.broken_at, s.last_access_at, s.created_at, s.updated_at, sr.permission, sr.note AS recipient_note, sr.created_at AS received_at,
+       o.username AS owner_username, o.display_name AS owner_display_name, o.status AS owner_status, o.deleted_at AS owner_deleted_at
+FROM share_recipients sr
+JOIN shares s ON s.id = sr.share_id
+JOIN users o ON o.id = s.owner_user_id
+WHERE sr.recipient_user_id = ?
+ORDER BY o.username, s.created_at DESC, s.id DESC
+`
+
+type ListSharesForRecipientRow struct {
+	ID               string  `json:"id"`
+	OwnerUserID      string  `json:"owner_user_id"`
+	Path             string  `json:"path"`
+	IsDir            int64   `json:"is_dir"`
+	Mode             string  `json:"mode"`
+	TokenHash        *string `json:"token_hash"`
+	Slug             *string `json:"slug"`
+	PasswordHash     *string `json:"password_hash"`
+	ExpiresAt        *string `json:"expires_at"`
+	MaxDownloads     *int64  `json:"max_downloads"`
+	DownloadCount    int64   `json:"download_count"`
+	ViewCount        int64   `json:"view_count"`
+	AllowDownload    int64   `json:"allow_download"`
+	AllowUpload      int64   `json:"allow_upload"`
+	AllowReshare     int64   `json:"allow_reshare"`
+	HideOwner        int64   `json:"hide_owner"`
+	HideListing      int64   `json:"hide_listing"`
+	Note             *string `json:"note"`
+	TokenEnc         []byte  `json:"token_enc"`
+	DisabledAt       *string `json:"disabled_at"`
+	DisabledReason   *string `json:"disabled_reason"`
+	BrokenAt         *string `json:"broken_at"`
+	LastAccessAt     *string `json:"last_access_at"`
+	CreatedAt        string  `json:"created_at"`
+	UpdatedAt        string  `json:"updated_at"`
+	Permission       string  `json:"permission"`
+	RecipientNote    *string `json:"recipient_note"`
+	ReceivedAt       string  `json:"received_at"`
+	OwnerUsername    string  `json:"owner_username"`
+	OwnerDisplayName string  `json:"owner_display_name"`
+	OwnerStatus      string  `json:"owner_status"`
+	OwnerDeletedAt   *string `json:"owner_deleted_at"`
+}
+
+func (q *Queries) ListSharesForRecipient(ctx context.Context, recipientUserID string) ([]ListSharesForRecipientRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSharesForRecipient, recipientUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSharesForRecipientRow{}
+	for rows.Next() {
+		var i ListSharesForRecipientRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerUserID,
+			&i.Path,
+			&i.IsDir,
+			&i.Mode,
+			&i.TokenHash,
+			&i.Slug,
+			&i.PasswordHash,
+			&i.ExpiresAt,
+			&i.MaxDownloads,
+			&i.DownloadCount,
+			&i.ViewCount,
+			&i.AllowDownload,
+			&i.AllowUpload,
+			&i.AllowReshare,
+			&i.HideOwner,
+			&i.HideListing,
+			&i.Note,
+			&i.TokenEnc,
+			&i.DisabledAt,
+			&i.DisabledReason,
+			&i.BrokenAt,
+			&i.LastAccessAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Permission,
+			&i.RecipientNote,
+			&i.ReceivedAt,
+			&i.OwnerUsername,
+			&i.OwnerDisplayName,
+			&i.OwnerStatus,
+			&i.OwnerDeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSharesInDir = `-- name: ListSharesInDir :many
 SELECT id, path, mode, disabled_at, broken_at, expires_at FROM shares
 WHERE owner_user_id = ?1
@@ -760,6 +1129,20 @@ func (q *Queries) RewriteSharesPath(ctx context.Context, arg RewriteSharesPathPa
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const setShareAllowReshare = `-- name: SetShareAllowReshare :exec
+UPDATE shares SET allow_reshare = ? WHERE id = ?
+`
+
+type SetShareAllowReshareParams struct {
+	AllowReshare int64  `json:"allow_reshare"`
+	ID           string `json:"id"`
+}
+
+func (q *Queries) SetShareAllowReshare(ctx context.Context, arg SetShareAllowReshareParams) error {
+	_, err := q.db.ExecContext(ctx, setShareAllowReshare, arg.AllowReshare, arg.ID)
+	return err
 }
 
 const setShareBroken = `-- name: SetShareBroken :exec

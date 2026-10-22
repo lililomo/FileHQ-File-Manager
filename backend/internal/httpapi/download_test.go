@@ -418,12 +418,15 @@ func TestSignBatchAndPurposes(t *testing.T) {
 		{"path": "/", "purpose": "download"},
 		{"path": "/a.txt", "paths": []string{"/b.txt"}, "purpose": "download"},
 		{"items": []map[string]any{{"path": "/a.txt", "purpose": "zip"}}},
-		{"path": "/a.txt", "purpose": "download", "share": "abc"},
 	} {
 		r := env.call(http.MethodPost, "/api/v1/files/sign", ip, bad, hdr, ck)
 		if r.rec.Code != 400 {
 			t.Fatalf("%v: %d %s", bad, r.rec.Code, r.rec.Body.String())
 		}
+	}
+	// an unknown share scope is NOT_FOUND (Step 18b: recipients sign inside a share)
+	if r := env.call(http.MethodPost, "/api/v1/files/sign", ip, map[string]any{"path": "/a.txt", "purpose": "download", "share": "abc"}, hdr, ck); r.rec.Code != 404 {
+		t.Fatalf("unknown share: %d %s", r.rec.Code, r.rec.Body.String())
 	}
 	r := env.call(http.MethodPost, "/api/v1/files/sign", ip, map[string]any{"items": []map[string]any{
 		{"path": "/a.txt", "purpose": "download"}, {"path": "/v.mp4", "purpose": "media"}, {"path": "/t.png", "purpose": "thumb"}, {"path": "/../x", "purpose": "download"},

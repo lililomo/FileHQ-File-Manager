@@ -104,9 +104,9 @@ func TestVersionsAPI(t *testing.T) {
 	if v, _ := r.body["versions"].(float64); v != 0 {
 		t.Fatalf("versions bytes after delete all: %v", r.body["versions"])
 	}
-	// scope parameters are refused like everywhere else; a bad path too
+	// an unknown share scope is NOT_FOUND (Step 18b); a bad path 400
 	r = env.call(http.MethodGet, "/api/v1/versions?path=/docs/n.md&share=x", ip, nil, nil, ck)
-	if r.rec.Code != 400 {
+	if r.rec.Code != 404 {
 		t.Fatalf("scope: %d", r.rec.Code)
 	}
 	r = env.call(http.MethodGet, "/api/v1/versions?path=../x", ip, nil, nil, ck)

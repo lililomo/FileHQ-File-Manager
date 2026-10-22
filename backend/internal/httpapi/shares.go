@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -46,6 +47,9 @@ func (s *Server) writeShareError(w http.ResponseWriter, r *http.Request, err err
 		if _, known := statusByCode[code]; !known {
 			code = CodeInternal
 		}
+		if ra, ok := se.Details["retryAfter"].(int); ok && ra > 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(ra))
+		}
 		WriteError(w, r, code, se.Status, se.Message, se.Details)
 		return
 	}
@@ -78,6 +82,9 @@ func (s *Server) shareActivity(r *http.Request, u sqlc.User, action string, v *s
 }
 
 func (s *Server) handleSharesCreate(w http.ResponseWriter, r *http.Request) {
+	if rejectScope(w, r) {
+		return // resharing a received share is not offered (SPEC §8.15 allowReshare → later)
+	}
 	var in share.Input
 	if !ReadJSON(w, r, &in) {
 		return

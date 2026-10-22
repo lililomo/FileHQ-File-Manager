@@ -110,7 +110,7 @@ func (s *Service) RestoreFromTrash(ctx context.Context, j *fsjail.Jail, userID s
 		if err := ctx.Err(); err != nil {
 			return out, err
 		}
-		release, err := s.lock(ctx, userID, "restore", fsjail.Write, p.dst)
+		release, err := s.lock(ctx, j, userID, "restore", fsjail.Write, p.dst)
 		if err != nil {
 			return out, err
 		}
@@ -121,10 +121,10 @@ func (s *Service) RestoreFromTrash(ctx context.Context, j *fsjail.Jail, userID s
 			return out, rerr
 		}
 		if r.Status != "skipped" {
-			s.logActivity(ctx, s.repo, userID, ActRestore, string(p.dst), p.row.OriginalPath, map[string]any{"trashId": p.row.ID, "status": r.Status, "size": r.Size, "isDir": r.IsDir}, "")
-			s.changed(ctx, userID, p.dst, r.IsDir)
+			s.logActivity(ctx, s.repo, userID, ActRestore, string(j.Abs(p.dst)), p.row.OriginalPath, map[string]any{"trashId": p.row.ID, "status": r.Status, "size": r.Size, "isDir": r.IsDir}, "")
+			s.changed(ctx, j, userID, p.dst, r.IsDir)
 			if s.TrashHook != nil {
-				out.ReactivateShares = append(out.ReactivateShares, s.TrashHook.Restored(ctx, userID, string(p.dst))...)
+				out.ReactivateShares = append(out.ReactivateShares, s.TrashHook.Restored(ctx, userID, string(j.Abs(p.dst)))...)
 			}
 			if r.To != "" && fsjail.VPath(r.To) != p.dst {
 				s.invalidateDir(userID, fsjail.VPath(r.To).Dir())

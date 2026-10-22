@@ -6,6 +6,7 @@ import (
 
 	"kppbwi.app/filemanager/internal/download"
 	"kppbwi.app/filemanager/internal/fsjail"
+	"kppbwi.app/filemanager/internal/share"
 	"kppbwi.app/filemanager/internal/thumbs"
 )
 
@@ -36,23 +37,16 @@ type signedURL struct {
 	ExpiresAt string `json:"expiresAt"`
 }
 
-// thumbURL builds the signed thumbnail URL of path for a user.
-func (s *Server) thumbURL(userID string, path fsjail.VPath, size thumbs.Size, exp int64) string {
-	return s.signer.URL(download.Params{
-		Scope: download.UserScope(userID), Path: string(path), Purpose: download.PurposeThumb,
-		Extra: strconv.Itoa(int(size)), Exp: exp,
-	})
-}
-
-// signOne signs path for purpose; thumbs carry the size in Extra.
-func (s *Server) signOne(userID string, path fsjail.VPath, purpose download.Purpose, size thumbs.Size) signedURL {
+// signOne signs path for purpose in scope ("u:<id>" or "r:<share>:<user>");
+// thumbs carry the size in Extra.
+func (s *Server) signOne(scope string, path fsjail.VPath, purpose download.Purpose, size thumbs.Size) signedURL {
 	exp := s.signer.Expiry(download.TTLFor(purpose, s.cfg.SignedURLTTL, s.cfg.MediaURLTTL))
 	out := signedURL{Path: string(path), Purpose: string(purpose), ExpiresAt: isoTime(exp)}
 	if purpose == download.PurposeThumb {
-		out.URL = s.thumbURL(userID, path, size, exp)
+		out.URL = s.signer.URL(download.Params{Scope: scope, Path: string(path), Purpose: download.PurposeThumb, Extra: strconv.Itoa(int(size)), Exp: exp})
 		return out
 	}
-	out.URL = s.signer.URL(download.Params{Scope: download.UserScope(userID), Path: string(path), Purpose: purpose, Exp: exp})
+	out.URL = s.signer.URL(download.Params{Scope: scope, Path: string(path), Purpose: purpose, Exp: exp})
 	return out
 }
 
@@ -80,8 +74,11 @@ func (s *Server) handleFilesSign(w http.ResponseWriter, r *http.Request) {
 			purpose = p
 		}
 	}
-	if req.Share != "" {
-		fields["share"] = "not_implemented" // Step 18a
+	if req.Share != "" && r.URL.Query().Get("share") == "" {
+		// the share may arrive in the body; the scope resolver reads the query
+		q := r.URL.Query()
+		q.Set("share", req.Share)
+		r.URL.RawQuery = q.Encode()
 	}
 	size := thumbs.Size256
 	if req.Size != 0 {
@@ -120,13 +117,18 @@ func (s *Server) handleFilesSign(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, CodeValidationFailed, 0, "invalid sign request", map[string]any{"fields": fields})
 		return
 	}
-	u, ok := UserFrom(r.Context())
+	_, sc, release, ok := s.scoped(w, r)
 	if !ok {
-		WriteError(w, r, CodeUnauthenticated, 0, "authentication required", nil)
 		return
 	}
+	release()
+	if sc.Shared() && !sc.Editor() && sc.Share.AllowDownload == 0 && purpose == download.PurposeDownload {
+		WriteError(w, r, CodeForbidden, 0, "the share does not allow downloads", map[string]any{"reason": "download_disabled"})
+		return
+	}
+	scope := sc.signScope()
 	if req.Path != "" {
-		vp, ok := cleanPath(w, r, req.Path)
+		vp, ok := sc.path(w, r, req.Path)
 		if !ok {
 			return
 		}
@@ -134,7 +136,10 @@ func (s *Server) handleFilesSign(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, r, CodeValidationFailed, 0, "cannot sign the root folder", map[string]any{"fields": map[string]any{"path": "root"}})
 			return
 		}
-		one := s.signOne(u.ID, vp, purpose, size)
+		if purpose == download.PurposeDownload {
+			s.shareAccessLog(r, sc, share.ActDownload, vp)
+		}
+		one := s.signOne(scope, vp, purpose, size)
 		WriteJSON(w, http.StatusOK, map[string]any{"url": one.URL, "expiresAt": one.ExpiresAt, "purpose": one.Purpose})
 		return
 	}
@@ -149,8 +154,12 @@ func (s *Server) handleFilesSign(w http.ResponseWriter, r *http.Request) {
 	invalid := []string{}
 	var minExp string
 	for _, it := range items {
-		vp, err := fsjail.Clean(it.Path)
-		if err != nil || vp.IsRoot() {
+		raw := it.Path
+		if sc.FileShare() && (raw == "" || raw == "/") {
+			raw = string(sc.Base)
+		}
+		vp, err := fsjail.Clean(raw)
+		if err != nil || vp.IsRoot() || (sc.FileShare() && vp != sc.Base) {
 			invalid = append(invalid, it.Path)
 			continue
 		}
@@ -158,7 +167,7 @@ func (s *Server) handleFilesSign(w http.ResponseWriter, r *http.Request) {
 		if it.Purpose != "" {
 			p, _ = download.ParsePurpose(it.Purpose)
 		}
-		one := s.signOne(u.ID, vp, p, size)
+		one := s.signOne(scope, vp, p, size)
 		if minExp == "" || one.ExpiresAt < minExp {
 			minExp = one.ExpiresAt
 		}

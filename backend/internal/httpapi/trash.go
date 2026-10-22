@@ -31,6 +31,9 @@ func (s *Server) mountTrash(api chi.Router) {
 }
 
 func (s *Server) handleTrashList(w http.ResponseWriter, r *http.Request) {
+	if rejectScope(w, r) {
+		return
+	}
 	u, _ := UserFrom(r.Context())
 	q := r.URL.Query()
 	f := trash.Filter{Kind: q.Get("kind"), Query: q.Get("q"), Sort: q.Get("sort"), Cursor: q.Get("cursor")}
@@ -90,6 +93,9 @@ type trashRestoreRequest struct {
 }
 
 func (s *Server) handleTrashRestore(w http.ResponseWriter, r *http.Request) {
+	if rejectScope(w, r) {
+		return
+	}
 	var req trashRestoreRequest
 	if !ReadJSON(w, r, &req) {
 		return
@@ -149,6 +155,9 @@ type idsRequest struct {
 }
 
 func (s *Server) handleTrashPurge(w http.ResponseWriter, r *http.Request) {
+	if rejectScope(w, r) {
+		return
+	}
 	var req idsRequest
 	if !ReadJSON(w, r, &req) {
 		return
@@ -186,6 +195,9 @@ type confirmRequest struct {
 }
 
 func (s *Server) handleTrashEmpty(w http.ResponseWriter, r *http.Request) {
+	if rejectScope(w, r) {
+		return
+	}
 	var req confirmRequest
 	if r.ContentLength != 0 && !ReadJSON(w, r, &req) {
 		return

@@ -40,7 +40,7 @@ func (s *Service) DeletePermanent(ctx context.Context, j *fsjail.Jail, userID st
 			return nil, &ValidationError{Reason: "root", Path: string(p), Fields: map[string]string{"paths": "root"}}
 		}
 	}
-	release, err := s.lock(ctx, userID, "delete_permanent", fsjail.Write, paths...)
+	release, err := s.lock(ctx, j, userID, "delete_permanent", fsjail.Write, paths...)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func (s *Service) DeletePermanent(ctx context.Context, j *fsjail.Jail, userID st
 			return res, err
 		}
 		if err := s.repo.WithTx(ctx, func(tx db.Repository) error {
-			if err := DeleteReferences(ctx, tx, userID, string(p)); err != nil {
+			if err := DeleteReferences(ctx, tx, userID, string(j.Abs(p))); err != nil {
 				return err
 			}
 			if s.quota != nil {
@@ -80,13 +80,13 @@ func (s *Service) DeletePermanent(ctx context.Context, j *fsjail.Jail, userID st
 					return err
 				}
 			}
-			s.logActivity(ctx, tx, userID, ActPermanent, string(p), "", map[string]any{"size": bytes, "items": count, "isDir": info.IsDir}, batchID)
+			s.logActivity(ctx, tx, userID, ActPermanent, string(j.Abs(p)), "", map[string]any{"size": bytes, "items": count, "isDir": info.IsDir}, batchID)
 			return nil
 		}); err != nil {
 			incomplete = true
 			return res, errors.Join(err, errors.New("files: item removed but bookkeeping failed; quota marked dirty"))
 		}
-		s.changed(ctx, userID, p, info.IsDir)
+		s.changed(ctx, j, userID, p, info.IsDir)
 		res.Results = append(res.Results, ItemResult{Path: string(p), Status: "ok", IsDir: info.IsDir})
 		res.Deleted++
 		res.BytesFreed += bytes

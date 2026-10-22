@@ -142,6 +142,8 @@ func (s *Store) Snapshot(ctx context.Context, j *fsjail.Jail, userID string, p f
 	if info.IsDir || info.IsSymlink {
 		return nil, false, &Error{Code: "VALIDATION_FAILED", Message: "only regular files have versions", Status: http.StatusBadRequest, Details: map[string]any{"reason": "not_a_file", "path": string(p)}}
 	}
+	// versions are keyed by the owner's absolute path (j may be a share sub-root, Step 18b)
+	key := string(j.Abs(p))
 	src, err := j.Open(p)
 	if err != nil {
 		return nil, false, err
@@ -166,7 +168,7 @@ func (s *Store) Snapshot(ctx context.Context, j *fsjail.Jail, userID string, p f
 		return nil, false, err
 	}
 	sum := hex.EncodeToString(h.Sum(nil))
-	latest, lerr := s.o.Repo.LatestFileVersion(ctx, userID, string(p))
+	latest, lerr := s.o.Repo.LatestFileVersion(ctx, userID, key)
 	switch {
 	case lerr == nil && latest.Sha256 == sum:
 		_ = s.sys.Remove(rel)
@@ -181,18 +183,18 @@ func (s *Store) Snapshot(ctx context.Context, j *fsjail.Jail, userID string, p f
 		no = latest.VersionNo + 1
 	}
 	now := db.FormatTime(s.o.Now())
-	row := sqlc.InsertFileVersionParams{ID: id, UserID: userID, Path: string(p), VersionNo: no, Size: size, Sha256: sum, BlobRel: rel, Reason: reason, CreatedAt: now}
+	row := sqlc.InsertFileVersionParams{ID: id, UserID: userID, Path: key, VersionNo: no, Size: size, Sha256: sum, BlobRel: rel, Reason: reason, CreatedAt: now}
 	if err := s.o.Repo.InsertFileVersion(ctx, row); err != nil {
 		_ = s.sys.Remove(rel)
 		return nil, false, err
 	}
-	freed := s.prune(ctx, userID, string(p))
+	freed := s.prune(ctx, userID, key)
 	if s.o.Quota != nil {
 		if err := s.o.Quota.Apply(ctx, nil, userID, 0, 0, size-freed); err != nil {
 			s.o.Logger.WarnContext(ctx, "versions quota apply failed", slog.String("error", err.Error()))
 		}
 	}
-	out := Version{ID: id, Path: string(p), No: no, Size: size, SHA256: sum, Reason: reason, CreatedAt: now}
+	out := Version{ID: id, Path: key, No: no, Size: size, SHA256: sum, Reason: reason, CreatedAt: now}
 	return &out, true, nil
 }
 
@@ -298,9 +300,15 @@ func (s *Store) Restore(ctx context.Context, j *fsjail.Jail, userID, id string) 
 		return nil, err
 	}
 	defer func() { _ = blob.Close() }()
-	p, err := fsjail.Clean(v.Path)
+	abs, err := fsjail.Clean(v.Path)
 	if err != nil {
 		return nil, err
+	}
+	// inside a share sub-root the version belongs to the recipient's view
+	// only when its path lies below the share (Step 18b)
+	p, ok := j.RelOf(abs)
+	if !ok {
+		return nil, &Error{Code: "NOT_FOUND", Message: "version not found", Status: http.StatusNotFound}
 	}
 	var (
 		oldSize int64

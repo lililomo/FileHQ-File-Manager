@@ -2802,6 +2802,157 @@ paths:
               schema: { $ref: "#/components/schemas/ShareAccessLogPage" }
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+  /api/v1/shared-with-me:
+    get:
+      tags: [shares]
+      summary: Shares the caller receives, grouped per owner (Step 18b, SPEC §6.3). Owner = username/display name only; the owner's path is never sent
+      operationId: sharedWithMe
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: Groups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items: { $ref: "#/components/schemas/SharedGroup" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/shared-with-me/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string }, description: Share id }
+    get:
+      tags: [shares]
+      summary: One received share (name, type, permission, owner) for the recipient's browser header
+      operationId: sharedWithMeGet
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: Share header }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [shares]
+      summary: Leave a received share (the recipient removes themself)
+      operationId: sharedWithMeLeave
+      security: [{ cookieAuth: [] }]
+      responses:
+        "204": { description: Left }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/shares/user-suggest:
+    get:
+      tags: [shares]
+      summary: Username autocomplete for sharing (≥ 2 characters, ≤ 8 hits of username + displayName, active users only, never the caller; 30/minute per user)
+      operationId: sharesUserSuggest
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2, maxLength: 64 } }
+      responses:
+        "200":
+          description: Suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/UserSuggestion" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/users/suggest:
+    get:
+      tags: [shares]
+      summary: Alias of /shares/user-suggest (PROMPT 18b naming)
+      operationId: usersSuggest
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2, maxLength: 64 } }
+      responses:
+        "200": { description: Suggestions }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/upload/share/{shareId}/precheck:
+    parameters:
+      - { name: shareId, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [upload]
+      summary: Upload precheck inside a received share (editor permission; path relative to the shared folder; owner quota)
+      operationId: shareUploadPrecheck
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: Precheck result }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+  /api/v1/upload/share/{shareId}/tus:
+    parameters:
+      - { name: shareId, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [upload]
+      summary: Create an upload into a received share (tus creation as the owner; metadata path relative to the share, conflict policy honoured, recipient journaled; `Location` points at this base)
+      operationId: shareTusCreate
+      security: [{ cookieAuth: [] }]
+      responses:
+        "201": { description: Upload created }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+    options:
+      tags: [upload]
+      summary: tus capability discovery
+      operationId: shareTusOptions
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: Protocol headers }
+  /api/v1/upload/share/{shareId}/tus/{id}:
+    parameters:
+      - { name: shareId, in: path, required: true, schema: { type: string } }
+      - { name: id, in: path, required: true, schema: { type: string } }
+    head:
+      tags: [upload]
+      summary: Offset of an upload of this share (ids of other shares look non-existent)
+      operationId: shareTusHead
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: "`Upload-Offset`" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [upload]
+      summary: Append a chunk (≤ UPLOAD_CHUNK_SIZE); the last chunk lands the file in the owner's folder
+      operationId: shareTusPatch
+      security: [{ cookieAuth: [] }]
+      responses:
+        "204": { description: Chunk stored }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "423": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [upload]
+      summary: Abort an upload of this share
+      operationId: shareTusDelete
+      security: [{ cookieAuth: [] }]
+      responses:
+        "204": { description: Aborted }
+        "404": { $ref: "#/components/responses/Error" }
+    options:
+      tags: [upload]
+      summary: tus capability discovery
+      operationId: shareTusIdOptions
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: Protocol headers }
   /api/v1/public/shares/{token}:
     parameters:
       - { name: token, in: path, required: true, schema: { type: string }, description: "43-char token or custom slug" }
@@ -3150,6 +3301,11 @@ components:
         updatedAt: { type: string }
         url: { type: string }
         status: { type: string, enum: [active, disabled, expired, broken] }
+        allowReshare: { type: boolean, description: "Mode users (Step 18b)" }
+        recipients:
+          type: array
+          description: Mode users only
+          items: { $ref: "#/components/schemas/ShareRecipient" }
     ShareInput:
       type: object
       description: "Create: `path` + options. PATCH: any subset; `password: null` removes the password, `expiresInDays: 0` or `expiresAt: null` = no expiry (when allowed), `disabled` toggles."
@@ -3165,6 +3321,17 @@ components:
         allowUpload: { type: boolean, default: false }
         hideOwner: { type: boolean, default: false }
         hideListing: { type: boolean, default: false }
+        recipients:
+          type: array
+          description: "Mode users (Step 18b): the full set on PATCH; missing entries are removed"
+          items:
+            type: object
+            required: [username]
+            properties:
+              username: { type: string }
+              permission: { type: string, enum: [viewer, editor], default: viewer }
+              note: { type: string, maxLength: 200 }
+        allowReshare: { type: boolean, default: false }
         note: { type: [string, "null"], maxLength: 500 }
         disabled: { type: boolean }
     SharePage:
@@ -3172,6 +3339,43 @@ components:
       properties:
         items: { type: array, items: { $ref: "#/components/schemas/Share" } }
         nextCursor: { type: [string, "null"] }
+    ShareRecipient:
+      type: object
+      properties:
+        username: { type: string }
+        displayName: { type: string }
+        permission: { type: string, enum: [viewer, editor] }
+        note: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        inactive: { type: boolean, description: "The recipient's account is disabled" }
+    SharedGroup:
+      type: object
+      properties:
+        owner:
+          type: object
+          properties:
+            username: { type: string }
+            displayName: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              shareId: { type: string }
+              name: { type: string }
+              isDir: { type: boolean }
+              permission: { type: string, enum: [viewer, editor] }
+              note: { type: string, nullable: true }
+              expiresAt: { type: string, nullable: true }
+              allowReshare: { type: boolean }
+              receivedAt: { type: string }
+              status: { type: string, enum: [active, disabled, expired, broken] }
+              reason: { type: string, nullable: true }
+    UserSuggestion:
+      type: object
+      properties:
+        username: { type: string }
+        displayName: { type: string }
     ShareAccessLogPage:
       type: object
       properties:
