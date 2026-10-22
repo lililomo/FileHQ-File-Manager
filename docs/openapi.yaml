@@ -1194,7 +1194,7 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/files/download:
     head:
       summary: Headers of a download (same parameters as GET)
@@ -1243,7 +1243,7 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/files/raw:
     head:
       summary: Headers of a raw stream (same parameters as GET)
@@ -1354,7 +1354,7 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/meta/favorites:
     get:
       summary: Every favorite of the user (folders first, natural order)
@@ -1774,7 +1774,7 @@ paths:
               schema: { $ref: "#/components/schemas/TaskResponse" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/events:
     get:
       tags: [tasks]
@@ -1900,7 +1900,7 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "415": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
         "501": { $ref: "#/components/responses/Error" }
   /api/v1/archives/extract:
     post:
@@ -1939,7 +1939,7 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "415": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
         "501": { $ref: "#/components/responses/Error" }
   /api/v1/archives/entries:
     get:
@@ -2029,7 +2029,7 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "413": { $ref: "#/components/responses/Error" }
         "415": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
     get:
       tags: [archives]
       summary: Stream one member straight out of its archive (signed URL, no cookie)
@@ -2063,7 +2063,7 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "413": { $ref: "#/components/responses/Error" }
         "415": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/archives/extract-entries:
     post:
       tags: [archives]
@@ -2094,7 +2094,7 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "415": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
         "501": { $ref: "#/components/responses/Error" }
   /api/v1/archives/add:
     post:
@@ -2130,7 +2130,7 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "415": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/archives/remove-entries:
     post:
       tags: [archives]
@@ -2159,7 +2159,7 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "415": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/archives/remove-entry:
     post:
       tags: [archives]
@@ -2184,7 +2184,7 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "415": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/remote-downloads:
     post:
       tags: [remote]
@@ -2221,7 +2221,7 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "415": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/remote-downloads/probe:
     post:
       tags: [remote]
@@ -2439,7 +2439,7 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/search/content:
     post:
       tags: [search]
@@ -2475,7 +2475,7 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "423": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/search/replace/preview:
     post:
       tags: [search]
@@ -2503,7 +2503,7 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/search/replace:
     post:
       tags: [search]
@@ -2913,7 +2913,7 @@ paths:
                     items: { $ref: "#/components/schemas/UserSuggestion" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/users/suggest:
     get:
       tags: [shares]
@@ -2926,7 +2926,7 @@ paths:
         "200": { description: Suggestions }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/upload/share/{shareId}/precheck:
     parameters:
       - { name: shareId, in: path, required: true, schema: { type: string } }
@@ -3015,7 +3015,7 @@ paths:
         "200": { description: Meta, content: { application/json: { schema: { $ref: "#/components/schemas/PublicShareMeta" } } } }
         "404": { $ref: "#/components/responses/Error" }
         "410": { description: "SHARE_EXPIRED / SHARE_DISABLED (reason manual|owner_disabled|item_trashed|admin_revoked|broken|locked)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/public/shares/{token}/unlock:
     post:
       tags: [public]
@@ -3035,7 +3035,7 @@ paths:
         "401": { description: SHARE_PASSWORD_WRONG, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "404": { $ref: "#/components/responses/Error" }
         "410": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/public/shares/{token}/list:
     get:
       tags: [public]
@@ -3056,7 +3056,7 @@ paths:
         "403": { description: "hide_listing", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "404": { $ref: "#/components/responses/Error" }
         "410": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/public/shares/{token}/stat:
     get:
       tags: [public]
@@ -3142,7 +3142,7 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "410": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/public/shares/{token}/download:
     parameters:
       - { name: token, in: path, required: true, schema: { type: string } }
@@ -5321,6 +5321,28 @@ components:
         version: { oneOf: [{ $ref: "#/components/schemas/FileVersion" }, { type: "null" }], description: "Pre-image of the replaced content" }
         restored: { $ref: "#/components/schemas/FileVersion" }
   responses:
+    RateLimited:
+      description: Terlalu banyak permintaan (SPEC §10.5). Selalu disertai `Retry-After` (detik); route dengan limiter terpusat juga mengirim `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`, `RateLimit-Policy` pada setiap respons.
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+          description: Detik sampai percobaan berikutnya diterima.
+        RateLimit-Limit:
+          schema: { type: integer }
+          description: Kapasitas bucket (burst) untuk kunci ini.
+        RateLimit-Remaining:
+          schema: { type: integer }
+          description: Token tersisa setelah permintaan ini.
+        RateLimit-Reset:
+          schema: { type: integer }
+          description: Detik sampai bucket penuh kembali.
+        RateLimit-Policy:
+          schema: { type: string, example: "600;w=60" }
+          description: Kebijakan `N;w=<detik jendela>`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: RATE_LIMITED, message: "too many requests, try again later", details: { retryAfter: 7, limit: api, requestId: "…" } } }
     Error:
       description: Error envelope
       content:
