@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { PlaceholderPage } from '@/components/PlaceholderPage'
+import { Dashboard } from '@/features/admin/Dashboard'
 
+/** `/admin`: the dashboard (SPEC §8.17). */
 export const Route = createFileRoute('/_app/admin/')({
-  component: () => <PlaceholderPage step="19a" titleKey="admin" />,
+  component: Dashboard,
 })

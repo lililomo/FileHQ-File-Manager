@@ -1,7 +1,23 @@
+import { useLogoUrl } from '@/features/auth/useAppName'
 import { cn } from '@/lib/utils'
 
-/** Small brand mark drawn with the accent colour. */
+/** Small brand mark drawn with the accent colour, or the PNG logo an admin
+ *  uploaded (Step 19a branding). */
 export function AppLogo({ className, size = 22 }: { className?: string; size?: number }) {
+  const logoUrl = useLogoUrl()
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        width={size}
+        height={size}
+        alt=""
+        aria-hidden="true"
+        className={cn('shrink-0 rounded-sm object-contain', className)}
+        style={{ width: size, height: size }}
+      />
+    )
+  }
   return (
     <svg
       viewBox="0 0 24 24"

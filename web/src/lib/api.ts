@@ -3,7 +3,7 @@
  *  ApiError, 401 → unauthorized handler, 403 PASSWORD_CHANGE_REQUIRED →
  *  password-change handler. */
 import { useSessionStore } from '@/stores/session'
-import { shareParamFor } from '@/lib/share-scope'
+import { asUserParamFor, shareParamFor } from '@/lib/share-scope'
 
 export const API_BASE = '/api/v1'
 
@@ -80,6 +80,9 @@ function buildUrl(path: string, query?: Query): string {
   // inside a received share (Step 18b) the scoped routes carry ?share=<id>
   const share = shareParamFor(path)
   if (share && !params.has('share')) params.set('share', share)
+  // an admin browsing another account (Step 19a) carries ?as_user= instead
+  const asUser = asUserParamFor(path)
+  if (asUser && !params.has('as_user')) params.set('as_user', asUser)
   const qs = params.toString()
   return qs ? `${url}?${qs}` : url
 }
@@ -129,10 +132,12 @@ export async function api<T = void>(path: string, opts: RequestOptions = {}): Pr
   const unsafe = method !== 'GET'
   const doFetch = async (csrf: string | null): Promise<Response> => {
     const headers: Record<string, string> = { Accept: 'application/json', ...(opts.headers ?? {}) }
-    if (opts.body !== undefined) headers['Content-Type'] = 'application/json'
+    const form = typeof FormData !== 'undefined' && opts.body instanceof FormData
+    if (opts.body !== undefined && !form) headers['Content-Type'] = 'application/json'
     if (unsafe && csrf) headers['X-CSRF-Token'] = csrf
     const init: RequestInit = { method, credentials: 'same-origin', headers }
-    if (opts.body !== undefined) init.body = JSON.stringify(opts.body)
+    if (form) init.body = opts.body as FormData
+    else if (opts.body !== undefined) init.body = JSON.stringify(opts.body)
     if (opts.signal) init.signal = opts.signal
     try {
       return await fetch(buildUrl(path, opts.query), init)

@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { PlaceholderPage } from '@/components/PlaceholderPage'
+import { SettingsPage } from '@/features/admin/SettingsPage'
 
+/** `/admin/settings`: live overrides of the environment (SPEC §8.17, §3.1). */
 export const Route = createFileRoute('/_app/admin/settings')({
-  component: () => <PlaceholderPage step="19a" titleKey="adminSettings" />,
+  component: SettingsPage,
 })

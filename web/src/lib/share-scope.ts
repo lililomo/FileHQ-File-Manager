@@ -19,6 +19,8 @@ export interface ShareScope {
   isFile: boolean
   name: string
   allowDownload: boolean
+  /** Step 19a: an admin browsing this account's root (`?as_user=`), no share involved */
+  asUser?: string
 }
 
 let scope: ShareScope | null = null
@@ -67,15 +69,29 @@ const SCOPED_PREFIXES = [
   '/upload/precheck',
 ]
 
-/** The share id to append to `path`, or null when the call is not scoped. */
-export function shareParamFor(path: string): string | null {
-  if (!scope) return null
+function scopedPath(path: string): boolean {
   const p = path.startsWith('/') ? path : `/${path}`
   for (const prefix of SCOPED_PREFIXES) {
-    if (p === prefix || p.startsWith(`${prefix}?`) || p.startsWith(`${prefix}/`))
-      return scope.shareId
+    if (p === prefix || p.startsWith(`${prefix}?`) || p.startsWith(`${prefix}/`)) return true
   }
-  return null
+  return false
+}
+
+/** The share id to append to `path`, or null when the call is not scoped. */
+export function shareParamFor(path: string): string | null {
+  if (!scope || scope.asUser) return null
+  return scopedPath(path) ? scope.shareId : null
+}
+
+/** The username to append as `as_user` (admin browse), or null. */
+export function asUserParamFor(path: string): string | null {
+  if (!scope?.asUser) return null
+  return scopedPath(path) ? scope.asUser : null
+}
+
+/** True while an admin browses another account. */
+export function isAsUserScope(): boolean {
+  return !!scope?.asUser
 }
 
 /** tus base of the active share (`/api/v1/upload/share/<id>`). */

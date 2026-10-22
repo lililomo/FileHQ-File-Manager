@@ -40,6 +40,9 @@ export interface ClientConfig {
   passwordMinLength: number
   defaultLanguage: string
   adminCanBrowseUsers: boolean
+  /** Step 19a: custom PNG logo uploaded by the admin ("" when none) */
+  logoUrl?: string
+  shareDefaultExpiryDays?: number
   features: Record<string, boolean>
 }
 

@@ -35,6 +35,7 @@ import { Route as AppFilesSplatRouteImport } from './routes/_app/files/$'
 import { Route as AppSharedWithMeIndexRouteImport } from './routes/_app/shared-with-me/index'
 import { Route as STokenSplatRouteImport } from './routes/s/$token/$'
 import { Route as AppSharedWithMeShareIdSplatRouteImport } from './routes/_app/shared-with-me/$shareId/$'
+import { Route as AppAdminUsersUsernameFilesSplatRouteImport } from './routes/_app/admin/users_.$username.files.$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -166,6 +167,12 @@ const AppSharedWithMeShareIdSplatRoute =
     path: '/shared-with-me/$shareId/$',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAdminUsersUsernameFilesSplatRoute =
+  AppAdminUsersUsernameFilesSplatRouteImport.update({
+    id: '/users_/$username/files/$',
+    path: '/users/$username/files/$',
+    getParentRoute: () => AppAdminRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -193,6 +200,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AppAdminIndexRoute
   '/shared-with-me/': typeof AppSharedWithMeIndexRoute
   '/shared-with-me/$shareId/$': typeof AppSharedWithMeShareIdSplatRoute
+  '/admin/users/$username/files/$': typeof AppAdminUsersUsernameFilesSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -219,6 +227,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AppAdminIndexRoute
   '/shared-with-me': typeof AppSharedWithMeIndexRoute
   '/shared-with-me/$shareId/$': typeof AppSharedWithMeShareIdSplatRoute
+  '/admin/users/$username/files/$': typeof AppAdminUsersUsernameFilesSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -248,6 +257,7 @@ export interface FileRoutesById {
   '/_app/admin/': typeof AppAdminIndexRoute
   '/_app/shared-with-me/': typeof AppSharedWithMeIndexRoute
   '/_app/shared-with-me/$shareId/$': typeof AppSharedWithMeShareIdSplatRoute
+  '/_app/admin/users_/$username/files/$': typeof AppAdminUsersUsernameFilesSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -277,6 +287,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/shared-with-me/'
     | '/shared-with-me/$shareId/$'
+    | '/admin/users/$username/files/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -303,6 +314,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/shared-with-me'
     | '/shared-with-me/$shareId/$'
+    | '/admin/users/$username/files/$'
   id:
     | '__root__'
     | '/'
@@ -331,6 +343,7 @@ export interface FileRouteTypes {
     | '/_app/admin/'
     | '/_app/shared-with-me/'
     | '/_app/shared-with-me/$shareId/$'
+    | '/_app/admin/users_/$username/files/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -526,6 +539,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSharedWithMeShareIdSplatRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/admin/users_/$username/files/$': {
+      id: '/_app/admin/users_/$username/files/$'
+      path: '/users/$username/files/$'
+      fullPath: '/admin/users/$username/files/$'
+      preLoaderRoute: typeof AppAdminUsersUsernameFilesSplatRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
   }
 }
 
@@ -537,6 +557,7 @@ interface AppAdminRouteChildren {
   AppAdminTasksRoute: typeof AppAdminTasksRoute
   AppAdminUsersRoute: typeof AppAdminUsersRoute
   AppAdminIndexRoute: typeof AppAdminIndexRoute
+  AppAdminUsersUsernameFilesSplatRoute: typeof AppAdminUsersUsernameFilesSplatRoute
 }
 
 const AppAdminRouteChildren: AppAdminRouteChildren = {
@@ -547,6 +568,7 @@ const AppAdminRouteChildren: AppAdminRouteChildren = {
   AppAdminTasksRoute: AppAdminTasksRoute,
   AppAdminUsersRoute: AppAdminUsersRoute,
   AppAdminIndexRoute: AppAdminIndexRoute,
+  AppAdminUsersUsernameFilesSplatRoute: AppAdminUsersUsernameFilesSplatRoute,
 }
 
 const AppAdminRouteWithChildren = AppAdminRoute._addFileChildren(
