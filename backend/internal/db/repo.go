@@ -145,6 +145,7 @@ type Repository interface {
 	EditorRepo
 	MediaPositionRepo
 	ShareRepo
+	AdminRepo
 	// WithTx runs fn with a Repository bound to one write transaction; nested
 	// calls reuse the outer transaction.
 	WithTx(ctx context.Context, fn func(tx Repository) error) error

@@ -39,7 +39,7 @@ func (s *Server) mountEditor(api chi.Router) {
 // contentBodyLimit bounds the JSON body of PUT /files/content: the text as
 // JSON (escapes expand it) plus headroom for the other fields.
 func (s *Server) contentBodyLimit() int64 {
-	return s.cfg.EditorMaxFileSize*4 + 64<<10
+	return s.cfg.Runtime().EditorMaxFileSize*4 + 64<<10
 }
 
 func (s *Server) writeContentError(w http.ResponseWriter, r *http.Request, err error, p string) {
@@ -87,7 +87,7 @@ func (s *Server) handleContentGet(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, CodePathInvalid, 0, "path is not valid", map[string]any{"fields": map[string]any{"path": "invalid"}})
 		return
 	}
-	opts := files.ContentOptions{MaxSize: s.cfg.EditorMaxFileSize}
+	opts := files.ContentOptions{MaxSize: s.cfg.Runtime().EditorMaxFileSize}
 	if enc := q.Get("encoding"); enc != "" {
 		n := files.NormalizeEncoding(enc)
 		if n == "" {
@@ -180,8 +180,8 @@ func (s *Server) handleContentPut(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, CodeValidationFailed, 0, "eol must be lf, crlf or keep", map[string]any{"fields": map[string]any{"eol": "invalid"}})
 		return
 	}
-	if int64(len(req.Content)) > s.cfg.EditorMaxFileSize {
-		WriteError(w, r, CodeFileTooLarge, 0, "content exceeds the editor limit", map[string]any{"limit": s.cfg.EditorMaxFileSize})
+	if int64(len(req.Content)) > s.cfg.Runtime().EditorMaxFileSize {
+		WriteError(w, r, CodeFileTooLarge, 0, "content exceeds the editor limit", map[string]any{"limit": s.cfg.Runtime().EditorMaxFileSize})
 		return
 	}
 	text := files.ConvertEOL(req.Content, eol)

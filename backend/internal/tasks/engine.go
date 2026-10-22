@@ -58,9 +58,11 @@ type Options struct {
 	Now        func() time.Time
 	MaxPerUser int
 	MaxGlobal  int
-	Events     Publisher
-	Notify     Notifier
-	Quota      QuotaReader
+	// MaxPerUserFn, when set, supplies TASK_MAX_PER_USER live (Step 19a).
+	MaxPerUserFn func() int
+	Events       Publisher
+	Notify       Notifier
+	Quota        QuotaReader
 	// OpenJail resolves the user's root for runners.
 	OpenJail func(ctx context.Context, userID string) (*fsjail.Jail, func(), error)
 	// ErrorCode maps a runner error to (code, message) for the API; nil
@@ -154,6 +156,15 @@ func (e *Engine) Register(typ string, spec Spec) {
 		spec.Unit = UnitItems
 	}
 	e.specs[typ] = spec
+}
+
+func (e *Engine) maxPerUser() int {
+	if e.o.MaxPerUserFn != nil {
+		if n := e.o.MaxPerUserFn(); n > 0 {
+			return n
+		}
+	}
+	return e.o.MaxPerUser
 }
 
 // Types lists registered types (tests, admin).
@@ -357,7 +368,7 @@ func (e *Engine) dispatch() {
 			kept = append(kept, t)
 			continue
 		}
-		if t.UserID != "" && e.perUser[t.UserID] >= e.o.MaxPerUser {
+		if t.UserID != "" && e.perUser[t.UserID] >= e.maxPerUser() {
 			kept = append(kept, t)
 			continue
 		}

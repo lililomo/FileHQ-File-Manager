@@ -109,12 +109,13 @@ type LessFunc func(a, b string) bool
 
 // Store moves items to and from the Recycle Bin.
 type Store struct {
-	dataDir   string
-	crossFS   bool
-	retention time.Duration // 0 = never expires
-	repo      db.Repository
-	logger    *slog.Logger
-	now       func() time.Time
+	dataDir     string
+	crossFS     bool
+	retention   time.Duration // 0 = never expires
+	retentionFn func() int
+	repo        db.Repository
+	logger      *slog.Logger
+	now         func() time.Time
 
 	// Optional collaborators (set before use).
 	Quota    *quota.Service
@@ -142,7 +143,18 @@ func New(dataDir string, crossFS bool, retentionDays int, repo db.Repository, lo
 }
 
 // RetentionDays reports the configured auto-purge delay (0 = never).
-func (s *Store) RetentionDays() int { return int(s.retention / (24 * time.Hour)) }
+func (s *Store) RetentionDays() int { return int(s.retentionDur() / (24 * time.Hour)) }
+
+// RetentionFn, when set, supplies TRASH_RETENTION_DAYS live (admin
+// settings, Step 19a).
+func (s *Store) SetRetentionFn(fn func() int) { s.retentionFn = fn }
+
+func (s *Store) retentionDur() time.Duration {
+	if s.retentionFn != nil {
+		return time.Duration(s.retentionFn()) * 24 * time.Hour
+	}
+	return s.retention
+}
 
 // Sys returns the user's trash directory handle (created on first use).
 func (s *Store) Sys(userID string) (*fsjail.SysDir, error) {
@@ -245,8 +257,8 @@ func (s *Store) MoveToTrashBy(ctx context.Context, j *fsjail.Jail, userID string
 			row.Kind = "folder"
 		}
 	}
-	if s.retention > 0 {
-		row.ExpiresAt = db.Ptr(db.FormatTime(now.Add(s.retention)))
+	if ret := s.retentionDur(); ret > 0 {
+		row.ExpiresAt = db.Ptr(db.FormatTime(now.Add(ret)))
 	}
 	if batchID != "" {
 		row.BatchID = &batchID

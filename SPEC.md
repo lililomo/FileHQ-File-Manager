@@ -400,7 +400,7 @@ Nilai yang ditampilkan di admin panel menunjukkan sumbernya (default / env / ove
 | `SHARE_ALLOW_NO_EXPIRY` | bool | `true` | | ya | |
 | `SHARE_REQUIRE_PASSWORD` | bool | `false` | | ya | |
 | `PASSWORD_MIN_LENGTH` | int | `12` | 8–128 | ya | |
-| `APP_NAME` | string | `FileManager` | ≤ 40 karakter | ya | Judul & logo teks. Logo gambar: upload admin → `DATA_DIR/branding/logo.webp`. |
+| `APP_NAME` | string | `FileManager` | ≤ 40 karakter | ya | Judul & logo teks. Logo gambar: upload admin (PNG ≤ 512 KB, magic bytes diverifikasi) → `DATA_DIR/branding/logo.png`, disajikan `GET /api/v1/branding/logo` (publik, untuk halaman login); setting `branding.logo` menandai keberadaannya (Step 19a). |
 | `DEFAULT_LANGUAGE` | enum | `id` | `id` \| `en` | ya | |
 | `ALLOW_ROOT` | bool | `false` | hanya untuk uji lokal/CI; **jangan** di production | tidak | Tanpa ini proses yang berjalan sebagai uid 0 di `APP_ENV=production` ditolak saat start (§3.4 butir 6). Ditambahkan Step 1 agar smoke test di server (sebagai root, sebelum user `filemanager` ada) tetap bisa dijalankan. |
 
@@ -520,7 +520,7 @@ Index: `sessions_user_idx (user_id)`, `sessions_idle_idx (idle_expires_at)`. Job
 
 **media_positions** (Step 17b, migrasi `0011`) — `user_id TEXT FK ON DELETE CASCADE, path TEXT, seconds REAL NOT NULL, duration REAL NULL, updated_at TEXT NOT NULL`, PK `(user_id, path)`, indeks `(user_id, updated_at)`. Posisi tonton terakhir per video (resume); maks 500 baris per user — setiap `PUT` memangkas baris yang paling lama tidak diperbarui (LRU). `seconds = 0` menghapus baris (selesai ditonton/mulai dari awal). Path tidak ditulis ulang saat rename/move (baris lama tersapu LRU).
 
-**settings** — `key TEXT PK, value_json TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NULL`. Key = nama env lowercase (§3.3) plus key non-env: `remote_download.allowlist` (array), `remote_download.denylist` (array), `branding.logo_path`, `share.allow_custom_slug`.
+**settings** — `key TEXT PK, value_json TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NULL`. Key = nama env lowercase (§3.3; mis. `max_upload_size`, `remote_download_enabled`) plus key non-env: `remote_download.allowlist` (array), `remote_download.denylist` (array), `branding.logo` (nama file logo, ditulis oleh endpoint upload — read-only lewat PUT), `share.allow_custom_slug`. Nilai disimpan sebagai JSON ternormalisasi: ukuran/durasi string (`"50GB"`, `"2h"`), int number, bool, daftar array (Step 19a). Override **menggantikan** nilai env (§3.1) — bukan AND/min seperti implementasi awal Step 13/18a.
 
 **shares**
 
@@ -1075,15 +1075,17 @@ Halaman `GET /s/<token>[/sub/path]` (bukan API) dilayani SPA (route `/s/:token/*
 | Method & path | Request | Response |
 | --- | --- | --- |
 | `GET /admin/dashboard` | | `{users:{active,disabled}, storage:{usedBytes,quotaSumBytes,disk:{total,free}}, topUsers:[{username,used,quota}], tasks:{running,queued}, publicShares, failedLogins24h, version:{version,commit,buildDate,go}, deps:{ffmpeg:{ok,path,version?},…}, warnings:[…]}` |
-| `GET /admin/users?cursor&q&role&status&sort` | | `{items:[{id, username, displayName, role, status, quota:{limit,used}, lastLoginAt, homeProvisioned, homeWarning, createdAt, mustChangePassword, totpEnabled}]}` |
-| `POST /admin/users` | `{username, displayName, role, quotaBytes?, temporaryPassword?}` | `201 {user, temporaryPassword}` (hanya sekali) |
+| `GET /admin/users?cursor&q&role&status&limit` | | `{items:[{id, username, displayName, role, status, quota:{limit,used,trash,versions,dirty}, lastLoginAt, homeProvisioned, homeProvisionedAt, homeWarning, createdAt, updatedAt, mustChangePassword, totpEnabled, lockedUntil, createdBy}], nextCursor, total}` — urut username, cursor keyset (Step 19a) |
+| `GET /admin/users/{id}` | | `{user}` (Step 19a) |
+| `POST /admin/users` | `{username, displayName, role, quotaBytes?, temporaryPassword?}` | `201 {user, temporaryPassword, warnings:[home_exists?]}` (password hanya sekali; username diterima apa adanya — huruf besar ditolak `400`, bukan dilipat) |
 | `PATCH /admin/users/{id}` | `{displayName?, role?, quotaBytes?, status?}` | `200 {user}`; `VALIDATION_FAILED last_admin` jika melanggar aturan admin terakhir |
 | `POST /admin/users/{id}/reset-password` | | `200 {temporaryPassword}`; `must_change_password=1`; semua sesi dicabut |
 | `POST /admin/users/{id}/revoke-sessions` | | `204` |
-| `DELETE /admin/users/{id}` | `{confirmUsername, mode:"purge|archive"}` | `202 {task}` (`archive` → `.system/deleted-users/<username>-<yyyyMMdd-HHmmss>`) |
-| `GET /admin/settings` · `PUT /admin/settings` | `{key: value}` subset yang boleh | `{items:[{key, value, source:"default|env|override", type, validation}]}` |
+| `POST /admin/users/{id}/disable` · `POST /admin/users/{id}/enable` | | `200 {user}` — pintasan `PATCH status`; disable mencabut sesi dan mematikan link publik pemilik (`410 owner_disabled`); menonaktifkan diri sendiri `409 reason self` (Step 19a) |
+| `DELETE /admin/users/{id}` | `{confirmUsername, mode:"purge|archive"}` | `202 {task}` task `delete_user` milik admin pemanggil (tampil di panel task-nya); akun soft-delete + sesi dicabut seketika; `archive` → `.system/deleted-users/<username>-<yyyyMMdd-HHmmss>` (+ `__trash`, `__versions`), baris DB dihapus; `purge` → folder/trash/versions/thumbs + baris per tabel dihapus, baris `users` disimpan 30 hari (job `purge_deleted_users` 04:15) |
+| `GET /admin/settings` · `PUT /admin/settings` | `{key: value}` subset yang boleh | `{items:[{key, group, type, value, default, envValue?, source:"default|env|override", readOnly?, validation:{min,max,maxLen,options}, updatedAt?, updatedBy?}]}`; PUT memvalidasi per kunci + relasi §3.4 butir 7, satu kunci salah → seluruh batch `400 VALIDATION_FAILED` dengan `details.key`/`reason`; berlaku seketika lewat snapshot atomik `config.Runtime()` |
 | `POST /admin/settings/reset` | `{keys}` | kembali ke env |
-| `POST /admin/branding/logo` | multipart png/svg(dirasterisasi)/webp ≤ 1 MB | |
+| `POST /admin/branding/logo` · `DELETE /admin/branding/logo` | multipart field `logo`: PNG (magic bytes) ≤ 512 KB | `200 {logoUrl}` / `204`; `GET /api/v1/branding/logo` (publik) menyajikan `image/png` atau 404 |
 | `GET /admin/audit?cursor&actor&action&from&to&q` · `GET /admin/audit/export.csv?…` | | |
 | `GET /admin/tasks?state&user&cursor` · `POST /admin/tasks/{id}/cancel` | | |
 | `POST /admin/maintenance/{job}` | `job ∈ recalc-quota (body `{userId?}`), clear-thumbs, clean-uploads, purge-trash, integrity-check, backup-db, prune-logs` | `202 {task}` |
@@ -1230,7 +1232,7 @@ Tombol "Tasks (n)" di top bar (n = queued+running) membuka panel tetap di pojok 
 
 **Role & authz.** Setiap handler memanggil `authz.Require(ctx, Policy{Admin bool, OwnerOf path, ShareEditor …})`; akses ke resource ber-ID (task, share, version, trash item, upload session) selalu `WHERE id = ? AND user_id = ?`. Test IDOR (§10.6) mencakup semua grup endpoint.
 
-**Admin browse user** (`ADMIN_CAN_BROWSE_USERS=true`): `as_user` membuka `Jail` user target read-write; UI admin menampilkan banner merah "Anda sedang melihat folder <user>"; setiap request → `audit_logs action=admin.browse_user details{path, method}`.
+**Admin browse user** (`ADMIN_CAN_BROWSE_USERS=true`): `as_user` membuka `Jail` user target read-write; UI admin menampilkan banner merah "Anda sedang melihat folder <user>"; setiap request yang **diizinkan** → `audit_logs action=admin.browse_user details{username, path (query), method, endpoint}` (penolakan 403/404 tidak diaudit); `as_user` dan `share` tidak boleh digabung (400); endpoint milik pribadi (`trash/*`, `archives/*`, aktivitas) menolak scope.
 
 ### 8.2 Provisioning folder & kuota
 
@@ -1610,13 +1612,13 @@ dijalankan dengan `Dir` = host path folder (via `HostPath`), `nice`, timeout 30 
 
 ### 8.17 Admin
 
-**Dashboard** (`/admin`): kartu ringkas (bukan hero): user aktif/nonaktif; storage: Σ `used` semua user vs Σ kuota vs disk `statfs(STORAGE_ROOT)` (bar bertumpuk), peringatan jika Σ kuota > disk; top 5 user; task berjalan/antre; share publik aktif; login gagal 24 jam (dari `login_attempts`); versi aplikasi (`version`, `commit`, `buildDate`, Go runtime); status dependency: tabel tool → path → terdeteksi (versi dari `--version` saat start, di-cache) → fitur yang terdampak; warning konfigurasi (ADMIN_INITIAL_PASSWORD masih ada, cross-FS, swap rendah (`/proc/meminfo` SwapTotal < 1 GB), disk < 10 %).
+**Dashboard** (`/admin`): kartu ringkas (bukan hero): user aktif/nonaktif; storage: Σ `used` semua user vs Σ kuota vs disk `statfs(STORAGE_ROOT)` (bar bertumpuk), peringatan jika Σ kuota > disk; top 10 user; task berjalan/antre; share publik aktif; login gagal 24 jam (dari `login_attempts`); versi aplikasi (`version`, `commit`, `buildDate`, Go runtime); status dependency: tabel tool → path → terdeteksi (versi dari `--version` saat start, di-cache) → fitur yang terdampak; warning konfigurasi (ADMIN_INITIAL_PASSWORD masih ada, cross-FS, swap rendah (`/proc/meminfo` SwapTotal < 1 GB), disk < 10 %).
 
 **Users** (`/admin/users`): tabel sesuai prompt; aksi baris: Edit (nama, role, kuota, status), Reset password (tampilkan sekali, tombol salin), Paksa logout, Nonaktifkan/Aktifkan, Hapus (dialog ketik username, pilih `purge` atau `archive`). Buat user: username (validasi live + cek unik), nama, role, kuota (default dari setting), password sementara: generate (16 karakter acak, tampil sekali) atau manual (validasi kebijakan). Aturan admin terakhir: server menolak `PATCH` role→user / status→disabled / `DELETE` jika target adalah satu-satunya admin aktif (`VALIDATION_FAILED last_admin`), termasuk diri sendiri.
 
-**Hapus user** (task `delete_user`): cabut sesi; `purge` → `RemoveAll` root user + trash/versions/thumbs user + semua baris DB (cascade) + `users.deleted_at` (baris dipertahankan 30 hari untuk audit lalu dihapus); `archive` → `Rename` root user ke `DATA_DIR/deleted-users/<username>-<yyyyMMdd-HHmmss>` (cross-FS → copy), trash/versions user ikut dipindah ke dalam folder itu (`__trash`, `__versions`), baris DB dihapus; audit.
+**Hapus user** (task `delete_user`, dimiliki admin pemanggil agar terlihat di panel task-nya; Step 19a): akun soft-delete (`deleted_at`, status disabled) + sesi dicabut seketika di request, lalu task: `purge` → `fsjail.RemoveHome` root user + `trash/<uid>`, `versions/<uid>`, `thumbs/<uid>` + baris per tabel (`db.PurgeUserData`, daftar tabel tetap) + `users.deleted_at` (baris dipertahankan 30 hari untuk audit lalu dihapus job `purge_deleted_users`; username belum bisa dipakai ulang); `archive` → `fsjail.ArchiveHome` (renameat, cross-FS → copy+delete) ke `DATA_DIR/deleted-users/<username>-<yyyyMMdd-HHmmss>`, trash/versions user ikut dipindah ke dalam folder itu (`__trash`, `__versions`), thumbs dihapus, baris DB dihapus (cascade; username bebas); audit `user.delete|archive` saat request.
 
-**Settings** (`/admin/settings`): form per kelompok (Upload, Storage, Recycle Bin & versi, Remote download, Sharing, Keamanan, Tampilan): tiap field menampilkan nilai efektif, sumber, tombol reset; validasi server sama dengan §3; perubahan → `settings.update` audit; nilai berlaku ≤ 5 detik (cache runtime). Daftar key yang bisa diubah = kolom "Override admin = ya" di §3.3 + `remote_download.allowlist/denylist`, `share.allow_custom_slug`, `branding.logo`.
+**Settings** (`/admin/settings`): form per kelompok (Upload, Storage, Recycle Bin & versi, Remote download, Sharing, Keamanan, Tampilan): tiap field menampilkan nilai efektif, sumber, tombol reset; validasi server sama dengan §3; perubahan → `settings.update` audit `{key, old, new}` (tidak ada kunci rahasia), reset → `settings.reset`; nilai berlaku seketika untuk handler (snapshot `config.Runtime()`) dan ≤ 5 detik untuk cache `share.Settings`/`remotedl.Settings` (di-invalidate langsung oleh admin API). Catatan: `tz_default` baru dipakai scheduler setelah restart. Daftar key yang bisa diubah = kolom "Override admin = ya" di §3.3 + `remote_download.allowlist/denylist`, `share.allow_custom_slug`, `branding.logo`.
 
 **Tasks** (`/admin/tasks`): semua task semua user (kolom user), filter state, cancel (audit).
 

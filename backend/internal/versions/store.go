@@ -62,11 +62,13 @@ var (
 type Options struct {
 	DataDir string
 	// Limit is FILE_VERSION_LIMIT per path; 0 disables versions.
-	Limit  int
-	Repo   db.Repository
-	Quota  *quota.Service
-	Logger *slog.Logger
-	Now    func() time.Time
+	Limit int
+	// LimitFn, when set, supplies the limit live (admin settings, Step 19a).
+	LimitFn func() int
+	Repo    db.Repository
+	Quota   *quota.Service
+	Logger  *slog.Logger
+	Now     func() time.Time
 	// Invalidate drops the listing cache of a folder after Restore.
 	Invalidate func(userID string, dir fsjail.VPath)
 	// OnChange is the thumbnail/media invalidation hook after Restore.
@@ -119,10 +121,15 @@ func New(o Options) (*Store, error) {
 func (s *Store) Close() error { return s.sys.Close() }
 
 // Enabled reports whether versions are kept (FILE_VERSION_LIMIT > 0).
-func (s *Store) Enabled() bool { return s.o.Limit > 0 }
+func (s *Store) Enabled() bool { return s.Limit() > 0 }
 
-// Limit is FILE_VERSION_LIMIT.
-func (s *Store) Limit() int { return s.o.Limit }
+// Limit is FILE_VERSION_LIMIT (live through Options.LimitFn, Step 19a).
+func (s *Store) Limit() int {
+	if s.o.LimitFn != nil {
+		return s.o.LimitFn()
+	}
+	return s.o.Limit
+}
 
 func blobRel(userID, id string) string { return path.Join(userID, id) }
 
@@ -201,11 +208,11 @@ func (s *Store) Snapshot(ctx context.Context, j *fsjail.Jail, userID string, p f
 // prune deletes the oldest versions of path beyond Limit; returns freed bytes.
 func (s *Store) prune(ctx context.Context, userID, p string) int64 {
 	rows, err := s.o.Repo.ListFileVersionsByPath(ctx, userID, p)
-	if err != nil || len(rows) <= s.o.Limit {
+	if err != nil || len(rows) <= s.Limit() {
 		return 0
 	}
 	var freed int64
-	for _, r := range rows[s.o.Limit:] { // rows are newest first
+	for _, r := range rows[s.Limit():] { // rows are newest first
 		if _, err := s.o.Repo.DeleteFileVersion(ctx, userID, r.ID); err != nil {
 			s.o.Logger.WarnContext(ctx, "version prune failed", slog.String("id", r.ID), slog.String("error", err.Error()))
 			continue

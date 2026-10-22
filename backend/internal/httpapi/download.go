@@ -262,7 +262,7 @@ func (s *Server) handleFilesZipCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	exp := s.signer.Expiry(download.TTLFor(download.PurposeZip, s.cfg.SignedURLTTL, s.cfg.MediaURLTTL))
 	url := s.signer.URL(download.Params{Scope: sc.signScope(), Purpose: download.PurposeZip, Extra: id, Exp: exp})
-	name := download.ZipFilename(s.cfg.AppName, paths, req.Name, time.Now())
+	name := download.ZipFilename(s.cfg.Runtime().AppName, paths, req.Name, time.Now())
 	WriteJSON(w, http.StatusOK, map[string]any{"url": url, "expiresAt": isoTime(exp), "name": name, "count": len(paths)})
 }
 
@@ -341,7 +341,7 @@ func (s *Server) handleFilesZipGet(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	download.SetContentHeaders(h, s.corp())
 	h.Set("Content-Type", "application/zip")
-	h.Set("Content-Disposition", download.ContentDisposition(false, download.ZipFilename(s.cfg.AppName, paths, req.Name, req.CreatedAt)))
+	h.Set("Content-Disposition", download.ContentDisposition(false, download.ZipFilename(s.cfg.Runtime().AppName, paths, req.Name, req.CreatedAt)))
 	h.Set("Cache-Control", "private, no-store")
 	h.Set("Accept-Ranges", "none")
 	if r.Method == http.MethodHead {

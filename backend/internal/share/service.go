@@ -91,7 +91,8 @@ type Options struct {
 }
 
 // Settings are the effective sharing rules: environment defaults overridden
-// by the admin settings table (cache 5 s like remotedl).
+// by the admin settings table (cache 5 s like remotedl; an override wins
+// over the environment, SPEC §3.1).
 type Settings struct {
 	PublicEnabled     bool
 	AllowNoExpiry     bool
@@ -129,15 +130,15 @@ func (c *settingsCache) get(ctx context.Context) Settings {
 				switch row.Key {
 				case KeyPublicEnabled:
 					if json.Unmarshal([]byte(row.ValueJson), &b) == nil {
-						out.PublicEnabled = out.PublicEnabled && b
+						out.PublicEnabled = b
 					}
 				case KeyAllowNoExpiry:
 					if json.Unmarshal([]byte(row.ValueJson), &b) == nil {
-						out.AllowNoExpiry = out.AllowNoExpiry && b
+						out.AllowNoExpiry = b
 					}
 				case KeyRequirePassword:
 					if json.Unmarshal([]byte(row.ValueJson), &b) == nil {
-						out.RequirePassword = out.RequirePassword || b
+						out.RequirePassword = b
 					}
 				case KeyDefaultExpiry:
 					var n float64

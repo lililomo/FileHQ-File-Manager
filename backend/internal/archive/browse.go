@@ -127,7 +127,8 @@ func (s *Service) indexFor(ctx context.Context, j *fsjail.Jail, userID string, o
 	case serr != nil:
 		return nil, serr
 	default:
-		ix, err = BuildIndex(ctx, src, s.o.MaxEntries)
+		_, maxEntries := s.limits()
+		ix, err = BuildIndex(ctx, src, maxEntries)
 	}
 	if err != nil {
 		return nil, err
@@ -146,8 +147,8 @@ func (s *Service) indexCLI(ctx context.Context, j *fsjail.Jail, op *opened, pass
 	if err != nil {
 		return nil, err
 	}
-	if s.o.MaxEntries > 0 && len(rows) > s.o.MaxEntries {
-		return nil, limitErr("archive has too many entries", map[string]any{"reason": "entries", "limit": s.o.MaxEntries, "entries": len(rows)})
+	if _, maxEntries := s.limits(); maxEntries > 0 && len(rows) > maxEntries {
+		return nil, limitErr("archive has too many entries", map[string]any{"reason": "entries", "limit": maxEntries, "entries": len(rows)})
 	}
 	entries := make([]Entry, 0, len(rows))
 	for _, r := range rows {

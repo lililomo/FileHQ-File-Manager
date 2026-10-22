@@ -211,7 +211,7 @@ func (s *Server) handleMeActivity(w http.ResponseWriter, r *http.Request) {
 		}
 		rows = append(rows, x)
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"items": rows, "nextCursor": page.NextCursor, "retentionDays": s.cfg.ActivityRetentionDays})
+	WriteJSON(w, http.StatusOK, map[string]any{"items": rows, "nextCursor": page.NextCursor, "retentionDays": s.cfg.Runtime().ActivityRetentionDays})
 }
 
 func (s *Server) handleMeActivityClear(w http.ResponseWriter, r *http.Request) {

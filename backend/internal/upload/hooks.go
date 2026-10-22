@@ -44,8 +44,8 @@ func (s *Service) preCreate(ev handler.HookEvent) (handler.HTTPResponse, handler
 	if size < 0 {
 		return s.createErr(ctx, newErr(CodeValidationFailed, http.StatusBadRequest, "invalid Upload-Length", nil))
 	}
-	if s.o.MaxUploadSize > 0 && size > s.o.MaxUploadSize {
-		return s.createErr(ctx, newErr(CodePayloadTooLarge, http.StatusRequestEntityTooLarge, "file exceeds MAX_UPLOAD_SIZE", map[string]any{"reason": "too_large", "size": size, "max": s.o.MaxUploadSize}))
+	if maxUpload := s.MaxUploadSize(); maxUpload > 0 && size > maxUpload {
+		return s.createErr(ctx, newErr(CodePayloadTooLarge, http.StatusRequestEntityTooLarge, "file exceeds MAX_UPLOAD_SIZE", map[string]any{"reason": "too_large", "size": size, "max": maxUpload}))
 	}
 	m, perr := s.parseMetadata(ev.Upload.MetaData, p)
 	if perr != nil {

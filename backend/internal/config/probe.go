@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 )
 
 // ProbeWritable creates and removes a temp file in dir (readiness check for
@@ -31,4 +33,29 @@ func ProbeReadableDir(dir string) error {
 		return err
 	}
 	return nil
+}
+
+// SwapTotalBytes reads SwapTotal from /proc/meminfo (admin dashboard
+// warning "swap rendah", SPEC §8.17). Lives here because config may read
+// operator files; ok is false when the value cannot be read.
+func SwapTotalBytes() (bytes int64, ok bool) {
+	raw, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0, false
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if !strings.HasPrefix(line, "SwapTotal:") {
+			continue
+		}
+		fields := strings.Fields(strings.TrimPrefix(line, "SwapTotal:"))
+		if len(fields) == 0 {
+			return 0, false
+		}
+		kb, err := strconv.ParseInt(fields[0], 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return kb * 1024, true
+	}
+	return 0, false
 }

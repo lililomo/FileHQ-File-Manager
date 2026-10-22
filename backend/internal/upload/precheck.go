@@ -60,7 +60,8 @@ func (s *Service) Precheck(ctx context.Context, j *fsjail.Jail, userID string, d
 		perr.terminal = false
 		return nil, perr
 	}
-	out := &PrecheckResult{Items: make([]PrecheckItem, 0, len(in)), MaxUploadSize: s.o.MaxUploadSize, ChunkSize: s.o.ChunkSize}
+	maxUpload := s.MaxUploadSize()
+	out := &PrecheckResult{Items: make([]PrecheckItem, 0, len(in)), MaxUploadSize: maxUpload, ChunkSize: s.ChunkSize()}
 	for _, f := range in {
 		it := PrecheckItem{Name: f.Name, RelativePath: f.RelativePath, Status: "ok"}
 		segs, perr := splitRelative(f.RelativePath)
@@ -92,7 +93,7 @@ func (s *Service) Precheck(ctx context.Context, j *fsjail.Jail, userID string, d
 			it.Status, it.Reason = "blocked_ext", files.Ext(f.Name)
 		case f.Size < 0:
 			it.Status, it.Reason = "name_invalid", "size"
-		case s.o.MaxUploadSize > 0 && f.Size > s.o.MaxUploadSize:
+		case maxUpload > 0 && f.Size > maxUpload:
 			it.Status, it.Reason = "too_large", "max_upload_size"
 		default:
 			if info, err := j.Lstat(target); err == nil {

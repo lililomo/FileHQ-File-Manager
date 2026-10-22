@@ -82,3 +82,32 @@ WHERE deleted_at IS NULL AND status = 'active' AND id <> sqlc.arg('self_id')
        OR instr(lower(display_name), sqlc.arg('needle')) > 0)
 ORDER BY username
 LIMIT sqlc.arg('lim');
+
+-- name: ListUsersPage :many
+-- Step 19a: admin user list, keyset cursor on username (after = "" for the
+-- first page). Filters as ListUsers.
+SELECT * FROM users
+WHERE deleted_at IS NULL
+  AND username > sqlc.arg('after')
+  AND (sqlc.narg('status') IS NULL OR status = sqlc.narg('status'))
+  AND (sqlc.narg('role') IS NULL OR role = sqlc.narg('role'))
+  AND (sqlc.narg('q') IS NULL OR username LIKE sqlc.narg('q') OR display_name LIKE sqlc.narg('q'))
+ORDER BY username
+LIMIT sqlc.arg('limit');
+
+-- name: SumUserQuota :one
+-- Step 19a dashboard: sum of quota_bytes of every live account.
+SELECT COALESCE(SUM(quota_bytes), 0) FROM users WHERE deleted_at IS NULL;
+
+-- name: TopQuotaUsers :many
+-- Step 19a dashboard: accounts ordered by effective usage (used + trash + versions).
+SELECT users.id, users.username, users.display_name, users.quota_bytes,
+       (quota_usage.used_bytes + quota_usage.trash_bytes + quota_usage.versions_bytes) AS effective_bytes
+FROM quota_usage JOIN users ON users.id = quota_usage.user_id
+WHERE users.deleted_at IS NULL
+ORDER BY effective_bytes DESC, users.username
+LIMIT ?;
+
+-- name: ListDeletedUsersBefore :many
+-- Step 19a: purged accounts kept 30 days for the audit trail (SPEC 8.17).
+SELECT * FROM users WHERE deleted_at IS NOT NULL AND deleted_at < sqlc.arg('before');

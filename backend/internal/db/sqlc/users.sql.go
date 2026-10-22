@@ -187,6 +187,55 @@ func (q *Queries) HardDeleteUser(ctx context.Context, id string) error {
 	return err
 }
 
+const listDeletedUsersBefore = `-- name: ListDeletedUsersBefore :many
+SELECT id, username, display_name, role, status, password_hash, must_change_password, password_changed_at, quota_bytes, home_provisioned_at, home_warning, last_login_at, failed_login_count, locked_until, totp_secret_enc, totp_enabled, created_by, created_at, updated_at, deleted_at FROM users WHERE deleted_at IS NOT NULL AND deleted_at < ?1
+`
+
+// Step 19a: purged accounts kept 30 days for the audit trail (SPEC 8.17).
+func (q *Queries) ListDeletedUsersBefore(ctx context.Context, before *string) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, listDeletedUsersBefore, before)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.DisplayName,
+			&i.Role,
+			&i.Status,
+			&i.PasswordHash,
+			&i.MustChangePassword,
+			&i.PasswordChangedAt,
+			&i.QuotaBytes,
+			&i.HomeProvisionedAt,
+			&i.HomeWarning,
+			&i.LastLoginAt,
+			&i.FailedLoginCount,
+			&i.LockedUntil,
+			&i.TotpSecretEnc,
+			&i.TotpEnabled,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
 SELECT id, username, display_name, role, status, password_hash, must_change_password, password_changed_at, quota_bytes, home_provisioned_at, home_warning, last_login_at, failed_login_count, locked_until, totp_secret_enc, totp_enabled, created_by, created_at, updated_at, deleted_at FROM users
 WHERE deleted_at IS NULL
@@ -211,6 +260,77 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 		arg.Role,
 		arg.Q,
 		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.DisplayName,
+			&i.Role,
+			&i.Status,
+			&i.PasswordHash,
+			&i.MustChangePassword,
+			&i.PasswordChangedAt,
+			&i.QuotaBytes,
+			&i.HomeProvisionedAt,
+			&i.HomeWarning,
+			&i.LastLoginAt,
+			&i.FailedLoginCount,
+			&i.LockedUntil,
+			&i.TotpSecretEnc,
+			&i.TotpEnabled,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsersPage = `-- name: ListUsersPage :many
+SELECT id, username, display_name, role, status, password_hash, must_change_password, password_changed_at, quota_bytes, home_provisioned_at, home_warning, last_login_at, failed_login_count, locked_until, totp_secret_enc, totp_enabled, created_by, created_at, updated_at, deleted_at FROM users
+WHERE deleted_at IS NULL
+  AND username > ?1
+  AND (?2 IS NULL OR status = ?2)
+  AND (?3 IS NULL OR role = ?3)
+  AND (?4 IS NULL OR username LIKE ?4 OR display_name LIKE ?4)
+ORDER BY username
+LIMIT ?5
+`
+
+type ListUsersPageParams struct {
+	After  string      `json:"after"`
+	Status interface{} `json:"status"`
+	Role   interface{} `json:"role"`
+	Q      interface{} `json:"q"`
+	Limit  int64       `json:"limit"`
+}
+
+// Step 19a: admin user list, keyset cursor on username (after = "" for the
+// first page). Filters as ListUsers.
+func (q *Queries) ListUsersPage(ctx context.Context, arg ListUsersPageParams) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, listUsersPage,
+		arg.After,
+		arg.Status,
+		arg.Role,
+		arg.Q,
 		arg.Limit,
 	)
 	if err != nil {
@@ -403,6 +523,65 @@ func (q *Queries) SuggestUsers(ctx context.Context, arg SuggestUsersParams) ([]S
 	for rows.Next() {
 		var i SuggestUsersRow
 		if err := rows.Scan(&i.ID, &i.Username, &i.DisplayName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const sumUserQuota = `-- name: SumUserQuota :one
+SELECT COALESCE(SUM(quota_bytes), 0) FROM users WHERE deleted_at IS NULL
+`
+
+// Step 19a dashboard: sum of quota_bytes of every live account.
+func (q *Queries) SumUserQuota(ctx context.Context) (interface{}, error) {
+	row := q.db.QueryRowContext(ctx, sumUserQuota)
+	var coalesce interface{}
+	err := row.Scan(&coalesce)
+	return coalesce, err
+}
+
+const topQuotaUsers = `-- name: TopQuotaUsers :many
+SELECT users.id, users.username, users.display_name, users.quota_bytes,
+       (quota_usage.used_bytes + quota_usage.trash_bytes + quota_usage.versions_bytes) AS effective_bytes
+FROM quota_usage JOIN users ON users.id = quota_usage.user_id
+WHERE users.deleted_at IS NULL
+ORDER BY effective_bytes DESC, users.username
+LIMIT ?
+`
+
+type TopQuotaUsersRow struct {
+	ID             string      `json:"id"`
+	Username       string      `json:"username"`
+	DisplayName    string      `json:"display_name"`
+	QuotaBytes     int64       `json:"quota_bytes"`
+	EffectiveBytes interface{} `json:"effective_bytes"`
+}
+
+// Step 19a dashboard: accounts ordered by effective usage (used + trash + versions).
+func (q *Queries) TopQuotaUsers(ctx context.Context, limit int64) ([]TopQuotaUsersRow, error) {
+	rows, err := q.db.QueryContext(ctx, topQuotaUsers, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TopQuotaUsersRow{}
+	for rows.Next() {
+		var i TopQuotaUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.DisplayName,
+			&i.QuotaBytes,
+			&i.EffectiveBytes,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

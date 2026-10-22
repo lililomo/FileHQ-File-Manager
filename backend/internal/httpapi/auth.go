@@ -131,7 +131,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, CodeInternal, 0, "internal server error", nil)
 		return
 	}
-	language := s.cfg.DefaultLanguage
+	language := s.cfg.Runtime().DefaultLanguage
 	if raw, ok := prefs["ui.language"]; ok {
 		var l string
 		if json.Unmarshal(raw, &l) == nil && (l == "id" || l == "en") {
@@ -169,7 +169,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.As(err, &pe):
 			WriteError(w, r, CodeValidationFailed, 0, "password does not meet the policy",
-				map[string]any{"fields": map[string]any{"newPassword": pe.Reason}, "minLength": s.cfg.PasswordMinLength})
+				map[string]any{"fields": map[string]any{"newPassword": pe.Reason}, "minLength": s.cfg.Runtime().PasswordMinLength})
 		case errors.Is(err, auth.ErrInvalidCredentials):
 			WriteError(w, r, CodeValidationFailed, 0, "current password is incorrect",
 				map[string]any{"fields": map[string]any{"currentPassword": "incorrect"}})
@@ -273,18 +273,22 @@ func (s *Server) meConfig() map[string]any {
 		missing[t] = true
 	}
 	feature := func(name, path string) bool { return path != "" && !missing[name] }
+	// effective values: environment overridden by the admin settings (Step 19a)
+	rt := s.cfg.Runtime()
 	return map[string]any{
-		"appName":               s.cfg.AppName,
-		"chunkSize":             s.cfg.UploadChunkSize,
-		"maxUploadSize":         s.cfg.MaxUploadSize,
-		"editorMaxFileSize":     s.cfg.EditorMaxFileSize,
-		"remoteDownloadEnabled": s.cfg.RemoteDownloadEnabled,
-		"publicSharesEnabled":   s.cfg.PublicSharesEnabled,
-		"shareAllowNoExpiry":    s.cfg.ShareAllowNoExpiry,
-		"shareRequirePassword":  s.cfg.ShareRequirePassword,
-		"passwordMinLength":     s.cfg.PasswordMinLength,
-		"defaultLanguage":       s.cfg.DefaultLanguage,
-		"adminCanBrowseUsers":   s.cfg.AdminCanBrowseUsers,
+		"appName":                rt.AppName,
+		"logoUrl":                logoURL(rt.BrandingLogo),
+		"chunkSize":              rt.UploadChunkSize,
+		"maxUploadSize":          rt.MaxUploadSize,
+		"editorMaxFileSize":      rt.EditorMaxFileSize,
+		"remoteDownloadEnabled":  rt.RemoteDownloadEnabled,
+		"publicSharesEnabled":    rt.PublicSharesEnabled,
+		"shareAllowNoExpiry":     rt.ShareAllowNoExpiry,
+		"shareRequirePassword":   rt.ShareRequirePassword,
+		"shareDefaultExpiryDays": rt.ShareDefaultExpiryDays,
+		"passwordMinLength":      rt.PasswordMinLength,
+		"defaultLanguage":        rt.DefaultLanguage,
+		"adminCanBrowseUsers":    s.cfg.AdminCanBrowseUsers,
 		"features": map[string]bool{
 			"ffmpeg":   feature("ffmpeg", s.cfg.FFmpegPath),
 			"ffprobe":  feature("ffprobe", s.cfg.FFprobePath),

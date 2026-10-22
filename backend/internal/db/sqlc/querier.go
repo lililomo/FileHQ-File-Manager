@@ -11,6 +11,8 @@ import (
 type Querier interface {
 	ApplyQuotaDelta(ctx context.Context, arg ApplyQuotaDeltaParams) error
 	CountActiveAdmins(ctx context.Context) (int64, error)
+	// Step 19a dashboard: live public links (not disabled, not broken, not expired).
+	CountActivePublicShares(ctx context.Context, now *string) (int64, error)
 	CountActiveSessions(ctx context.Context, now string) (int64, error)
 	CountActiveUploadSessions(ctx context.Context, userID string) (int64, error)
 	CountActivity(ctx context.Context, userID string) (int64, error)
@@ -127,6 +129,8 @@ type Querier interface {
 	ListActivity(ctx context.Context, arg ListActivityParams) ([]ActivityLog, error)
 	ListActivityFiltered(ctx context.Context, arg ListActivityFilteredParams) ([]ActivityLog, error)
 	ListAudit(ctx context.Context, arg ListAuditParams) ([]AuditLog, error)
+	// Step 19a: purged accounts kept 30 days for the audit trail (SPEC 8.17).
+	ListDeletedUsersBefore(ctx context.Context, before *string) ([]User, error)
 	ListDirtyQuotaUsers(ctx context.Context) ([]string, error)
 	ListExpiredTrash(ctx context.Context, arg ListExpiredTrashParams) ([]TrashItem, error)
 	ListExpiredUploadSessions(ctx context.Context, arg ListExpiredUploadSessionsParams) ([]UploadSession, error)
@@ -172,6 +176,9 @@ type Querier interface {
 	ListUserSessions(ctx context.Context, arg ListUserSessionsParams) ([]Session, error)
 	ListUserTasks(ctx context.Context, arg ListUserTasksParams) ([]Task, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
+	// Step 19a: admin user list, keyset cursor on username (after = "" for the
+	// first page). Filters as ListUsers.
+	ListUsersPage(ctx context.Context, arg ListUsersPageParams) ([]User, error)
 	MarkAllNotificationsRead(ctx context.Context, arg MarkAllNotificationsReadParams) (int64, error)
 	MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) (int64, error)
 	MarkRunningTasksInterrupted(ctx context.Context, arg MarkRunningTasksInterruptedParams) (int64, error)
@@ -215,6 +222,10 @@ type Querier interface {
 	SumFileVersionBytes(ctx context.Context, userID string) (interface{}, error)
 	SumQuotaUsed(ctx context.Context) (interface{}, error)
 	SumTrashBytes(ctx context.Context, userID string) (interface{}, error)
+	// Step 19a dashboard: sum of quota_bytes of every live account.
+	SumUserQuota(ctx context.Context) (interface{}, error)
+	// Step 19a dashboard: accounts ordered by effective usage (used + trash + versions).
+	TopQuotaUsers(ctx context.Context, limit int64) ([]TopQuotaUsersRow, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	TouchShareAccess(ctx context.Context, arg TouchShareAccessParams) error
 	TouchUploadSession(ctx context.Context, arg TouchUploadSessionParams) error

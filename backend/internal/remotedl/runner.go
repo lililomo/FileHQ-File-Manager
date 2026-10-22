@@ -301,8 +301,8 @@ func (l limits) exceeded(n int64) error {
 
 func (s *Service) limit(ctx context.Context, j *fsjail.Jail, userID string, st Settings) limits {
 	l := limits{size: st.MaxSize, budget: 1 << 50}
-	if s.o.MaxUploadSize > 0 && (l.size <= 0 || s.o.MaxUploadSize < l.size) {
-		l.size = s.o.MaxUploadSize
+	if maxUpload := s.maxUploadSize(); maxUpload > 0 && (l.size <= 0 || maxUpload < l.size) {
+		l.size = maxUpload
 	}
 	if l.size <= 0 {
 		l.size = 1 << 50

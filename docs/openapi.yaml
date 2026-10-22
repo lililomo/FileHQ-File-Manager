@@ -39,6 +39,8 @@ tags:
     description: Link publik milik user (SPEC §8.15, §6.3 Shares; Step 18a)
   - name: public
     description: API tamu di balik /s/<token> — tanpa sesi, otorisasi = token/slug + cookie unlock (SPEC §6.6)
+  - name: admin
+    description: Panel admin — dashboard, user, settings override, branding (SPEC §8.17; Step 19a). Semua route `/admin/*` butuh role admin (403 FORBIDDEN untuk user biasa)
 
 paths:
   /healthz:
@@ -3261,6 +3263,252 @@ paths:
       security: []
       responses:
         "200": { description: Protocol headers }
+  /api/v1/branding/logo:
+    get:
+      tags: [admin]
+      summary: Logo aplikasi (PNG) yang diunggah admin; 404 bila belum ada. Publik (halaman login)
+      operationId: brandingLogo
+      security: []
+      responses:
+        "200": { description: PNG, content: { image/png: { schema: { type: string, format: binary } } } }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/dashboard:
+    get:
+      tags: [admin]
+      summary: Ringkasan — user aktif/nonaktif, storage vs kuota vs disk (statfs STORAGE_ROOT), top 10 user, task, share publik, login gagal 24 jam, versi, status dependency, peringatan konfigurasi
+      operationId: adminDashboard
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      responses:
+        "200": { description: Dashboard, content: { application/json: { schema: { $ref: "#/components/schemas/AdminDashboard" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/users:
+    get:
+      tags: [admin]
+      summary: Daftar user (keyset cursor pada username; filter q/role/status)
+      operationId: adminUsersList
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: substring username/nama }
+        - { name: role, in: query, schema: { type: string, enum: [admin, user] } }
+        - { name: status, in: query, schema: { type: string, enum: [active, disabled] } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        "200": { description: Halaman user, content: { application/json: { schema: { type: object, required: [items, total], properties: { items: { type: array, items: { $ref: "#/components/schemas/AdminUser" } }, nextCursor: { type: [string, "null"] }, total: { type: integer } } } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+    post:
+      tags: [admin]
+      summary: Buat user — username lowercase sesuai SPEC §5.2 (daftar terlarang), password sementara dibuat (16 karakter) bila kosong dan hanya ditampilkan di respons ini; folder dibuat saat login pertama (warning `home_exists` bila folder lama ada)
+      operationId: adminUsersCreate
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username]
+              properties:
+                username: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{2,31}$" }
+                displayName: { type: string, maxLength: 80 }
+                role: { type: string, enum: [admin, user], default: user }
+                quotaBytes: { type: integer, minimum: 1048576, description: default DEFAULT_USER_QUOTA efektif }
+                temporaryPassword: { type: string, description: manual; divalidasi kebijakan password }
+      responses:
+        "201": { description: User + password sementara (sekali), content: { application/json: { schema: { type: object, required: [user, temporaryPassword], properties: { user: { $ref: "#/components/schemas/AdminUser" }, temporaryPassword: { type: string }, warnings: { type: array, items: { type: string, enum: [home_exists] } } } } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { description: ALREADY_EXISTS — username sudah dipakai (termasuk akun yang dihapus < 30 hari) }
+  /api/v1/admin/users/{id}:
+    get:
+      tags: [admin]
+      summary: Satu user
+      operationId: adminUserGet
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: User, content: { application/json: { schema: { type: object, properties: { user: { $ref: "#/components/schemas/AdminUser" } } } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [admin]
+      summary: Ubah nama tampilan, role, kuota, status; aturan admin terakhir → 409 VALIDATION_FAILED reason last_admin; menonaktifkan diri sendiri → 409 reason self; status disabled mencabut semua sesi
+      operationId: adminUserPatch
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName: { type: string, maxLength: 80 }
+                role: { type: string, enum: [admin, user] }
+                quotaBytes: { type: integer, minimum: 1048576 }
+                status: { type: string, enum: [active, disabled] }
+      responses:
+        "200": { description: User, content: { application/json: { schema: { type: object, properties: { user: { $ref: "#/components/schemas/AdminUser" } } } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [admin]
+      summary: Hapus user — akun langsung soft-delete + sesi dicabut + share pemilik mati; pembersihan storage sebagai task `delete_user` milik admin. archive → folder dipindah ke DATA_DIR/deleted-users/<username>-<ts> (+ __trash, __versions), baris DB dihapus (username bebas lagi); purge → folder, trash, versions, thumbs, baris per tabel dihapus, baris users disimpan 30 hari
+      operationId: adminUserDelete
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmUsername, mode]
+              properties:
+                confirmUsername: { type: string, description: harus sama dengan username target }
+                mode: { type: string, enum: [purge, archive] }
+      responses:
+        "202": { description: Task delete_user, content: { application/json: { schema: { type: object, properties: { task: { $ref: "#/components/schemas/Task" } } } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { description: VALIDATION_FAILED reason last_admin atau self }
+  /api/v1/admin/users/{id}/reset-password:
+    post:
+      tags: [admin]
+      summary: Password sementara baru (sekali tampil, Cache-Control no-store), must_change_password=1, semua sesi dicabut; tidak pernah masuk audit/log
+      operationId: adminUserResetPassword
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Password sementara, content: { application/json: { schema: { type: object, required: [temporaryPassword], properties: { temporaryPassword: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/users/{id}/revoke-sessions:
+    post:
+      tags: [admin]
+      summary: Paksa logout di semua perangkat (audit user.revoke_sessions)
+      operationId: adminUserRevokeSessions
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Sesi dicabut }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/users/{id}/disable:
+    post:
+      tags: [admin]
+      summary: Nonaktifkan (= PATCH status disabled) — sesi dicabut, login 403 ACCOUNT_DISABLED, link publik pemilik 410 SHARE_DISABLED owner_disabled
+      operationId: adminUserDisable
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: User, content: { application/json: { schema: { type: object, properties: { user: { $ref: "#/components/schemas/AdminUser" } } } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/users/{id}/enable:
+    post:
+      tags: [admin]
+      summary: Aktifkan kembali (= PATCH status active)
+      operationId: adminUserEnable
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: User, content: { application/json: { schema: { type: object, properties: { user: { $ref: "#/components/schemas/AdminUser" } } } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/settings:
+    get:
+      tags: [admin]
+      summary: Semua kunci override (SPEC §3.3 kolom "Override admin") dengan nilai efektif, default, nilai env, sumber default|env|override, tipe, batas validasi
+      operationId: adminSettingsList
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      responses:
+        "200": { description: Daftar, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/AdminSetting" } } } } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+    put:
+      tags: [admin]
+      summary: Simpan override `{key: value}` — validasi per kunci (tipe, rentang, daftar) dan relasi (chunk ≤ max upload, remote ≤ max upload, absolute ≥ idle); satu kunci salah → seluruh batch ditolak 400 dengan details.key/reason; berlaku langsung tanpa restart (snapshot atomik); audit settings.update {key, old, new}
+      operationId: adminSettingsPut
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: "ukuran sebagai string (\"50GB\") atau byte, durasi string (\"2h\", \"30d\"), daftar array atau string dipisah koma"
+      responses:
+        "200": { description: Daftar setelah perubahan, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/AdminSetting" } } } } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/settings/reset:
+    post:
+      tags: [admin]
+      summary: Kembalikan kunci ke nilai env/default (hapus override; audit settings.reset)
+      operationId: adminSettingsReset
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [keys], properties: { keys: { type: array, items: { type: string } } } }
+      responses:
+        "200": { description: Daftar setelah reset, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/AdminSetting" } } } } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/branding/logo:
+    post:
+      tags: [admin]
+      summary: Unggah logo — multipart field `logo`, PNG (magic bytes) ≤ 512 KB → DATA_DIR/branding/logo.png, setting branding.logo
+      operationId: adminLogoUpload
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { type: object, required: [logo], properties: { logo: { type: string, format: binary } } }
+      responses:
+        "200": { description: URL logo, content: { application/json: { schema: { type: object, properties: { logoUrl: { type: string } } } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [admin]
+      summary: Hapus logo (kembali ke logo teks)
+      operationId: adminLogoDelete
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      responses:
+        "204": { description: Dihapus }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     cookieAuth:
@@ -3273,6 +3521,54 @@ components:
       in: header
       name: X-CSRF-Token
   schemas:
+    AdminUser:
+      type: object
+      required: [id, username, displayName, role, status, quota, createdAt, mustChangePassword]
+      properties:
+        id: { type: string }
+        username: { type: string }
+        displayName: { type: string }
+        role: { type: string, enum: [admin, user] }
+        status: { type: string, enum: [active, disabled] }
+        quota: { type: object, properties: { limit: { type: integer }, used: { type: integer }, trash: { type: integer }, versions: { type: integer }, dirty: { type: boolean } } }
+        lastLoginAt: { type: [string, "null"] }
+        homeProvisioned: { type: boolean }
+        homeProvisionedAt: { type: [string, "null"] }
+        homeWarning: { type: [string, "null"] }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+        mustChangePassword: { type: boolean }
+        totpEnabled: { type: boolean }
+        lockedUntil: { type: [string, "null"] }
+        createdBy: { type: [string, "null"] }
+    AdminSetting:
+      type: object
+      required: [key, group, type, value, default, source]
+      properties:
+        key: { type: string }
+        group: { type: string, enum: [upload, storage, trash, remote, sharing, security, appearance, tasks] }
+        type: { type: string, enum: [size, int, bool, duration, enum, list, string, tz] }
+        value: { description: nilai efektif (string ukuran/durasi, number, boolean, array) }
+        default: { description: default kode }
+        envValue: { description: nilai dari env bila diset }
+        source: { type: string, enum: [default, env, override] }
+        readOnly: { type: boolean }
+        validation: { type: object, properties: { min: { type: integer }, max: { type: integer }, maxLen: { type: integer }, options: { type: array, items: { type: string } } } }
+        updatedAt: { type: string }
+        updatedBy: { type: string }
+    AdminDashboard:
+      type: object
+      properties:
+        users: { type: object, properties: { active: { type: integer }, disabled: { type: integer } } }
+        storage: { type: object, properties: { usedBytes: { type: integer }, quotaSumBytes: { type: integer }, disk: { type: object, properties: { total: { type: integer }, free: { type: integer }, used: { type: integer } } } } }
+        topUsers: { type: array, items: { type: object, properties: { id: { type: string }, username: { type: string }, displayName: { type: string }, used: { type: integer }, quota: { type: integer } } } }
+        tasks: { type: object, properties: { running: { type: integer }, queued: { type: integer } } }
+        publicShares: { type: integer }
+        failedLogins24h: { type: integer }
+        version: { type: object, properties: { version: { type: string }, commit: { type: string }, buildDate: { type: string }, go: { type: string } } }
+        deps: { type: array, items: { type: object, properties: { name: { type: string }, env: { type: string }, path: { type: string }, ok: { type: boolean }, version: { type: string }, feature: { type: string }, optional: { type: boolean } } } }
+        warnings: { type: array, items: { type: object, properties: { code: { type: string, enum: [initial_password_in_env, cross_fs_data_dir, swap_low, disk_low, quota_over_disk, dependency_missing, sevenzip_password_argv, admin_browse_enabled] }, details: { type: object } } } }
+        generatedAt: { type: string }
     Share:
       type: object
       description: Owner view of a share (SPEC §6.3). `url` is empty when the stored token can no longer be decrypted.

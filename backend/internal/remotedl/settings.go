@@ -14,8 +14,8 @@ import (
 
 // Settings keys in the settings table (SPEC §3.3, §4.2). Admin UI: Step 19a.
 const (
-	KeyEnabled   = "remote_download.enabled"
-	KeyMaxSize   = "remote_download.max_size"
+	KeyEnabled   = "remote_download_enabled"
+	KeyMaxSize   = "remote_download_max_size"
 	KeyAllowlist = "remote_download.allowlist"
 	KeyDenylist  = "remote_download.denylist"
 )
@@ -25,7 +25,8 @@ const (
 const settingsTTL = 5 * time.Second
 
 // Settings are the effective values: environment defaults overridden by
-// the settings table.
+// the settings table (an override wins over the environment, SPEC §3.1;
+// the admin API validates max_size ≤ MAX_UPLOAD_SIZE before storing it).
 type Settings struct {
 	Enabled   bool
 	MaxSize   int64
@@ -60,10 +61,10 @@ func (c *settingsCache) get(ctx context.Context) Settings {
 				case KeyEnabled:
 					var b bool
 					if json.Unmarshal([]byte(row.ValueJson), &b) == nil {
-						out.Enabled = out.Enabled && b
+						out.Enabled = b
 					}
 				case KeyMaxSize:
-					if n := parseSize(row.ValueJson); n > 0 && n < out.MaxSize {
+					if n := parseSize(row.ValueJson); n > 0 {
 						out.MaxSize = n
 					}
 				case KeyAllowlist:

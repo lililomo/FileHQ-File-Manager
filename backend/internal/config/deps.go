@@ -110,6 +110,15 @@ func (l *limitedWriter) Write(p []byte) (int, error) {
 	return len(p), err
 }
 
+// ToolValues returns the *_PATH values of a loaded configuration in the
+// map form CheckDeps expects (admin dashboard dependency table).
+func (c *Config) ToolValues() map[string]string {
+	return map[string]string{
+		"FFMPEG_PATH": c.FFmpegPath, "FFPROBE_PATH": c.FFprobePath, "VIPS_PATH": c.VipsPath, "PDFTOPPM_PATH": c.PdftoppmPath,
+		"SEVENZIP_PATH": c.SevenZipPath, "RG_PATH": c.RgPath, "UNRAR_PATH": c.UnrarPath, "RAR_PATH": c.RarPath,
+	}
+}
+
 // PrintDeps writes a human-readable table of tool statuses.
 func PrintDeps(w io.Writer, statuses []ToolStatus) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)

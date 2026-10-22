@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"kppbwi.app/filemanager/internal/admin"
 	"kppbwi.app/filemanager/internal/archive"
 	"kppbwi.app/filemanager/internal/audit"
 	"kppbwi.app/filemanager/internal/auth"
@@ -91,6 +92,7 @@ type authEnv struct {
 	search   *search.Service
 	versions *versions.Store
 	share    *share.Service
+	admin    *admin.Service
 }
 
 type notifyFunc func(ctx context.Context, userID, typ, title, body, link string) error
@@ -181,6 +183,7 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 	env.share.RegisterRefs()
 	env.listing = listing.New(listing.Options{Secret: cfg.AppSecret, PageSize: cfg.ListingPageSize, Meta: listing.MultiMeta(env.meta, env.share)})
 	env.files = files.New(files.Options{Repo: store, Locks: env.locks, Trash: env.trash, Logger: logger, Quota: env.quota, Now: clock.Now, BlockedExtensions: cfg.BlockedExtensions,
+		BlockedFn:      func() []string { return cfg.Runtime().BlockedExtensions },
 		SyncMaxEntries: syncMaxEntries,
 		Invalidate:     func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) }})
 	// Task engine + SSE + notifications (Step 11) on a real clock: progress
@@ -245,7 +248,8 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 	}
 	t.Cleanup(func() { stopEngine(); env.tasks.Shutdown(2 * time.Second); env.events.Close() })
 	env.upload, err = upload.New(upload.Options{DataDir: cfg.DataDir, MaxUploadSize: cfg.MaxUploadSize, ChunkSize: cfg.UploadChunkSize, BaseURL: cfg.AppBaseURL,
-		Repo: store, Quota: env.quota, Files: env.files, Locks: env.locks, OpenJail: upload.OpenJailFunc(env.trash.OpenJail),
+		Limits: func() (int64, int64) { rt := cfg.Runtime(); return rt.MaxUploadSize, rt.UploadChunkSize },
+		Repo:   store, Quota: env.quota, Files: env.files, Locks: env.locks, OpenJail: upload.OpenJailFunc(env.trash.OpenJail),
 		Versions: env.versions, EditorMaxFileSize: cfg.EditorMaxFileSize,
 		Invalidate: func(userID string, dir fsjail.VPath) { env.listing.Invalidate(userID, "", dir) },
 		OnShareUpload: func(_ context.Context, p upload.Principal, path fsjail.VPath, size int64) {
@@ -260,8 +264,20 @@ func newAuthEnv(t *testing.T, extraEnv ...string) *authEnv {
 		t.Fatal(err)
 	}
 	env.dl = download.NewLimiter(0)
+	// Admin (Step 19a): snapshot from the settings table, delete_user task.
+	env.admin, err = admin.New(context.Background(), admin.Options{Cfg: cfg, Repo: store, Auth: svc, Audit: audit.New(store, logger, clock.Now), Quota: env.quota, Tasks: env.tasks,
+		Build: admin.BuildInfo{Version: "test", Commit: "abc", BuildDate: "2026-10-22"}, Logger: logger, Now: clock.Now,
+		Deps: config.CheckDeps(cfg.ToolValues()),
+		OnSettingsChanged: func(_ *config.Runtime) {
+			env.share.InvalidateSettings()
+			env.remote.InvalidateSettings()
+		},
+		OnUserChanged: func(userID string) { env.listing.InvalidateUser(userID) }})
+	if err != nil {
+		t.Fatal(err)
+	}
 	env.handler = New(Options{Cfg: cfg, Logger: logger, Version: "test", Store: store, Auth: svc, Listing: env.listing, Locks: env.locks, Files: env.files, Quota: env.quota, Meta: env.meta,
-		Tasks: env.tasks, Events: env.events, Notify: env.notify, Upload: env.upload, Downloads: env.dl, Remote: env.remote, Archives: env.archive, Search: env.search, Versions: env.versions, Share: env.share,
+		Tasks: env.tasks, Events: env.events, Notify: env.notify, Upload: env.upload, Downloads: env.dl, Remote: env.remote, Archives: env.archive, Search: env.search, Versions: env.versions, Share: env.share, Admin: env.admin,
 		Assets: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("spa")) })})
 	return env
 }

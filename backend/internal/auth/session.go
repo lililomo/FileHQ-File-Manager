@@ -40,6 +40,18 @@ type Sessions struct {
 	idle     time.Duration
 	absolute time.Duration
 	now      func() time.Time
+	// Live, when set, supplies the timeouts from the admin settings
+	// snapshot (Step 19a) instead of the static values.
+	Live func() (idle, absolute time.Duration)
+}
+
+func (s *Sessions) timeouts() (idle, absolute time.Duration) {
+	if s.Live != nil {
+		if i, a := s.Live(); i > 0 && a > 0 {
+			return i, a
+		}
+	}
+	return s.idle, s.absolute
 }
 
 // NewSessions wires the session store. now is injectable for tests.
@@ -83,14 +95,15 @@ func (s *Sessions) Create(ctx context.Context, userID, ip, userAgent string) (st
 		}
 	}
 	label := DeviceLabel(userAgent)
+	_, absolute := s.timeouts()
 	sess, err := s.repo.CreateSession(ctx, sqlc.CreateSessionParams{
 		ID:                HashToken(token),
 		UserID:            userID,
 		CsrfSecret:        secret,
 		CreatedAt:         nowStr,
 		LastSeenAt:        nowStr,
-		IdleExpiresAt:     db.FormatTime(s.idleDeadline(now, now.Add(s.absolute))),
-		AbsoluteExpiresAt: db.FormatTime(now.Add(s.absolute)),
+		IdleExpiresAt:     db.FormatTime(s.idleDeadline(now, now.Add(absolute))),
+		AbsoluteExpiresAt: db.FormatTime(now.Add(absolute)),
 		Ip:                ip,
 		UserAgent:         truncate(userAgent, MaxUserAgentLen),
 		DeviceLabel:       &label,
@@ -102,7 +115,8 @@ func (s *Sessions) Create(ctx context.Context, userID, ip, userAgent string) (st
 }
 
 func (s *Sessions) idleDeadline(now, absolute time.Time) time.Time {
-	d := now.Add(s.idle)
+	idle, _ := s.timeouts()
+	d := now.Add(idle)
 	if d.After(absolute) {
 		return absolute
 	}
@@ -199,8 +213,13 @@ func (s *Sessions) Cookie(token string, secure bool) *http.Cookie {
 		HttpOnly: true,
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(s.absolute.Seconds()),
+		MaxAge:   int(s.maxAge().Seconds()),
 	}
+}
+
+func (s *Sessions) maxAge() time.Duration {
+	_, absolute := s.timeouts()
+	return absolute
 }
 
 // ClearCookie expires the session cookie.

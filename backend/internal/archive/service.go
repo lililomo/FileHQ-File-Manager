@@ -149,18 +149,20 @@ type Options struct {
 	// MaxExtractSize / MaxEntries are ARCHIVE_MAX_EXTRACT_SIZE / ARCHIVE_MAX_ENTRIES.
 	MaxExtractSize int64
 	MaxEntries     int
-	Ratio          float64
-	RatioMinBytes  int64
-	Repo           db.Repository
-	Quota          *quota.Service
-	Files          *files.Service
-	Locks          *fsjail.LockManager
-	Tasks          *tasks.Engine
-	Invalidate     func(userID string, dir fsjail.VPath)
-	OnChange       func(ctx context.Context, userID string, path fsjail.VPath, isDir bool)
-	Logger         *slog.Logger
-	Now            func() time.Time
-	CLITimeout     time.Duration
+	// LimitsFn, when set, supplies both limits live (admin settings, Step 19a).
+	LimitsFn      func() (maxExtractSize int64, maxEntries int)
+	Ratio         float64
+	RatioMinBytes int64
+	Repo          db.Repository
+	Quota         *quota.Service
+	Files         *files.Service
+	Locks         *fsjail.LockManager
+	Tasks         *tasks.Engine
+	Invalidate    func(userID string, dir fsjail.VPath)
+	OnChange      func(ctx context.Context, userID string, path fsjail.VPath, isDir bool)
+	Logger        *slog.Logger
+	Now           func() time.Time
+	CLITimeout    time.Duration
 	// ProgressStep is the byte interval between progress reports/ctx checks.
 	ProgressStep int64
 }
@@ -241,10 +243,21 @@ type CapabilitiesResponse struct {
 	MaxEntries     int    `json:"maxEntries"`
 }
 
+// limits returns the effective extract limits.
+func (s *Service) limits() (int64, int) {
+	if s.o.LimitsFn != nil {
+		if b, n := s.o.LimitsFn(); b > 0 && n > 0 {
+			return b, n
+		}
+	}
+	return s.o.MaxExtractSize, s.o.MaxEntries
+}
+
 // Capabilities applies the tool availability to the static matrix.
 func (s *Service) Capabilities() CapabilitiesResponse {
 	cli := s.SevenZipAvailable()
-	out := CapabilitiesResponse{SevenZip: cli, PasswordStdin: true, MaxExtractSize: s.o.MaxExtractSize, MaxEntries: s.o.MaxEntries}
+	maxBytes, maxEntries := s.limits()
+	out := CapabilitiesResponse{SevenZip: cli, PasswordStdin: true, MaxExtractSize: maxBytes, MaxEntries: maxEntries}
 	if cli {
 		out.SevenZipPath = s.o.SevenZip
 	}

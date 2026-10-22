@@ -84,7 +84,7 @@ func (s *Server) handleVersionContent(w http.ResponseWriter, r *http.Request) {
 	if sc.Shared() && !s.versionInScope(w, r, j, sc, chi.URLParam(r, "id")) {
 		return
 	}
-	opts := files.ContentOptions{MaxSize: s.cfg.EditorMaxFileSize}
+	opts := files.ContentOptions{MaxSize: s.cfg.Runtime().EditorMaxFileSize}
 	if enc := r.URL.Query().Get("encoding"); enc != "" {
 		n := files.NormalizeEncoding(enc)
 		if n == "" {

@@ -83,6 +83,13 @@ var defaults = map[string]string{
 	"ALLOW_ROOT":                "false",
 }
 
+// Default returns the code default of an environment variable (SPEC §3.3
+// column "Default"); ok is false for required/computed variables.
+func Default(key string) (string, bool) {
+	v, ok := defaults[key]
+	return v, ok
+}
+
 // Config is the validated runtime configuration. Field comments give the
 // environment variable name.
 type Config struct {
@@ -153,6 +160,8 @@ type Config struct {
 	MissingTools []string // configured *_PATH binaries that are absent
 	Warnings     []string // non-fatal findings to log at start
 	Source       map[string]string
+
+	runtimeHolder // effective snapshot with admin overrides (snapshot.go)
 }
 
 // ValidationError aggregates every problem found during Load.

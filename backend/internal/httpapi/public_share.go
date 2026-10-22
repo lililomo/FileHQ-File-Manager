@@ -388,7 +388,7 @@ func (s *Server) handlePublicShareList(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.listing.List(r.Context(), j, listing.ListRequest{
 		UserID: p.owner.ID, Scope: download.ShareScope(p.row.ID), Dir: dir, Sort: spec, Cursor: q.Get("cursor"), Limit: limit,
-		Hidden: false, Locale: s.cfg.DefaultLanguage,
+		Hidden: false, Locale: s.cfg.Runtime().DefaultLanguage,
 	})
 	if err != nil {
 		s.writeListingError(w, r, err, string(dir))
@@ -754,7 +754,7 @@ func (s *Server) handlePublicShareZipCreate(w http.ResponseWriter, r *http.Reque
 	for _, p := range paths {
 		vps = append(vps, fsjail.VPath(p))
 	}
-	name := download.ZipFilename(s.cfg.AppName, vps, req.Name, time.Now())
+	name := download.ZipFilename(s.cfg.Runtime().AppName, vps, req.Name, time.Now())
 	if len(vps) == 1 && vps[0].IsRoot() {
 		name = s.shares.View(p.row).Name + ".zip"
 	}
@@ -814,7 +814,7 @@ func (s *Server) handlePublicShareZipGet(w http.ResponseWriter, r *http.Request)
 	h := w.Header()
 	download.SetContentHeaders(h, s.corp())
 	h.Set("Content-Type", "application/zip")
-	name := download.ZipFilename(s.cfg.AppName, paths, req.Name, req.CreatedAt)
+	name := download.ZipFilename(s.cfg.Runtime().AppName, paths, req.Name, req.CreatedAt)
 	if req.Name == "" && len(req.Paths) == 1 && req.Paths[0] == "/" {
 		name = s.shares.View(p.row).Name + ".zip"
 	}

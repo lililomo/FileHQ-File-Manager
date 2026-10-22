@@ -52,6 +52,8 @@ type Options struct {
 	// dot): batch rename refuses file names ending in one of them, like the
 	// single rename endpoint does (review B, F-1).
 	BlockedExtensions []string
+	// BlockedFn, when set, supplies the list live (admin settings, Step 19a).
+	BlockedFn func() []string
 }
 
 // Service implements the file operations of SPEC §8.5 on top of fsjail,
@@ -102,7 +104,12 @@ func New(o Options) *Service {
 		syncMaxBytes: o.SyncMaxBytes, syncMaxEntries: o.SyncMaxEntries, onChange: o.OnChange,
 		invalidate: o.Invalidate, undo: NewUndoStore(o.Now), quota: o.Quota,
 		dirSizes: newDirSizeCache(o.Now), checksums: newChecksumCache(o.Now), analyses: newAnalysisCache(o.Now)}
-	if len(o.BlockedExtensions) > 0 {
+	if o.BlockedFn != nil {
+		s.blocked = func(name string) bool {
+			ext := Ext(name)
+			return ext != "" && slices.Contains(o.BlockedFn(), ext)
+		}
+	} else if len(o.BlockedExtensions) > 0 {
 		blocked := slices.Clone(o.BlockedExtensions)
 		s.blocked = func(name string) bool {
 			ext := Ext(name)

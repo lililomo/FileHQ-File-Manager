@@ -7,6 +7,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"kppbwi.app/filemanager/internal/audit"
+	"kppbwi.app/filemanager/internal/auth"
+	"kppbwi.app/filemanager/internal/db"
 	"kppbwi.app/filemanager/internal/db/sqlc"
 	"kppbwi.app/filemanager/internal/download"
 	"kppbwi.app/filemanager/internal/files"
@@ -40,6 +43,9 @@ type reqScope struct {
 	Base  fsjail.VPath // file share: the item's path inside the sub-root; otherwise "/"
 	// Listing is the listing cache scope ("" own, "s:<id>" share).
 	Listing string
+	// AsUser is set when an admin browses another account (?as_user=,
+	// SPEC §8.1 "Admin browse user"): Owner is the target, Actor the admin.
+	AsUser bool
 }
 
 // Shared reports a share scope.
@@ -54,16 +60,16 @@ func (sc *reqScope) FileShare() bool { return sc.Share != nil && sc.Share.IsDir 
 // UserID is the owner's id: the identity for quota, trash, versions, locks.
 func (sc *reqScope) UserID() string { return sc.Owner.ID }
 
-// shareParam reads ?share= (query) or, for JSON bodies that carry it, the
-// same value already copied to the query by the client; as_user stays
-// refused until Step 19a.
-func shareParam(w http.ResponseWriter, r *http.Request) (string, bool) {
+// shareParam reads the scope parameters ?share= and ?as_user= (query; a
+// JSON body never carries them). Both at once is refused.
+func shareParam(w http.ResponseWriter, r *http.Request) (shareID, asUser string, ok bool) {
 	q := r.URL.Query()
-	if q.Get("as_user") != "" {
-		WriteError(w, r, CodeValidationFailed, 0, "scope not available yet", map[string]any{"fields": map[string]any{"as_user": "not_implemented"}})
-		return "", false
+	shareID, asUser = q.Get("share"), q.Get("as_user")
+	if shareID != "" && asUser != "" {
+		WriteError(w, r, CodeValidationFailed, 0, "share and as_user cannot be combined", map[string]any{"fields": map[string]any{"as_user": "conflict"}})
+		return "", "", false
 	}
-	return q.Get("share"), true
+	return shareID, asUser, true
 }
 
 // scoped resolves the request scope and opens its jail. Errors are written.
@@ -73,9 +79,12 @@ func (s *Server) scoped(w http.ResponseWriter, r *http.Request) (j *fsjail.Jail,
 		WriteError(w, r, CodeUnauthenticated, 0, "authentication required", nil)
 		return nil, nil, nil, false
 	}
-	shareID, ok := shareParam(w, r)
+	shareID, asUser, ok := shareParam(w, r)
 	if !ok {
 		return nil, nil, nil, false
+	}
+	if asUser != "" {
+		return s.openAsUserScope(w, r, actor, asUser)
 	}
 	if shareID == "" {
 		j, release, err := s.jails.acquire(s.cfg.StorageRoot, actor)
@@ -97,6 +106,62 @@ func (s *Server) scoped(w http.ResponseWriter, r *http.Request) (j *fsjail.Jail,
 		return nil, nil, nil, false
 	}
 	return s.openShareScope(w, r, actor, acc)
+}
+
+// openAsUserScope opens another account's root for an admin (SPEC §3.3
+// ADMIN_CAN_BROWSE_USERS, §8.1 "Admin browse user"): refused unless the
+// flag is on and the caller is an admin; every request is audited as
+// admin.browse_user with the path (query) and method.
+func (s *Server) openAsUserScope(w http.ResponseWriter, r *http.Request, actor sqlc.User, asUser string) (*fsjail.Jail, *reqScope, func(), bool) {
+	if !s.cfg.AdminCanBrowseUsers {
+		WriteError(w, r, CodeForbidden, 0, "browsing other users is disabled (ADMIN_CAN_BROWSE_USERS)", map[string]any{"reason": "admin_browse_disabled"})
+		return nil, nil, nil, false
+	}
+	if actor.Role != "admin" {
+		WriteError(w, r, CodeForbidden, 0, "admin role required", map[string]any{"reason": "admin_required"})
+		return nil, nil, nil, false
+	}
+	username := auth.NormalizeUsername(asUser)
+	if err := auth.ValidateUsername(username, true); err != nil {
+		WriteError(w, r, CodeValidationFailed, 0, "invalid as_user", map[string]any{"fields": map[string]any{"as_user": "invalid"}})
+		return nil, nil, nil, false
+	}
+	target, err := s.store.GetUserByUsername(r.Context(), username)
+	if err != nil || target.DeletedAt != nil {
+		if err != nil && !db.IsNotFound(err) {
+			WriteError(w, r, CodeInternal, 0, "internal server error", nil)
+			return nil, nil, nil, false
+		}
+		WriteError(w, r, CodeNotFound, 0, "user not found", map[string]any{"fields": map[string]any{"as_user": "unknown"}})
+		return nil, nil, nil, false
+	}
+	if s.audit != nil {
+		s.audit.Record(r.Context(), audit.Entry{ActorID: actor.ID, ActorUsername: actor.Username, Action: audit.ActionAdminBrowseUser,
+			TargetType: "user", TargetID: target.ID, IP: ClientIP(r), UserAgent: r.UserAgent(),
+			Details: map[string]any{"username": target.Username, "path": r.URL.Query().Get("path"), "method": r.Method, "endpoint": r.URL.Path}})
+	}
+	if target.ID == actor.ID {
+		j, release, err := s.jails.acquire(s.cfg.StorageRoot, actor)
+		if err != nil {
+			if !WriteFSError(w, r, err) {
+				WriteError(w, r, CodeInternal, 0, "storage unavailable", nil)
+			}
+			return nil, nil, nil, false
+		}
+		return j, &reqScope{Actor: actor, Owner: actor, Perm: permOwner, Base: fsjail.Root, Listing: scopeOwn}, release, true
+	}
+	j, release, err := s.jails.acquire(s.cfg.StorageRoot, target)
+	if err != nil {
+		if errors.Is(err, fsjail.ErrNotFound) {
+			WriteError(w, r, CodeNotFound, 0, "the user has no home folder yet", map[string]any{"reason": "home_missing", "username": target.Username})
+			return nil, nil, nil, false
+		}
+		if !WriteFSError(w, r, err) {
+			WriteError(w, r, CodeInternal, 0, "storage unavailable", nil)
+		}
+		return nil, nil, nil, false
+	}
+	return j, &reqScope{Actor: actor, Owner: target, Perm: permOwner, Base: fsjail.Root, Listing: scopeOwn, AsUser: true}, release, true
 }
 
 // openShareScope opens the sub-root of a resolved share for actor.
@@ -218,6 +283,14 @@ func (s *Server) activityScoped(r *http.Request, j *fsjail.Jail, sc *reqScope, a
 	abs2 := ""
 	if p2 != "" {
 		abs2 = string(j.Abs(p2))
+	}
+	if sc.AsUser {
+		ownerDetails = map[string]any{}
+		for k, v := range details {
+			ownerDetails[k] = v
+		}
+		ownerDetails["by"] = sc.Actor.Username
+		ownerDetails["admin"] = true
 	}
 	if sc.Shared() {
 		ownerDetails = map[string]any{}

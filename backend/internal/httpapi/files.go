@@ -63,12 +63,13 @@ func cleanPath(w http.ResponseWriter, r *http.Request, raw string) (fsjail.VPath
 	return p, true
 }
 
-// rejectScope refuses share=/as_user= until those scopes exist.
+// rejectScope refuses share=/as_user= on endpoints that are always the
+// caller's own (trash, archives, editor sessions, activity…).
 func rejectScope(w http.ResponseWriter, r *http.Request) bool {
 	q := r.URL.Query()
 	for _, k := range []string{"share", "as_user"} {
 		if q.Get(k) != "" {
-			WriteError(w, r, CodeValidationFailed, 0, "scope not available yet", map[string]any{"fields": map[string]any{k: "not_implemented"}})
+			WriteError(w, r, CodeValidationFailed, 0, "this endpoint does not accept a scope", map[string]any{"fields": map[string]any{k: "not_supported"}})
 			return true
 		}
 	}
@@ -89,7 +90,7 @@ func parseBoolDefault(s string, def bool) (bool, bool) {
 
 // userLocale reads ui.language from preferences (default DEFAULT_LANGUAGE).
 func (s *Server) userLocale(r *http.Request, userID string) string {
-	lang := s.cfg.DefaultLanguage
+	lang := s.cfg.Runtime().DefaultLanguage
 	prefs, err := s.store.GetPrefs(r.Context(), userID)
 	if err != nil {
 		return lang
@@ -263,7 +264,7 @@ func validateTargetNames(target fsjail.VPath, all bool) ([]string, error) {
 // UNSUPPORTED_TYPE). Folders are never subject to it.
 func (s *Server) blockedExtension(name string) (string, bool) {
 	ext := files.Ext(name)
-	if ext == "" || !slices.Contains(s.cfg.BlockedExtensions, ext) {
+	if ext == "" || !slices.Contains(s.cfg.Runtime().BlockedExtensions, ext) {
 		return "", false
 	}
 	return ext, true

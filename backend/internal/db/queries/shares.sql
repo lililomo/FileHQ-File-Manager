@@ -171,3 +171,9 @@ WHERE sr.recipient_user_id = ? AND s.id = ?;
 
 -- name: SetShareAllowReshare :exec
 UPDATE shares SET allow_reshare = ? WHERE id = ?;
+
+-- name: CountActivePublicShares :one
+-- Step 19a dashboard: live public links (not disabled, not broken, not expired).
+SELECT COUNT(*) FROM shares
+WHERE mode = 'public' AND disabled_at IS NULL AND broken_at IS NULL
+  AND (expires_at IS NULL OR expires_at > sqlc.arg('now'));

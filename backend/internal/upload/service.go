@@ -100,6 +100,10 @@ type Options struct {
 	DataDir       string
 	MaxUploadSize int64
 	ChunkSize     int64
+	// Limits, when set, overrides MaxUploadSize/ChunkSize on every call
+	// (admin settings snapshot, Step 19a); the tus handler then does not
+	// enforce a static MaxSize so the pre-create hook decides.
+	Limits func() (maxUpload, chunk int64)
 	// BaseURL is APP_BASE_URL (no trailing slash); the tus Location header is
 	// absolute and built from it (SPEC §6.5).
 	BaseURL string
@@ -174,7 +178,7 @@ func New(o Options) (*Service, error) {
 	memorylocker.New().UseIn(composer)
 	h, err := handler.NewUnroutedHandler(handler.Config{
 		StoreComposer:              composer,
-		MaxSize:                    o.MaxUploadSize,
+		MaxSize:                    staticMaxSize(o),
 		BasePath:                   strings.TrimRight(o.BaseURL, "/") + BasePath,
 		RespectForwardedHeaders:    true,
 		DisableDownload:            true,
@@ -201,7 +205,29 @@ func New(o Options) (*Service, error) {
 func (s *Service) Tus() *Handler { return &Handler{UnroutedHandler: s.tus, svc: s} }
 
 // ChunkSize is UPLOAD_CHUNK_SIZE (0 = unlimited).
-func (s *Service) ChunkSize() int64 { return s.o.ChunkSize }
+func (s *Service) ChunkSize() int64 {
+	if s.o.Limits != nil {
+		_, c := s.o.Limits()
+		return c
+	}
+	return s.o.ChunkSize
+}
+
+// MaxUploadSize is MAX_UPLOAD_SIZE (live when Options.Limits is set).
+func (s *Service) MaxUploadSize() int64 {
+	if s.o.Limits != nil {
+		m, _ := s.o.Limits()
+		return m
+	}
+	return s.o.MaxUploadSize
+}
+
+func staticMaxSize(o Options) int64 {
+	if o.Limits != nil {
+		return 0
+	}
+	return o.MaxUploadSize
+}
 
 // ActiveReserved is the durable quota reservation: Σ size of active
 // sessions (SPEC §4.2).

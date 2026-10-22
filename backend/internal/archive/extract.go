@@ -73,7 +73,8 @@ func (x *extraction) included(name string) bool {
 // limitsFor computes the byte budget: min(ARCHIVE_MAX_EXTRACT_SIZE, quota
 // free, disk free − reserve) (SPEC §8.11 step 3).
 func (s *Service) limitsFor(ctx context.Context, j *fsjail.Jail, userID string) (Limits, string) {
-	l := Limits{MaxEntries: s.o.MaxEntries, MaxBytes: s.o.MaxExtractSize, Ratio: s.o.Ratio, RatioMinBytes: s.o.RatioMinBytes}
+	maxBytes, maxEntries := s.limits()
+	l := Limits{MaxEntries: maxEntries, MaxBytes: maxBytes, Ratio: s.o.Ratio, RatioMinBytes: s.o.RatioMinBytes}
 	reason := "max_extract_size"
 	if l.MaxBytes <= 0 {
 		l.MaxBytes = 1 << 50

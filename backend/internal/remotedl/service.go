@@ -62,6 +62,8 @@ type Options struct {
 	Enabled       bool
 	MaxSize       int64
 	MaxUploadSize int64
+	// MaxUploadSizeFn, when set, supplies MAX_UPLOAD_SIZE live (Step 19a).
+	MaxUploadSizeFn func() int64
 	// Version and BaseURL build the User-Agent (SPEC §8.10 step 6).
 	Version string
 	BaseURL string
@@ -154,6 +156,15 @@ func taskLink(t tasks.Task) string {
 
 // Settings returns the effective settings (cached 5 s).
 func (s *Service) Settings(ctx context.Context) Settings { return s.settings.get(ctx) }
+
+func (s *Service) maxUploadSize() int64 {
+	if s.o.MaxUploadSizeFn != nil {
+		if n := s.o.MaxUploadSizeFn(); n > 0 {
+			return n
+		}
+	}
+	return s.o.MaxUploadSize
+}
 
 // InvalidateSettings drops the settings cache (admin writes, tests).
 func (s *Service) InvalidateSettings() { s.settings.Invalidate() }

@@ -10,6 +10,20 @@ import (
 	"strings"
 )
 
+const countActivePublicShares = `-- name: CountActivePublicShares :one
+SELECT COUNT(*) FROM shares
+WHERE mode = 'public' AND disabled_at IS NULL AND broken_at IS NULL
+  AND (expires_at IS NULL OR expires_at > ?1)
+`
+
+// Step 19a dashboard: live public links (not disabled, not broken, not expired).
+func (q *Queries) CountActivePublicShares(ctx context.Context, now *string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countActivePublicShares, now)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countShareAccessLogs = `-- name: CountShareAccessLogs :one
 SELECT COUNT(*) FROM share_access_logs WHERE share_id = ? AND action = ? AND at >= ?
 `

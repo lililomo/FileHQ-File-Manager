@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"kppbwi.app/filemanager/internal/admin"
 	"kppbwi.app/filemanager/internal/archive"
 	"kppbwi.app/filemanager/internal/audit"
 	"kppbwi.app/filemanager/internal/auth"
@@ -70,6 +71,7 @@ type Options struct {
 	Search      *search.Service     // name/content search + replace (Step 15); nil disables /search
 	Versions    *versions.Store     // file versions (Step 15 minimal); nil disables /versions
 	Share       *share.Service      // public links (Step 18a); nil disables /shares and /public/shares
+	Admin       *admin.Service      // admin panel (Step 19a); nil disables /admin/*
 }
 
 // Server holds dependencies shared by handlers.
@@ -104,6 +106,7 @@ type Server struct {
 	search      *search.Service
 	versions    *versions.Store
 	shares      *share.Service
+	admin       *admin.Service
 }
 
 // New builds the router. The returned handler is safe for http.Server.
@@ -136,6 +139,7 @@ func New(o Options) http.Handler {
 		search:   o.Search,
 		versions: o.Versions,
 		shares:   o.Share,
+		admin:    o.Admin,
 	}
 	s.warnings = o.Warnings
 	if s.dlLimit == nil {
@@ -225,8 +229,10 @@ func (s *Server) mountAPI(api chi.Router) {
 		s.mountSharedWithMe(api)
 		s.mountShareUpload(api)
 		s.mountPublicShares(api)
+		s.mountAdmin(api)
 	}
 	api.Get("/version", func(w http.ResponseWriter, _ *http.Request) {
-		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": s.cfg.AppName})
+		rt := s.cfg.Runtime()
+		WriteJSON(w, http.StatusOK, map[string]any{"version": s.version, "appName": rt.AppName, "logoUrl": logoURL(rt.BrandingLogo), "defaultLanguage": rt.DefaultLanguage})
 	})
 }

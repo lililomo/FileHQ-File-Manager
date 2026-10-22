@@ -81,10 +81,15 @@ func NewService(cfg *config.Config, repo db.Repository, rec *audit.Recorder, log
 	if logger == nil {
 		logger = slog.Default()
 	}
+	sessions := NewSessions(repo, cfg.SessionIdleTimeout, cfg.SessionAbsoluteTimeout, now)
+	sessions.Live = func() (time.Duration, time.Duration) {
+		rt := cfg.Runtime()
+		return rt.SessionIdleTimeout, rt.SessionAbsoluteTimeout
+	}
 	return &Service{
 		cfg:       cfg,
 		repo:      repo,
-		Sessions:  NewSessions(repo, cfg.SessionIdleTimeout, cfg.SessionAbsoluteTimeout, now),
+		Sessions:  sessions,
 		audit:     rec,
 		logger:    logger,
 		now:       now,
@@ -365,7 +370,7 @@ func (s *Service) Logout(ctx context.Context, sess sqlc.Session, u sqlc.User, ip
 func (s *Service) ChangePassword(ctx context.Context, u sqlc.User, sess sqlc.Session, currentPassword, newPassword, ip, ua string) error {
 	// Policy checks first: they involve no secret and must not consume the
 	// attempt budget that protects the current password from guessing.
-	if err := ValidatePassword(newPassword, u.Username, s.cfg.PasswordMinLength); err != nil {
+	if err := ValidatePassword(newPassword, u.Username, s.cfg.Runtime().PasswordMinLength); err != nil {
 		return err
 	}
 	if same, err := s.matchesInitialPassword(ctx, newPassword); err != nil {

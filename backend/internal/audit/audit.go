@@ -33,6 +33,17 @@ const (
 	ActionShareDelete         = "share.delete"
 	ActionSharePublicAccess   = "share.public_access"
 	ActionSharePasswordFailed = "share.password_failed"
+	// Step 19a (admin)
+	ActionUserCreate        = "user.create"
+	ActionUserUpdate        = "user.update"
+	ActionUserResetPassword = "user.reset_password"
+	ActionUserDisable       = "user.disable"
+	ActionUserEnable        = "user.enable"
+	ActionUserDelete        = "user.delete"
+	ActionUserArchive       = "user.archive"
+	ActionSettingsUpdate    = "settings.update"
+	ActionSettingsReset     = "settings.reset"
+	ActionAdminBrowseUser   = "admin.browse_user"
 )
 
 // Entry is one audit event. Details must never contain secrets; keys that
