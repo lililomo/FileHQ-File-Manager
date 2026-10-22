@@ -104,6 +104,37 @@ jobs:
           path: web/playwright-report
           retention-days: 7
 
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          check-latest: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm -C web install --frozen-lockfile
+      - name: Dependency audit (fails on reachable Go vulnerabilities and high/critical npm advisories)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          make audit
+
+  fuzz:
+    # Informational: 30 s per target. A crash here is reported but does not
+    # block the merge (corpus regressions run as ordinary tests in 'backend').
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          check-latest: true
+      - run: make fuzz FUZZTIME=30s
+
   openapi:
     runs-on: ubuntu-latest
     steps:

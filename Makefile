@@ -18,7 +18,7 @@ BIN     := bin/filemanager
 WEBDIST := backend/internal/webassets/dist
 
 .PHONY: help deps dev build build-backend build-web test test-backend test-web lint lint-backend lint-web \
-        format check-deps clean ci vuln openapi-lint sqlc sqlc-check migrate check-sort-policy bench
+        format check-deps clean ci vuln audit fuzz openapi-lint sqlc sqlc-check migrate check-sort-policy bench
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -77,9 +77,18 @@ format: ## gofmt + prettier --write
 	cd backend && gofmt -w . && (command -v golangci-lint >/dev/null && golangci-lint fmt ./... || true)
 	$(PNPM) format
 
-vuln: ## govulncheck + pnpm audit
+vuln: audit ## Alias of audit (kept for older docs)
+
+audit: ## govulncheck + pnpm audit (fails on reachable Go vulns and high/critical npm advisories; SPEC §10.6 item 22)
 	cd backend && govulncheck ./...
-	$(PNPM) audit --audit-level=high || true
+	$(PNPM) audit --audit-level=high
+
+fuzz: ## Run every Go fuzz target for FUZZTIME (default 30s) each
+	cd backend && for pkg in ./internal/fsjail ./internal/archive ./internal/listing ./internal/files ./internal/media ./internal/share ./internal/httpapi; do \
+		for f in $$(go test $$pkg -list "^Fuzz" | grep "^Fuzz"); do \
+			echo "== $$pkg $$f"; go test $$pkg -run "^$$$$" -fuzz "^$$f$$" -fuzztime $(or $(FUZZTIME),30s) || exit 1; \
+		done; \
+	done
 
 openapi-lint: ## Validate docs/openapi.yaml (structure check; redocly/spectral in CI)
 	@python3 -c "import yaml,sys; d=yaml.safe_load(open('docs/openapi.yaml')); assert d['openapi'].startswith('3.'); assert 'paths' in d; print('openapi.yaml: ok,', len(d['paths']), 'paths')"

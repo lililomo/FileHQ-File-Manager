@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"kppbwi.app/filemanager/internal/auth"
@@ -95,7 +96,12 @@ func RequireAdmin(next http.Handler) http.Handler {
 // show they come from another site (SPEC §8.1 "CSRF"). It runs for every
 // non-safe method, including login (which has no session token yet).
 func OriginCheck(baseURL string) func(http.Handler) http.Handler {
+	// Origin carries scheme://host only; a base URL with a path (review A
+	// m-05) must not reject every non-GET request.
 	base := strings.ToLower(strings.TrimRight(baseURL, "/"))
+	if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
+		base = strings.ToLower(u.Scheme + "://" + u.Host)
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !isSafeMethod(r.Method) {

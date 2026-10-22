@@ -1,10 +1,15 @@
 package httpapi
 
 import (
+	"encoding/json"
+	"net/url"
+
 	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
+
+	"kppbwi.app/filemanager/internal/remotedl"
 
 	"github.com/go-chi/chi/v5"
 
@@ -82,6 +87,7 @@ func (s *Server) handleTasksList(w http.ResponseWriter, r *http.Request) {
 		s.writeTaskError(w, r, err)
 		return
 	}
+	page.Items = redactTasks(page.Items)
 	WriteJSON(w, http.StatusOK, page)
 }
 
@@ -92,7 +98,7 @@ func (s *Server) handleTaskGet(w http.ResponseWriter, r *http.Request) {
 		s.writeTaskError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"task": t})
+	WriteJSON(w, http.StatusOK, map[string]any{"task": redactTask(t)})
 }
 
 func (s *Server) handleTaskLogs(w http.ResponseWriter, r *http.Request) {
@@ -121,7 +127,7 @@ func (s *Server) handleTaskCancel(w http.ResponseWriter, r *http.Request) {
 		s.writeTaskError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"task": t})
+	WriteJSON(w, http.StatusOK, map[string]any{"task": redactTask(t)})
 }
 
 func (s *Server) handleTaskRetry(w http.ResponseWriter, r *http.Request) {
@@ -131,7 +137,7 @@ func (s *Server) handleTaskRetry(w http.ResponseWriter, r *http.Request) {
 		s.writeTaskError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusAccepted, map[string]any{"task": t})
+	WriteJSON(w, http.StatusAccepted, map[string]any{"task": redactTask(t)})
 }
 
 func (s *Server) handleTaskDelete(w http.ResponseWriter, r *http.Request) {
@@ -212,4 +218,36 @@ func (s *Server) handleNotificationDelete(w http.ResponseWriter, r *http.Request
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// redactTask strips credentials from task payloads before they leave the
+// API: a remote_download URL keeps scheme/host/path only (the stored payload
+// stays intact for Retry). Step 20.
+func redactTask(t tasks.Task) tasks.Task {
+	if t.Type != remotedl.TaskType || len(t.Payload) == 0 {
+		return t
+	}
+	var p map[string]any
+	if json.Unmarshal(t.Payload, &p) != nil {
+		return t
+	}
+	for _, k := range []string{"url", "finalUrl"} {
+		if s, ok := p[k].(string); ok && s != "" {
+			if u, err := url.Parse(s); err == nil {
+				u.User, u.RawQuery, u.Fragment = nil, "", ""
+				p[k] = u.String()
+			}
+		}
+	}
+	if b, err := json.Marshal(p); err == nil {
+		t.Payload = b
+	}
+	return t
+}
+
+func redactTasks(items []tasks.Task) []tasks.Task {
+	for i := range items {
+		items[i] = redactTask(items[i])
+	}
+	return items
 }

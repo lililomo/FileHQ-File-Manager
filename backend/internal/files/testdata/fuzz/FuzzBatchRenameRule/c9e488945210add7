@@ -1,0 +1,13 @@
+go test fuzz v1
+string("0")
+string("\xff")
+bool(false)
+bool(true)
+string("")
+int(0)
+int(-1)
+int(0)
+string("")
+string("")
+string("0")
+bool(false)
