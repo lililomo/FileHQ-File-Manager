@@ -61,6 +61,7 @@ type Item struct {
 	btime               *time.Time
 	modeNum             uint32
 	nlink               uint64
+	etagSize            int64 // lstat size (symlinks: link length; Size is 0)
 	nameKey             NatKey
 	folded              string
 }
@@ -71,6 +72,16 @@ func ISO(t time.Time) string { return t.UTC().Format("2006-01-02T15:04:05.000Z")
 // FromInfo converts an fsjail entry to an Item without touching the DB
 // (metadata slots stay null/false until a MetaProvider fills them).
 func FromInfo(info fsjail.Info) *Item {
+	it := newItem(info)
+	it.fill()
+	return it
+}
+
+// newItem keeps what sorting, filtering and the MetaProviders need; the
+// display strings (times, mode, etag) are formatted by fill only for the
+// items of the page being sent (Step 21: a 10 000 entry folder formats 500
+// instead of 10 000 × 6 strings on every cold build).
+func newItem(info fsjail.Info) *Item {
 	it := &Item{
 		Name:          info.Name,
 		Path:          string(info.Path),
@@ -79,11 +90,6 @@ func FromInfo(info fsjail.Info) *Item {
 		SymlinkTarget: info.SymlinkTarget,
 		Broken:        info.SymlinkBroken,
 		BrokenReason:  info.SymlinkReason,
-		Mtime:         ISO(info.ModTime),
-		Ctime:         ISO(info.ChangeTime),
-		Atime:         ISO(info.AccessTime),
-		Mode:          permString(info.Mode),
-		ModeOctal:     strconv.FormatUint(uint64(info.Mode.Perm()), 8),
 		Shared:        "none",
 		mtime:         info.ModTime,
 		atime:         info.AccessTime,
@@ -91,10 +97,7 @@ func FromInfo(info fsjail.Info) *Item {
 		btime:         info.BirthTime,
 		modeNum:       uint32(info.Mode.Perm()),
 		nlink:         info.Nlink,
-	}
-	if info.BirthTime != nil {
-		s := ISO(*info.BirthTime)
-		it.Btime = &s
+		etagSize:      info.Size,
 	}
 	switch {
 	case info.IsDir:
@@ -114,12 +117,30 @@ func FromInfo(info fsjail.Info) *Item {
 			m := ti.Mime
 			it.Mime = &m
 		}
-		it.Etag = `"` + strconv.FormatInt(info.Size, 10) + "-" + strconv.FormatInt(info.ModTime.UnixNano(), 10) + `"`
-	}
-	if info.IsDir {
-		it.Etag = `W/"` + strconv.FormatInt(info.ModTime.UnixNano(), 10) + `"`
 	}
 	return it
+}
+
+// fill formats the display fields from the raw stat values. It is
+// idempotent and only ever runs on an item no other request can see (a page
+// clone or a fresh FromInfo).
+func (it *Item) fill() {
+	if it.Mtime != "" {
+		return
+	}
+	it.Mtime, it.Ctime, it.Atime = ISO(it.mtime), ISO(it.ctime), ISO(it.atime)
+	it.Mode = permString(fs.FileMode(it.modeNum))
+	it.ModeOctal = strconv.FormatUint(uint64(it.modeNum), 8)
+	if it.btime != nil {
+		s := ISO(*it.btime)
+		it.Btime = &s
+	}
+	if it.IsDir {
+		it.Etag = `W/"` + strconv.FormatInt(it.mtime.UnixNano(), 10) + `"`
+	} else {
+		// symlinks report size 0 in the API but keep their lstat size in the etag
+		it.Etag = `"` + strconv.FormatInt(it.etagSize, 10) + "-" + strconv.FormatInt(it.mtime.UnixNano(), 10) + `"`
+	}
 }
 
 // permString renders the nine permission bits ("rwxr-xr-x").
@@ -156,8 +177,9 @@ func (it *Item) StatView() map[string]any {
 }
 
 // clone returns a shallow copy so per-request annotations (itemCount) never
-// mutate the cached slice.
+// mutate the cached slice; the copy gets its display fields.
 func (it *Item) clone() *Item {
 	c := *it
+	c.fill()
 	return &c
 }

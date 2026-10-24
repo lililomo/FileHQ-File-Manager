@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"runtime"
+	rtmetrics "runtime/metrics"
 	"sort"
 	"strconv"
 	"sync"
@@ -134,6 +135,30 @@ func (r *Registry) Render(w io.Writer) {
 	pf(w, "%s\n", "# HELP go_goroutines Number of goroutines that currently exist.")
 	pf(w, "%s\n", "# TYPE go_goroutines gauge")
 	pf(w, "go_goroutines %d\n", runtime.NumGoroutine())
+	writeMemory(w)
+}
+
+// memorySamples are the Go runtime memory classes exported for capacity
+// checks (SPEC §1.6 idle < 100 MB; Step 21 perf harness reads them instead
+// of a pprof endpoint, which is never exposed).
+var memorySamples = []struct{ name, metric, help string }{
+	{"go_heap_objects_bytes", "/memory/classes/heap/objects:bytes", "Bytes occupied by live and not yet swept heap objects."},
+	{"go_heap_released_bytes", "/memory/classes/heap/released:bytes", "Heap bytes returned to the operating system."},
+	{"go_memory_total_bytes", "/memory/classes/total:bytes", "All memory mapped by the Go runtime (RSS upper bound excluding binary pages)."},
+}
+
+func writeMemory(w io.Writer) {
+	samples := make([]rtmetrics.Sample, len(memorySamples))
+	for i, m := range memorySamples {
+		samples[i].Name = m.metric
+	}
+	rtmetrics.Read(samples)
+	for i, m := range memorySamples {
+		if samples[i].Value.Kind() != rtmetrics.KindUint64 {
+			continue
+		}
+		pf(w, "# HELP %s %s\n# TYPE %s gauge\n%s %d\n", m.name, m.help, m.name, m.name, samples[i].Value.Uint64())
+	}
 }
 
 func fmtFloat(f float64) string { return strconv.FormatFloat(f, 'g', -1, 64) }

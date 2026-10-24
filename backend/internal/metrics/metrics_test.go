@@ -33,6 +33,8 @@ func TestRegistryExposition(t *testing.T) {
 		"filemanager_tasks_running 2",
 		"process_start_time_seconds ",
 		"go_goroutines ",
+		"go_heap_objects_bytes ",
+		"go_memory_total_bytes ",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q in:\n%s", want, body)

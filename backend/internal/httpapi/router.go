@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 
 	"kppbwi.app/filemanager/internal/admin"
 	"kppbwi.app/filemanager/internal/archive"
@@ -177,7 +176,7 @@ func New(o Options) http.Handler {
 	r.Use(Recoverer(o.Logger))
 	r.Use(SecurityHeaders)
 	r.Use(Metrics(o.Metrics))
-	r.Use(middleware.Compress(5, "application/json", "text/html", "text/css", "application/javascript", "image/svg+xml"))
+	r.Use(Compress)
 
 	r.With(s.limitBy("healthz", o.Cfg.RateLimits.Healthz, keyIP)).Get("/healthz", s.handleHealthz)
 	r.Get("/readyz", s.handleReadyz)

@@ -18,7 +18,7 @@ BIN     := bin/filemanager
 WEBDIST := backend/internal/webassets/dist
 
 .PHONY: help deps dev build build-backend build-web test test-backend test-web lint lint-backend lint-web \
-        format check-deps clean ci vuln audit fuzz openapi-lint sqlc sqlc-check migrate check-sort-policy bench
+        format check-deps clean ci vuln audit fuzz openapi-lint sqlc sqlc-check migrate check-sort-policy bench perf
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -107,6 +107,23 @@ check-deps: ## Print external tool table from the built binary
 
 bench: ## Listing benchmarks (10k entries)
 	$(GO) test ./internal/listing/ -run '^$$' -bench . -benchmem
+
+# Step 21 harness (SPEC §11.5, docs/PERF.md): the real binary on a scratch
+# .perfdata/ folder (never STORAGE_ROOT/.env), once on every CPU and once
+# pinned to CPU 0 (the 1 vCPU target of SPEC §1.6) with the load generator on
+# the other CPUs. Results land in .perfdata/results-<n>cpu.json; the fixtures
+# (≈ 3.5 GB) are removed afterwards. FM_PERF_ASSERT=0 only reports.
+PERF_CPUS := $(shell nproc)
+PERF_ENV  := FM_PERF_BIN=$(CURDIR)/$(BIN) GOMAXPROCS=$(PERF_CPUS)
+perf: build-backend ## Performance harness: listing 10k cold/warm, navigation, thumbnails, 1 GiB upload/zip/extract RSS
+	$(MAKE) bench GOMAXPROCS=$(PERF_CPUS)
+	$(MAKE) bench GOMAXPROCS=1
+	@mkdir -p .perfdata
+	$(PERF_ENV) FM_PERF_DIR=$(CURDIR)/.perfdata/run FM_PERF_CPUS=$(PERF_CPUS) FM_PERF_LABEL=all-cpus \
+		$(GO) test ./internal/perf/ -run '^TestPerf$$' -count=1 -v -timeout 40m
+	$(PERF_ENV) FM_PERF_DIR=$(CURDIR)/.perfdata/run FM_PERF_CPUS=1 FM_PERF_LABEL=cpu0 \
+		$(if $(filter 1,$(PERF_CPUS)),,taskset -c 1-$(shell echo $$(( $(PERF_CPUS) - 1 )))) \
+		$(GO) test ./internal/perf/ -run '^TestPerf$$' -count=1 -v -timeout 40m
 
 ci: lint test build openapi-lint sqlc-check ## What CI runs (lint, test, build, openapi, sqlc freshness)
 

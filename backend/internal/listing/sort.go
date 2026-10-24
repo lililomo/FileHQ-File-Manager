@@ -123,9 +123,30 @@ type NatKey []natToken
 // locale-aware). The collator's own numeric option is deliberately NOT used
 // (golang/go#67997: "0.0" vs "1.0" mis-ordered); CI greps for it.
 func NaturalKey(s string, c *collate.Collator) NatKey {
+	return (&keyer{c: c}).key(s)
+}
+
+// keyer computes natural keys for many names with one collator. With runs
+// set it memoises the collation key of every text run: the names of one
+// folder share most runs ("file", ".txt", "IMG_"), and the collator is the
+// most expensive part of a cold listing (Step 21 profile). Shared keys are
+// never mutated (CompareNatural only reads them).
+type keyer struct {
+	c    *collate.Collator
+	buf  collate.Buffer
+	runs map[string][]byte
+}
+
+// maxMemoRuns bounds the memo of one listing build.
+const maxMemoRuns = 8192
+
+func newKeyer(c *collate.Collator) *keyer {
+	return &keyer{c: c, runs: make(map[string][]byte, 64)}
+}
+
+func (k *keyer) key(s string) NatKey {
 	s = norm.NFC.String(s) // NFD and NFC spellings of a name are the same name
 	key := make(NatKey, 0, 4)
-	var buf collate.Buffer
 	i := 0
 	for i < len(s) {
 		j := i
@@ -138,13 +159,23 @@ func NaturalKey(s string, c *collate.Collator) NatKey {
 			for j < len(s) && !isDigit(s[j]) {
 				j++
 			}
-			k := c.KeyFromString(&buf, s[i:j])
-			key = append(key, natToken{key: append([]byte(nil), k...)})
-			buf.Reset()
+			key = append(key, natToken{key: k.text(s[i:j])})
 		}
 		i = j
 	}
 	return key
+}
+
+func (k *keyer) text(run string) []byte {
+	if b, ok := k.runs[run]; ok {
+		return b
+	}
+	b := append([]byte(nil), k.c.KeyFromString(&k.buf, run)...)
+	k.buf.Reset()
+	if k.runs != nil && len(k.runs) < maxMemoRuns {
+		k.runs[run] = b
+	}
+	return b
 }
 
 func isDigit(b byte) bool { return b >= '0' && b <= '9' }

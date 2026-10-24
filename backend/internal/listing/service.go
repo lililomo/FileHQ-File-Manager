@@ -143,6 +143,25 @@ type ListResult struct {
 	Dir        DirInfo `json:"dir"`
 }
 
+// foldName is the case-folded NFC form used by the quick filter. ASCII names
+// (the common case) need neither normalisation nor the Unicode folder.
+func foldName(name string) string {
+	upper := false
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c >= 0x80 {
+			return cases.Fold().String(norm.NFC.String(name))
+		}
+		if 'A' <= c && c <= 'Z' {
+			upper = true
+		}
+	}
+	if !upper {
+		return name
+	}
+	return strings.ToLower(name)
+}
+
 func cacheKey(req ListRequest) string {
 	return req.UserID + "|" + req.Scope + "|" + string(req.Dir) + "|" + req.Sort.String() + "|" + req.Locale
 }
@@ -166,7 +185,7 @@ func (s *Service) List(ctx context.Context, j *fsjail.Jail, req ListRequest) (*L
 		}
 		items = make([]*Item, 0, len(infos))
 		for i := range infos {
-			it := FromInfo(infos[i])
+			it := newItem(infos[i])
 			if req.Scope != "" {
 				// a guest or recipient sees that an entry is a link, never where
 				// it points (the target may name files above the share; review E)
@@ -179,10 +198,10 @@ func (s *Service) List(ctx context.Context, j *fsjail.Jail, req ListRequest) (*L
 				return nil, err
 			}
 		}
-		folder := cases.Fold()
+		keys := newKeyer(coll)
 		for _, it := range items {
-			it.nameKey = NaturalKey(it.Name, coll)
-			it.folded = folder.String(norm.NFC.String(it.Name))
+			it.nameKey = keys.key(it.Name)
+			it.folded = foldName(it.Name)
 		}
 		sortItems(items, req.Sort)
 		s.cache.Put(key, req.UserID, req.Scope, req.Dir, items, dirInfo.ModTime)

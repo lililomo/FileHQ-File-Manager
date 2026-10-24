@@ -9,8 +9,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
@@ -51,6 +53,7 @@ func HashPasswordWith(password string, p Params) (string, error) {
 		return "", fmt.Errorf("auth: generate salt: %w", err)
 	}
 	key := argon2.IDKey([]byte(password), salt, p.Time, p.Memory, p.Threads, p.KeyLen)
+	scheduleKDFRelease()
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version, p.Memory, p.Time, p.Threads,
 		base64.RawStdEncoding.EncodeToString(salt),
@@ -66,12 +69,43 @@ func VerifyPassword(hash, password string, target Params) (ok bool, needsRehash 
 		return false, false, err
 	}
 	got := argon2.IDKey([]byte(password), salt, p.Time, p.Memory, p.Threads, uint32(len(key))) //nolint:gosec // length bounded by parsePHC
+	scheduleKDFRelease()
 	ok = subtle.ConstantTimeCompare(got, key) == 1
 	if ok {
 		needsRehash = p.Memory != target.Memory || p.Time != target.Time || p.Threads != target.Threads ||
 			uint32(len(key)) != target.KeyLen || uint32(len(salt)) != target.SaltLen //nolint:gosec // bounded
 	}
 	return ok, needsRehash, nil
+}
+
+// kdfReleaseDelay is how long after the last argon2 call its working memory
+// is handed back to the OS.
+const kdfReleaseDelay = 2 * time.Second
+
+var kdfRelease struct {
+	mu    sync.Mutex
+	timer *time.Timer
+	runs  int // completed releases (tests)
+}
+
+// scheduleKDFRelease returns argon2's working memory (64 MiB per account
+// hash) to the OS once logins go quiet. The Go heap otherwise keeps those
+// pages resident for minutes until the background scavenger catches up: the
+// idle process measured 140 MB RSS after one login (Step 21, SPEC §1.6 idle
+// < 100 MB). Debounced so a burst of logins pays one forced GC.
+func scheduleKDFRelease() {
+	kdfRelease.mu.Lock()
+	defer kdfRelease.mu.Unlock()
+	if kdfRelease.timer != nil {
+		kdfRelease.timer.Reset(kdfReleaseDelay)
+		return
+	}
+	kdfRelease.timer = time.AfterFunc(kdfReleaseDelay, func() {
+		debug.FreeOSMemory()
+		kdfRelease.mu.Lock()
+		kdfRelease.runs++
+		kdfRelease.mu.Unlock()
+	})
 }
 
 // HashParams returns the parameters encoded in a PHC string.

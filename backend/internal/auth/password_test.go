@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fastParams keep argon2 cheap in tests (64 MiB × many hashes would be slow on 1 vCPU).
@@ -145,4 +146,24 @@ func TestCSRFToken(t *testing.T) {
 		VerifyCSRFToken(secret, "session-id", "") || VerifyCSRFToken(secret, "session-id", "not base64!!") {
 		t.Fatal("token verified against wrong inputs")
 	}
+}
+
+func TestKDFMemoryReleasedAfterHash(t *testing.T) {
+	kdfRelease.mu.Lock()
+	before := kdfRelease.runs
+	kdfRelease.mu.Unlock()
+	if _, err := HashPasswordWith("release-me-please", Params{Memory: 1024, Time: 1, Threads: 1, SaltLen: 16, KeyLen: 32}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(kdfReleaseDelay + 3*time.Second)
+	for time.Now().Before(deadline) {
+		kdfRelease.mu.Lock()
+		n := kdfRelease.runs
+		kdfRelease.mu.Unlock()
+		if n > before {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("argon2 working memory was never released")
 }

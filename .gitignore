@@ -22,6 +22,7 @@ coverage.out
 /web/.vite/
 /web/playwright-report/
 /web/test-results/
+/web/bundle-report/
 .eslintcache
 .turbo/
 
@@ -43,3 +44,6 @@ Thumbs.db
 /.devdata/
 /backend/coverage.out
 /web/coverage/
+
+# Step 21 perf harness scratch data (make perf)
+.perfdata/

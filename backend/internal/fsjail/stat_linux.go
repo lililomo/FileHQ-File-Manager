@@ -6,6 +6,9 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -98,6 +101,12 @@ func (j *Jail) Stat(p VPath) (Info, error) {
 
 // ReadDir lists p (one statx per entry, no symlink following). Order is the
 // directory's own; callers sort.
+//
+// Names come from getdents without any per-entry stat (os.File.ReadDir would
+// lstat again for every entry; Step 21 measured it at a third of a 10 000
+// entry listing). Large folders are statted by up to readDirWorkers
+// goroutines when more than one CPU is available; on one CPU the loop stays
+// sequential (parallel syscalls only add scheduling there).
 func (j *Jail) ReadDir(p VPath) ([]Info, error) {
 	if err := j.check(p); err != nil {
 		return nil, err
@@ -107,7 +116,7 @@ func (j *Jail) ReadDir(p VPath) ([]Info, error) {
 		return nil, wrap("readdir", p, err)
 	}
 	defer func() { _ = df.Close() }()
-	entries, err := df.ReadDir(-1)
+	names, err := df.Readdirnames(-1)
 	if err != nil {
 		if errors.Is(err, unix.ENOTDIR) {
 			return nil, newErr(CodeNotDir, "readdir", p, "not_dir", err)
@@ -115,29 +124,69 @@ func (j *Jail) ReadDir(p VPath) ([]Info, error) {
 		return nil, wrap("readdir", p, err)
 	}
 	fd := int(df.Fd())
-	out := make([]Info, 0, len(entries))
-	for _, e := range entries {
-		name := e.Name()
-		info, err := statAt(fd, name, false)
+	prefix := string(p) + "/"
+	if p.IsRoot() {
+		prefix = "/"
+	}
+	infos := make([]Info, len(names))
+	ok := make([]bool, len(names))
+	errs := make([]error, len(names))
+	statOne := func(i int) {
+		info, err := statAt(fd, names[i], false)
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				continue // removed between readdir and stat
+			if !errors.Is(err, fs.ErrNotExist) { // removed between readdir and stat: skip
+				errs[i] = err
 			}
-			return nil, wrap("readdir", p, err)
+			return
 		}
-		info.Name = name
-		if p.IsRoot() {
-			info.Path = VPath("/" + name)
-		} else {
-			info.Path = VPath(string(p) + "/" + name)
-		}
+		info.Name = names[i]
+		info.Path = VPath(prefix + names[i])
 		if info.IsSymlink {
 			j.fillLink(fd, &info)
 		}
-		out = append(out, info)
+		infos[i], ok[i] = info, true
+	}
+	workers := min(readDirWorkers, runtime.GOMAXPROCS(0), len(names)/readDirChunk)
+	if workers <= 1 {
+		for i := range names {
+			statOne(i)
+		}
+	} else {
+		var next atomic.Int64
+		var wg sync.WaitGroup
+		for range workers {
+			wg.Go(func() {
+				for {
+					start := int(next.Add(readDirChunk)) - readDirChunk
+					if start >= len(names) {
+						return
+					}
+					for i := start; i < min(start+readDirChunk, len(names)); i++ {
+						statOne(i)
+					}
+				}
+			})
+		}
+		wg.Wait()
+	}
+	out := infos[:0]
+	for i := range infos {
+		if errs[i] != nil {
+			return nil, wrap("readdir", p, errs[i])
+		}
+		if ok[i] {
+			out = append(out, infos[i])
+		}
 	}
 	return out, nil
 }
+
+// readDirWorkers bounds the parallel statx of ReadDir (PROMPT Step 21: four
+// goroutines); readDirChunk is the batch each worker claims.
+const (
+	readDirWorkers = 4
+	readDirChunk   = 256
+)
 
 // fillLink reads the link target and classifies it (SPEC §5.4).
 func (j *Jail) fillLink(dirfd int, info *Info) {
