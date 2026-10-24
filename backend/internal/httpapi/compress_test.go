@@ -146,6 +146,46 @@ func TestCompressFlushStreams(t *testing.T) {
 	}
 }
 
+// headerCounter fails the test if the status line is sent twice (net/http
+// logs "superfluous response.WriteHeader call" and keeps the first one).
+type headerCounter struct {
+	*httptest.ResponseRecorder
+	writes int
+}
+
+func (h *headerCounter) WriteHeader(code int) {
+	h.writes++
+	h.ResponseRecorder.WriteHeader(code)
+}
+
+// Flush commits an implicit 200 like net/http does.
+func (h *headerCounter) Flush() {
+	if h.writes == 0 {
+		h.writes++
+	}
+	h.ResponseRecorder.Flush()
+}
+
+func TestCompressFlushBeforeHeaderCommitsOnce(t *testing.T) {
+	// an SSE-style handler that flushes before writing anything (status
+	// implied 200) must not trigger a second WriteHeader on its first write
+	req := httptest.NewRequest(http.MethodGet, "/events", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := &headerCounter{ResponseRecorder: httptest.NewRecorder()}
+	Compress(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		_ = http.NewResponseController(w).Flush()
+		_, _ = io.WriteString(w, "data: "+strings.Repeat("x", 2000)+"\n\n")
+		_ = http.NewResponseController(w).Flush()
+	})).ServeHTTP(rec, req)
+	if rec.writes != 1 || rec.Code != http.StatusOK || !rec.Flushed {
+		t.Fatalf("WriteHeader calls=%d code=%d flushed=%v", rec.writes, rec.Code, rec.Flushed)
+	}
+	if rec.Header().Get("Content-Encoding") != "" || !strings.HasPrefix(rec.Body.String(), "data: xxx") {
+		t.Fatalf("event stream must stay plain: %v", rec.Header())
+	}
+}
+
 func TestCompressPanicReachesRecoverer(t *testing.T) {
 	defer func() {
 		if recover() == nil {

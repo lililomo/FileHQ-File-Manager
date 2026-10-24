@@ -33,9 +33,11 @@ export function createLongPress(delay = LONG_PRESS_MS) {
   }
   return {
     onPointerDown(e: ReactPointerEvent) {
+      // any new press (a mouse click on a hybrid device too) is a fresh gesture:
+      // never swallow its click because of an earlier touch long-press
+      swallowClick = false
       if (e.pointerType === 'mouse' || !e.isPrimary) return
       cancel()
-      swallowClick = false
       const target = e.target as Element
       const { clientX, clientY } = e
       press = {

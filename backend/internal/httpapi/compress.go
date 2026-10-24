@@ -177,7 +177,13 @@ func (cw *compressWriter) finish() {
 // Flush commits the buffered prefix (gzip if it is already long enough) and
 // flushes through to the client, so streaming handlers keep working.
 func (cw *compressWriter) Flush() {
-	if cw.mode == modeUndecided && cw.wroteHeader {
+	if !cw.wroteHeader {
+		// a flush before any WriteHeader commits 200 (as net/http itself
+		// would); keep the bookkeeping in step so the handler's next Write
+		// does not send the status a second time
+		cw.WriteHeader(http.StatusOK)
+	}
+	if cw.mode == modeUndecided {
 		if len(cw.buf) >= MinCompressSize {
 			_ = cw.startGzip()
 		} else {

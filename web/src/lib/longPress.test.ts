@@ -62,4 +62,20 @@ describe('createLongPress (SPEC §9.9)', () => {
     vi.advanceTimersByTime(1000)
     expect(menus).toBe(0)
   })
+
+  it('does not swallow a mouse click that follows a touch long-press (hybrid devices)', () => {
+    const lp = createLongPress()
+    lp.onPointerDown(pointer(el, 'touch'))
+    vi.advanceTimersByTime(LONG_PRESS_MS)
+    expect(menus).toBe(1)
+    lp.onPointerUp()
+    // touchend was cancelled, so no compatibility click ever arrives...
+    lp.onTouchEnd({ cancelable: true, preventDefault: vi.fn() } as unknown as TouchEvent)
+    // ...and the next gesture is a mouse click somewhere else
+    lp.onPointerDown(pointer(el, 'mouse'))
+    const click = { preventDefault: vi.fn(), stopPropagation: vi.fn() } as unknown as MouseEvent
+    lp.onClickCapture(click)
+    expect(click.stopPropagation).not.toHaveBeenCalled()
+    expect(click.preventDefault).not.toHaveBeenCalled()
+  })
 })
