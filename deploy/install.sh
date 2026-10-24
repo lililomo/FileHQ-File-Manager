@@ -193,11 +193,15 @@ sys.exit(1)' "$arch") || die "no stable linux-$arch Go release in the go.dev ind
 	sha=${rel##* }
 	say "Go: ${cur:-none} < $min → installing ${rel%% *} (sha256 $sha) into $GO_ROOT"
 	dry && { printf '[dry-run] download %s, verify sha256, replace %s, write /etc/profile.d/go.sh\n' "$url" "$GO_ROOT"; return 0; }
-	tmp=$(mktemp -d)
+	# Download, verify and unpack beside GO_ROOT; the old toolchain is only
+	# removed once the new one is complete.
+	tmp=$(mktemp -d "$(dirname "$GO_ROOT")/.go-install-XXXXXX")
 	curl -fsSL --max-time 600 -o "$tmp/go.tgz" "$url"
 	echo "$sha  $tmp/go.tgz" | sha256sum -c --quiet - || { rm -rf "$tmp"; die "Go tarball checksum mismatch"; }
+	tar -C "$tmp" -xzf "$tmp/go.tgz" || { rm -rf "$tmp"; die "cannot unpack the Go tarball"; }
+	[[ -x $tmp/go/bin/go ]] || { rm -rf "$tmp"; die "unexpected Go tarball layout"; }
 	rm -rf "$GO_ROOT"
-	tar -C "$(dirname "$GO_ROOT")" -xzf "$tmp/go.tgz"
+	mv "$tmp/go" "$GO_ROOT"
 	rm -rf "$tmp"
 	[[ -f /etc/profile.d/go.sh ]] || echo "export PATH=\$PATH:$GO_ROOT/bin" >/etc/profile.d/go.sh
 	"$GO_ROOT/bin/go" version
@@ -542,7 +546,10 @@ main() {
 	ensure_env
 	local data_dir
 	data_dir=$(env_get "$APP_DIR/.env" DATA_DIR)
-	ensure_storage "${data_dir:-$STORAGE/.system}"
+	data_dir=${data_dir:-$STORAGE/.system}
+	# chown -R/chmod below act on this path: never on / or a top-level directory.
+	[[ $data_dir == /*/* && $data_dir != *..* ]] || die "DATA_DIR must be an absolute path at least two levels deep: '$data_dir'"
+	ensure_storage "$data_dir"
 	ensure_app_dir
 	ensure_binary
 	check_deps_and_migrate

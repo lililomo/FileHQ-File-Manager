@@ -102,4 +102,13 @@ out=$(FM_OS_RELEASE=$ROOT/os-debian "$REPO/deploy/install.sh" "${ARGS[@]}" 2>&1)
 check "Debian is refused" test "$rc" != 0
 check "refusal names the OS" grep -q 'unsupported OS' <<<"$out"
 
+# 6. a DATA_DIR that would make chown -R/chmod act on / or a top-level
+# directory is refused before anything changes.
+cp "$APP/.env" "$ROOT/env.good"
+sed -i 's|^DATA_DIR=.*|DATA_DIR=/|' "$APP/.env"
+out=$("$REPO/deploy/install.sh" "${ARGS[@]}" 2>&1) && rc=0 || rc=$?
+check "DATA_DIR=/ is refused" test "$rc" != 0
+check "refusal names DATA_DIR" grep -q 'DATA_DIR must be' <<<"$out"
+cp "$ROOT/env.good" "$APP/.env"
+
 finish

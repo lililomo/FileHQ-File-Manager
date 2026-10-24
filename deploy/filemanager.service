@@ -21,7 +21,6 @@ Environment=GOMEMLIMIT=512MiB
 # CLI tools write temporary files next to the data, not to the small private /tmp.
 Environment=TMPDIR=/www/storage/FileManager/.system/tmp
 ExecStart=/www/wwwroot/file.kppbwi.app/bin/filemanager serve
-ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=30
