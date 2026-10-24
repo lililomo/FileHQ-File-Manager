@@ -121,8 +121,8 @@ Playwright Chromium headless di mesin yang sama dengan backend (4 vCPU dibagi br
 | Skenario (gerbang) | Sebelum 21-2 (UI `7867920`) | Sesudah 21-2 (4 run) |
 | --- | --- | --- |
 | Render pertama 10.500 entri, cache server dingin (< 1 s) | 270 ms | 205 / 273 / 232 / 219 ms |
-| Navigasi hangat back/forward, p95 dari 10 (< 150 ms) | 134 ms | 94 / 96 / 86 / 100 ms; **143 ms** di suite E2E penuh (folder root admin sudah berisi data spec lain, mesin dibagi) |
-| Scroll seluruh 10.500 baris (2 tinggi viewport per frame + infinite scroll 20 halaman): long task maks (≤ 100 ms) | **124 ms — gagal**, 356 long task | 85 / 71 / 72 / 62 ms; 78 / 11 / 12 / 5 long task |
+| Navigasi hangat back/forward, p95 dari 10 (< 150 ms) | 134 ms | 94 / 96 / 86 / 100 ms; di suite E2E penuh **143 / 106 / 166 ms** (tiga run; folder root admin sudah berisi data spec lain, mesin dibagi) — gerbang ini berisik di server bersama, spec diberi `retries: 1` (verifikasi Step 21); ukur di perangkat klien nyata saat R-F |
+| Scroll seluruh 10.500 baris (2 tinggi viewport per frame + infinite scroll 20 halaman): long task maks (≤ 100 ms) | **124 ms — gagal**, 356 long task | 85 / 71 / 72 / 62 ms; 78 / 11 / 12 / 5 long task (verifikasi: suite penuh 60 ms; spec sendiri sekali 106 ms saat mesin sibuk, retry 65 ms) |
 | Sort nama turun sampai baris pertama (< 300 ms) | — | 234 / 195 / 183 / 171 ms |
 
 Profil CDP (`Profiler.start` selama scroll, build tanpa minify) menunjukkan penyebab, diperbaiki berurutan:
