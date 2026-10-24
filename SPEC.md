@@ -229,7 +229,7 @@ Server produksi saat ini: **1 vCPU, 1,9 GB RAM (±490–700 MB available saat di
 | Worker thumbnail / media | `THUMB_WORKERS` default `max(1, NumCPU−1)` → **1** di server ini. Semua ffmpeg/vips berjalan serial; item yang terlihat di layar diproses dulu (antrian prioritas, §8.4). |
 | Task paralel | Per user 3 (`TASK_MAX_PER_USER`), global `max(2, 2×NumCPU)` → **2** di server ini. Compress/extract memakai `nice -n 10`. |
 | Memori proses | Target idle < 100 MB tetap. `GOMEMLIMIT` di unit systemd = 512 MiB (`Environment=GOMEMLIMIT=512MiB`) agar GC agresif sebelum OOM. Streaming (upload, download, zip, extract) memakai buffer 1 MiB, tidak pernah menampung file di memori. |
-| Build | `pnpm build` (Vite + Monaco) dan `go build` bisa butuh > 1,5 GB RAM. `install.sh` memeriksa swap; jika < 2 GB, mencetak instruksi membuat swapfile 2 GB (tidak membuatnya otomatis). Rekomendasi utama: build di CI, unggah binary (ADR-22). |
+| Build | `pnpm build` (Vite + Monaco) dan `go build` bisa butuh > 1,5 GB RAM. `install.sh` memeriksa RAM/swap; jika RAM < 3 GB dan swap < 2 GB, mencetak instruksi swapfile 2 GB dan hanya menawarkannya secara interaktif (default tidak). Rekomendasi utama: build di CI, unggah binary (ADR-22). |
 | Disk | `/www/storage` adalah disk terpisah 492 GB, jadi `DEFAULT_USER_QUOTA=10GB` realistis; disk sistem 19 GB hanya menampung `APP_DIR`, cache build, dan log. Admin dashboard menampilkan kapasitas nyata (`statfs`); `install.sh` memperingatkan jika `DEFAULT_USER_QUOTA` > 50 % ruang bebas. Semua operasi yang menulis mengecek `statfs` dan gagal dengan `QUOTA_EXCEEDED` (details `reason:"disk"`) bila ruang bebas < 512 MB. |
 | SQLite | `PRAGMA journal_mode=WAL; synchronous=NORMAL; busy_timeout=5000; cache_size=-16000` (16 MB). Satu koneksi penulis (`db.SetMaxOpenConns(1)` untuk pool tulis) + pool baca terpisah. |
 | Transcoding | Di luar scope v1 (CPU). |
@@ -2082,29 +2082,51 @@ Target: Ubuntu 24.04 + aaPanel 8.0.7 di server ini; binary + systemd; Nginx aaPa
 ### 12.1 `deploy/install.sh` (idempoten, dijalankan `sudo bash deploy/install.sh` dari APP_DIR)
 
 ```text
- 0. set -euo pipefail; APP_DIR=/www/wwwroot/file.kppbwi.app; STORAGE=/www/storage/FileManager; SVC_USER=filemanager
- 1. Cek root; cek /etc/os-release Ubuntu 22.04|24.04 (lain → tanya lanjut y/N).
- 2. Cek swap: SwapTotal < 2 GB → cetak peringatan + perintah membuat swapfile 2 GB (fallocate, mkswap, swapon, fstab); tidak otomatis.
- 3. apt-get update; apt-get install -y ffmpeg libvips-tools poppler-utils ripgrep 7zip
-    - verifikasi binary: /usr/lib/7zip/7z (paket 7zip 23.01 di Ubuntu 24.04 — diverifikasi; /usr/bin/7z adalah wrapper sh). Ubuntu 22.04: verifikasi nama paket/binary; fallback p7zip-full → /usr/bin/7z dan set SEVENZIP_PATH
-    - unrar: hanya jika --with-unrar (multiverse, non-free): add-apt-repository multiverse; apt-get install unrar → UNRAR_PATH=/usr/bin/unrar
-    - ionice ada di util-linux (sudah ada)
- 4. Go: jika `go version` tidak ada atau < 1.26 (patch terbaru; CVE `os.Root`) → unduh tarball resmi go.dev untuk linux-amd64 (versi stable terbaru; checksum diverifikasi dari halaman unduhan — tulis URL dan sha256 di script saat implementasi) ke /usr/local/go; tambah /usr/local/go/bin ke /etc/profile.d/go.sh. Dilewati jika --no-build (binary dari CI).
- 5. Node: cek node ≥ 22 (server: 24); corepack enable; corepack prepare pnpm@<stable> --activate. Dilewati jika --no-build.
- 6. useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin filemanager (jika belum ada).
- 7. mkdir -p $STORAGE; chown filemanager:filemanager $STORAGE; chmod 0750 $STORAGE
-    - jika owner sebelumnya www:www (kondisi server sekarang) → chown -R hanya jika folder kosong; jika berisi, tanya.
-    - mkdir -p $STORAGE/.system/{db,trash,versions,uploads,thumbs,tmp,logs,backups,deleted-users}; chown -R filemanager; chmod 0750
- 8. $APP_DIR: chown -R filemanager:filemanager $APP_DIR kecuali .git (tetap pemilik yang menjalankan git); mkdir -p $APP_DIR/public/.well-known; chmod 0755 $APP_DIR/public
-    - hapus file default aaPanel jika ada: index.html, 404.html, .htaccess di $APP_DIR dan $APP_DIR/public; jika ada .user.ini → chattr -i lalu rm
- 9. .env: jika belum ada → cp .env.example .env; isi APP_SECRET=$(openssl rand -hex 32) jika kosong; minta ADMIN_INITIAL_PASSWORD jika CHANGE_ME (baca dari stdin tanpa echo, bukan argumen); chown filemanager; chmod 0600
-10. Build (jika tidak --no-build): su filemanager -c "make build" (butuh RAM; lihat langkah 2) atau --binary <path> untuk memasang binary hasil CI ke bin/filemanager (chmod 0755)
-11. bin/filemanager check-deps (mencetak tabel tool) dan bin/filemanager migrate up (sebagai filemanager)
-12. cp deploy/filemanager.service /etc/systemd/system/; systemctl daemon-reload; systemctl enable --now filemanager; tunggu /readyz di 127.0.0.1:8080 (maks 30 s)
-13. Cetak checklist aaPanel (12.3) + perintah smoke test; ingatkan menghapus ADMIN_INITIAL_PASSWORD dari .env setelah login pertama (atau biarkan: hanya warning)
+ 0. set -euo pipefail; APP_DIR = repo tempat script berada; STORAGE=/www/storage/FileManager; SVC_USER=filemanager; cd APP_DIR
+ 1. Cek root (dry-run boleh tanpa root); /etc/os-release Ubuntu 22.04|24.04, lain → berhenti.
+ 2. RAM < 3 GB dan swap < 2 GB dan build di server → peringatan + perintah swapfile 2 GB; menawarkan membuat
+    /swapfile (fstab) hanya interaktif, default TIDAK (--yes tidak membuatnya; --no-swap tidak menawarkan).
+ 3. apt: hanya paket yang belum terpasang (dpkg-query) → apt-get update + install
+    ffmpeg libvips-tools poppler-utils ripgrep 7zip curl ca-certificates openssl
+    - 7zip: binary /usr/lib/7zip/7z (24.04, diverifikasi); tanpa paket 7zip (22.04, perlu verifikasi) → p7zip-full;
+      binary terdeteksi pertama dari /usr/lib/7zip/7z, /usr/bin/7zz, /usr/lib/p7zip/7z → SEVENZIP_PATH di .env baru bila beda
+    - unrar: hanya --with-unrar (add-apt-repository multiverse bila perlu) → UNRAR_PATH=/usr/bin/unrar bila kosong
+ 4. Go (hanya bila build): versi minimum = direktif `go` di backend/go.mod; kurang/tidak ada → rilis stable terbaru
+    linux-<arch> dari https://go.dev/dl/?mode=json (versi + sha256 dibaca saat runtime, tidak ditulis di script),
+    sha256sum -c, ganti /usr/local/go, /etc/profile.d/go.sh.
+ 5. Node (hanya bila build): ≥ 22, kalau tidak → berhenti dengan saran --binary; corepack enable bila pnpm tidak ada.
+ 6. useradd --system --user-group --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin filemanager.
+ 7. .env (sebelum storage, agar DATA_DIR dari .env dipakai):
+    - belum ada → .env.example tanpa komentar inline (systemd EnvironmentFile= tidak membuangnya); STORAGE_ROOT/DATA_DIR,
+      LISTEN_ADDR, APP_BASE_URL ditulis bila di-override (FM_STORAGE, FM_LISTEN_ADDR, FM_BASE_URL)
+    - ada → komentar inline dibuang; nilai lain tidak diubah; salinan .env.bak-<ts> (0600) bila ada perubahan
+    - APP_SECRET kosong/CHANGE_ME → openssl rand -hex 32; nilai lain yang bukan 64 hex → berhenti
+    - ADMIN_INITIAL_PASSWORD kosong/CHANGE_ME → ditanya tanpa echo dari /dev/tty (≥ 12, tanpa spasi/kutip/\/$/#/`),
+      kosong/--yes/non-tty → acak 24 alnum; password acak hanya dicetak ke /dev/tty (tidak ke stdout/log)
+    - owner filemanager, 0600; WARN bila ALLOW_ROOT=true atau LISTEN_ADDR bukan loopback
+ 8. Storage: mkdir -p; owner lama www:www → WARN; isi selain .system/lost+found → chown -R ditanya (default tidak);
+    chown filemanager:filemanager + chmod 0750; .system/{db,trash,versions,uploads,thumbs,tmp,logs,backups,deleted-users}
+    dibuat 0750; chown -R .system bila ada file milik user lain. DATA_DIR di luar STORAGE → WARN (ReadWritePaths).
+ 9. APP_DIR: pemilik TIDAK diubah (git menolak work tree milik user lain — "dubious ownership" — dan service tidak
+    boleh bisa menulis binary-nya sendiri; ProtectSystem=strict membuatnya read-only bagi proses). mkdir public/.well-known
+    dan bin/ 0755. Kecuali --skip-aapanel: hapus index.html, 404.html, .htaccess, .user.ini (chattr -i dulu) di APP_DIR
+    dan public/ yang tidak di-track git.
+10. Binary: --binary PATH (cmp; install -m 0755) | --skip-build (pakai yang ada) | make build sebagai pemilik repo
+    (pemilik .git), dilewati bila bin/filemanager sudah dari commit HEAD dan work tree bersih (--rebuild memaksa).
+11. bin/filemanager check-deps + migrate up sebagai filemanager (runuser).
+12. Unit dirender dari deploy/filemanager.service (path APP_DIR/STORAGE/user diganti hanya bila di-override), tulis bila
+    berbeda + daemon-reload; systemctl enable; start bila belum aktif, restart bila unit/binary/.env berubah, selain itu
+    tidak disentuh; tunggu /readyz di LISTEN_ADDR ≤ 30 s (gagal → journalctl 50 baris, exit 1).
+13. Ringkasan + checklist aaPanel (12.3) + perintah smoke test; pengingat menghapus ADMIN_INITIAL_PASSWORD.
+Tidak pernah menyentuh UFW/firewall aaPanel, Nginx, atau konfigurasi aaPanel.
 ```
 
-Flag: `--no-build`, `--binary <path>`, `--with-unrar`, `--skip-apt`, `--yes`.
+Flag: `--dry-run` (hanya mencetak rencana; semua langkah yang mengubah sistem lewat satu helper `act`/`plan`),
+`--yes`, `--binary <path>`, `--skip-build` (= `--no-build`), `--rebuild`, `--with-unrar`, `--skip-apt`,
+`--skip-aapanel`, `--no-swap`. Override untuk test/CI: `FM_APP_DIR`, `FM_STORAGE`, `FM_SYSTEMD_DIR`, `FM_SVC_USER`,
+`FM_SKIP_APT=1`, `FM_SKIP_USER=1`, `FM_ALLOW_NONROOT=1`, `FM_LISTEN_ADDR`, `FM_BASE_URL`, `FM_READY_TIMEOUT`,
+`FM_OS_RELEASE`. Test: `deploy/test/install_test.sh` (folder scratch + shim `systemctl`), CI `install-smoke`
+(systemd nyata di VM runner, dua kali).
 
 ### 12.2 Unit systemd (`deploy/filemanager.service`)
 
@@ -2125,7 +2147,6 @@ EnvironmentFile=/www/wwwroot/file.kppbwi.app/.env
 Environment=GOMEMLIMIT=512MiB
 Environment=TMPDIR=/www/storage/FileManager/.system/tmp
 ExecStart=/www/wwwroot/file.kppbwi.app/bin/filemanager serve
-ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=30
@@ -2146,15 +2167,18 @@ ProtectKernelLogs=true
 ProtectControlGroups=true
 ProtectClock=true
 ProtectHostname=true
+ProtectProc=invisible
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictNamespaces=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
 LockPersonality=true
+RemoveIPC=true
 MemoryDenyWriteExecute=false
-SystemCallFilter=@system-service
-SystemCallFilter=~@privileged @resources
 SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+SystemCallErrorNumber=EPERM
 CapabilityBoundingSet=
 AmbientCapabilities=
 # Opsional — aktifkan HANYA jika REMOTE_DOWNLOAD_ENABLED=false (remote download butuh koneksi keluar):
@@ -2165,82 +2189,91 @@ AmbientCapabilities=
 WantedBy=multi-user.target
 ```
 
-Catatan: `MemoryDenyWriteExecute=false` karena ffmpeg/libvips dapat memakai JIT/`mprotect` (verifikasi; jika aman, set true). `ProtectSystem=strict` membuat `/www/wwwroot/file.kppbwi.app` read-only bagi proses (benar: aplikasi tidak menulis ke APP_DIR). `.env` dibaca systemd sebagai root → alternatif lebih ketat `chown root:root .env` tetap bekerja (dicatat sebagai opsi). `TMPDIR` diarahkan ke `.system/tmp` agar CLI tidak menulis ke `/tmp` privat yang kecil.
+Catatan (Step 22): `~@resources` **tidak** dipakai — grup itu memuat `setpriority`, `ioprio_set`, `setrlimit`
+(`systemd-analyze syscall-filter @resources`), sehingga `nice`/`ionice` yang membungkus setiap CLI (`internal/exec`) akan
+dibunuh SIGSYS; `SystemCallErrorNumber=EPERM` membuat syscall terfilter gagal dengan EPERM alih-alih membunuh proses.
+`ProtectProc=invisible` = hidepid per-service. Skor `systemd-analyze security --offline=yes` = 1.4 OK (nilai final
+setelah unit terpasang dicatat di `docs/DEPLOY-AAPANEL.md` §12). `MemoryDenyWriteExecute=false` karena ffmpeg/libvips dapat memakai JIT/`mprotect` (verifikasi; jika aman, set true). `ProtectSystem=strict` membuat `/www/wwwroot/file.kppbwi.app` read-only bagi proses (benar: aplikasi tidak menulis ke APP_DIR). `.env` dibaca systemd sebagai root → alternatif lebih ketat `chown root:root .env` tetap bekerja (dicatat sebagai opsi). `TMPDIR` diarahkan ke `.system/tmp` agar CLI tidak menulis ke `/tmp` privat yang kecil.
 
 ### 12.3 Langkah aaPanel klik-per-klik
+
+**Diverifikasi Step 22 (25 Okt 2026) dari source aaPanel 8.0.7 di server (`mod/project/proxy/comMod.py`, hanya dibaca):**
+vhost proyek Reverse Proxy dibangun ulang dari `/www/server/proxy_project/sites/<domain>/<domain>.json` setiap
+pengaturan berubah; kustomisasi yang bertahan hanya kolom `custom_conf` per URL proxy (dirender di dalam
+`location ^~ <path> { … }`, setelah `proxy_pass`, header bawaan, timeout, dan blok websocket) dan `server_block`
+site (di dalam `server { }` antara `#SERVER-BLOCK START/END`, setelah blok proxy); timeout = kolom per URL
+(`proxy_connect/send/read_timeout`, default 60/600/600). `site_path` selalu `/www/wwwroot/<domain>` (running directory
+tidak tersedia); aaPanel membuat `<site_path>/proxy_cache_dir` milik `www` + `proxy_cache_path` level http; hapus
+proyek dengan `remove_path=1` menjalankan `rm -rf /www/wwwroot/<domain>` (= repo + `.env`). `nginx.conf` meng-include
+`proxy.conf` dengan `proxy_cache cache_one;` dan `client_max_body_size 50m` level http untuk semua site. Include Lua
+`well-known/<domain>.conf` menyajikan `/.well-known/*` dari `document_root` (varian A = site directory, bukan
+`public/`), fallback `/www/wwwroot/java_node_ssl`. Log statistik `site_total` memuat `$http_cookie`.
 
 Jalur utama — **tipe proyek Reverse Proxy** (terverifikasi ada di aaPanel 8.0.7 server ini; nama menu persis perlu verifikasi saat Step 22):
 
 1. Panel aaPanel → **Website** → tab/kategori **Reverse Proxy** (atau "Proxy project") → **Add** (perlu verifikasi nama tombol).
 2. Domain: `file.kppbwi.app`. Target/`proxy_pass`: `http://127.0.0.1:8080`. Send domain/`proxy_host`: `$http_host`. Path: `/`. Remark: `FileManager`. Simpan.
 3. Setelah dibuat, aaPanel menulis `/www/server/panel/vhost/nginx/file.kppbwi.app.conf` dengan `root /www/wwwroot/file.kppbwi.app` (root diisi otomatis; verifikasi). Karena semua `location /` di-proxy, Nginx tidak menyajikan file apa pun dari root kecuali `.well-known` (via include Lua aaPanel). Jika UI memungkinkan mengatur site directory → set ke `/www/wwwroot/file.kppbwi.app/public`.
-4. Buka site → **Config** (editor konfigurasi Nginx site; nama menu perlu verifikasi) → tempel `deploy/nginx-aapanel.conf`: **Bagian A** di dalam blok `location /` proxy milik aaPanel (menggantikan/menambah direktif `proxy_*`), **Bagian B** sebagai blok `location` tambahan di level `server {}` tepat **sebelum** blok proxy itu (lihat 12.4); simpan — aaPanel menjalankan `nginx -t` dan reload. Verifikasi dengan `nginx -T | grep -A3 'location /'` bahwa direktif bertahan.
+4. URL proxy `/` → timeout connect 10 / send 3600 / read 3600 s; **custom configuration** ← PART A dari `deploy/nginx-aapanel.conf`; cache off. Site → **Config** → **server block** ← PART B (lihat 12.4); simpan — aaPanel menjalankan `nginx -t` dan reload. Verifikasi dengan `nginx -T` (perintah di `docs/DEPLOY-AAPANEL.md` 4.A). Nama menu perlu verifikasi; `deploy/aapanel/site.py configure` memanggil `set_url_proxy`, `set_url_custom_conf`, `save_config(conf_type=server_block)`.
 5. Site → **SSL** → **Let's Encrypt** → pilih domain → verifikasi file (HTTP-01; `.well-known/acme-challenge` dilayani dari document root oleh aaPanel) → Apply; aktifkan **Force HTTPS**.
-6. Verifikasi: `curl -I https://file.kppbwi.app/healthz` → 200 (`{"status":"ok"}`, HSTS ada); `curl -I https://file.kppbwi.app/readyz` → 404 (sengaja tidak di-proxy); `curl -I https://file.kppbwi.app/` → 200 dengan header aplikasi; `curl https://file.kppbwi.app/.env` dan `/bin/filemanager` → 404; `curl http://file.kppbwi.app/.well-known/acme-challenge/test` (file uji di `public/.well-known/acme-challenge/`) → 200 dari Nginx, bukan dari aplikasi.
+6. Verifikasi: `curl -I https://file.kppbwi.app/healthz` → 200 (`{"status":"ok"}`, HSTS ada); `curl -I https://file.kppbwi.app/readyz` → 404 (sengaja tidak di-proxy); `curl -I https://file.kppbwi.app/` → 200 dengan header aplikasi; `curl https://file.kppbwi.app/.env` dan `/bin/filemanager` → 404; `curl http://file.kppbwi.app/.well-known/acme-challenge/test` (file uji di `.well-known/acme-challenge/` document root: varian A `/www/wwwroot/file.kppbwi.app/`, varian B `public/`) → 200 dari Nginx, bukan dari aplikasi.
 7. Firewall: jangan membuka 8080 (UFW/aaPanel Security). Sudah tertutup saat ini.
 
 Jalur alternatif (persis seperti teks prompt): **Website → PHP project → Add site**: domain `file.kppbwi.app`, site directory `/www/wwwroot/file.kppbwi.app`, PHP version **Static**, tanpa DB/FTP → Site → **Site directory** → Running directory `/public` → Site → **Reverse proxy** → Add: name `app`, target `http://127.0.0.1:8080`, send domain `$host`, proxy directory `/` → Config → tempel snippet → SSL → Force HTTPS. Hapus `index.html`, `404.html`, `.htaccess`, `.user.ini` (`chattr -i` dulu) yang dibuat aaPanel.
 
 Larangan: jangan mengedit `/www/server/panel/vhost/nginx/file.kppbwi.app.conf` langsung (ditulis ulang aaPanel saat mengubah SSL/proxy). Snippet kustom hanya lewat editor Config di UI (yang juga menulis file itu, tetapi aaPanel menjaga blok yang ditandai komentar; verifikasi bahwa blok kustom bertahan setelah mengubah SSL — jika tidak, letakkan di `extension/<domain>/filemanager.conf`? folder itu dikelola aaPanel (berisi `site_total.conf`), perlu verifikasi apakah file tambahan bertahan; dokumentasikan hasil verifikasi di `DEPLOY-AAPANEL.md`).
 
-Otomasi opsional (fase akhir): `deploy/aapanel/site.py` meniru pola `proxy.kppbwi.app` (`mod.project.proxy.comMod`) untuk `status|create|ssl|force-https`; tetap dianggap "perlu verifikasi" per versi panel.
+Otomasi opsional: `deploy/aapanel/site.py` meniru pola `proxy.kppbwi.app` (`mod.project.proxy.comMod`) untuk `status|create|configure|ssl|force-https`; tetap dianggap "perlu verifikasi" per versi panel (belum dijalankan; menunggu persetujuan pemilik).
 
 ### 12.4 `deploy/nginx-aapanel.conf`
 
-```nginx
-# ===== FileManager — tempel di konfigurasi site file.kppbwi.app (aaPanel → Website → site → Config) =====
-# Bagian A: direktif di dalam blok  location / { ... proxy_pass http://127.0.0.1:8080; ... }  milik aaPanel.
-# Tambahkan/ganti baris berikut di dalam blok itu (aaPanel sudah menulis proxy_pass, proxy_http_version 1.1,
-# dan header Upgrade/Connection untuk websocket):
-    proxy_set_header Host              $host;
-    proxy_set_header X-Real-IP         $remote_addr;
-    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Forwarded-Host  $host;
-    proxy_http_version 1.1;
-    proxy_set_header Connection        "";
-    # upload tus: badan request dialirkan langsung, tidak ditampung di disk Nginx
-    proxy_request_buffering off;
-    client_max_body_size      64m;          # >= UPLOAD_CHUNK_SIZE (16 MB) + overhead; multipart clipboard 25 MB
-    client_body_timeout       300s;
-    # SSE & download besar: tanpa buffering, timeout panjang
-    proxy_buffering           off;
-    proxy_cache               off;
-    proxy_read_timeout        3600s;
-    proxy_send_timeout        3600s;
-    proxy_connect_timeout     10s;
-    proxy_max_temp_file_size  0;
-    # aplikasi mengirim header keamanan sendiri; jangan tambahkan add_header di sini (add_header di level
-    # location menimpa add_header level server milik aaPanel, mis. HSTS).
+File itu adalah kontrak; ringkasan (Step 22 menggantikan draf sebelumnya):
 
-# Bagian B: blok location tambahan, letakkan SEBELUM blok  location /  proxy (urutan prefix tidak penting,
-# tetapi regex location harus berada di dalam server {} dan tidak di dalam location lain).
-    # /healthz boleh publik (hanya {"status":"ok"}, dipakai uptime monitor & smoke test);
-    # readyz/metrics hanya untuk loopback (systemd/update.sh); tidak diekspos ke internet
-    location = /readyz  { return 404; }
-    location = /metrics { return 404; }
-    # defense-in-depth: walau semua di-proxy, pastikan source/binary/env tidak pernah disajikan statis
-    location ~ ^/(\.env|\.git|backend|web|deploy|docs|bin|Makefile|PRD\.md|SPEC\.md|PROMPT\.md|PROGRESS\.md|promp-master\.md) { return 404; }
-    # dotfile selain .well-known
-    location ~ /\.(?!well-known/) { return 404; }
-# ===== akhir snippet =====
-```
+- **PART A** — custom configuration URL proxy `/` (di dalam `location ^~ /` aaPanel): `X-Forwarded-Proto $scheme`,
+  `X-Forwarded-Host $host`, `X-Request-ID $request_id` (aaPanel sudah mengirim `Host $http_host`, `X-Real-IP`,
+  `X-Forwarded-For`, websocket), `proxy_request_buffering off`, `client_max_body_size 64m`, `client_body_timeout 300s`,
+  `proxy_buffering off`, `proxy_max_temp_file_size 0`, `proxy_cache off` (menimpa `proxy_cache cache_one` global
+  aaPanel), tanpa `add_header`, baris `access_log` opsional (mematikan log statistik `site_total` yang memuat Cookie).
+  Timeout **tidak** di PART A (direktif ganda ditolak `nginx -t`) — diisi di kolom timeout URL proxy.
+- **PART B** — server block: `location = /readyz` dan `= /metrics` → 404; `if ($uri ~* "^/(bin|backend|web|deploy|docs|migrations|proxy_cache_dir)(/|$)")`,
+  `if ($uri ~* "^/(Makefile|NOTICE|README\.md|PRD\.md|SPEC\.md|PROMPT\.md|PROGRESS\.md|promp-master\.md|go\.mod|go\.sum)$")`
+  dan `if ($uri ~ "/\.(?!well-known(/|$))")` → `return 404`; `location ^~ /s/` dan `^~ /api/v1/public/` dengan
+  `access_log off` + pengaturan proxy lengkap (token link publik tidak tercatat, review E m-14).
+- **PART C** (opsional, http block) — contoh `limit_req_zone` untuk login.
 
-Catatan: aaPanel sudah menambahkan `location ~ \.well-known` / include Lua untuk ACME sebelum blok proxy; snippet tidak boleh mengganggunya. Gzip: aktifkan di aaPanel (site → Config/GZIP) untuk `application/json text/css application/javascript` — opsional, aplikasi juga bisa gzip sendiri (middleware) → **keputusan**: aplikasi mengompresi JSON & aset statis sendiri (`httpapi.Compress` sejak Step 21: gzip level 6, hanya ≥ 1 KB, kecuali respons streaming/raw/Range), Nginx gzip dibiarkan default aaPanel.
+Kenapa bukan `location ~` seperti draf: blok proxy aaPanel `location ^~ /` menghentikan evaluasi location regex,
+sehingga `location ~ /\.(?!well-known)` dan `location ~* ^/(bin|…)` (juga regex larangan bawaan aaPanel) tidak
+pernah berlaku; `if` level server berjalan sebelum pemilihan location. Dibuktikan `deploy/test/nginx_snippet_test.sh`
+(Nginx aaPanel 1.30.6 dengan template server block Reverse Proxy, prefix scratch): dengan snippet 21 path sensitif
+→ 404 dari Nginx, ACME dari document root, 60 MiB lolos / 70 MiB → 413, Range 206, token `/s/` tidak di log; tanpa
+PART B path yang sama diteruskan ke aplikasi. Gzip: aplikasi mengompresi sendiri (`httpapi.Compress`, Step 21);
+gzip global aaPanel dibiarkan; brotli tidak ada di build Nginx aaPanel.
 
 ### 12.5 `deploy/update.sh` dan rollback
 
 ```text
- 1. Prasyarat: git pull (atau --binary/--release <tar.gz>), sebagai filemanager; cek /readyz saat ini OK.
- 2. Backup: bin/filemanager backup-db → .system/backups/app-<ts>-preupdate.db; salin bin/filemanager → bin/filemanager.prev
- 3. Build (make build) atau ekstrak release ke bin/filemanager.new; bin/filemanager.new version
- 4. Migrasi: bin/filemanager.new migrate status; migrate up (goose; migrasi harus backward-compatible satu versi: tambah kolom nullable, jangan drop di rilis yang sama)
- 5. mv bin/filemanager.new bin/filemanager; systemctl restart filemanager
- 6. Tunggu /readyz (maks 30 s) + smoke (login API dengan akun smoke opsional) → sukses: hapus .prev lama > 3 versi; cetak versi
- 7. Gagal: mv bin/filemanager.prev bin/filemanager; migrate down ke versi sebelum (jika migrasi tidak kompatibel, pulihkan DB dari app-<ts>-preupdate.db saat service berhenti); systemctl restart; cetak ROLLBACK + log journalctl 50 baris; exit 1
+ 1. Seluruh script di dalam main() (bash mem-parse semuanya sebelum git checkout bisa menimpa file); root; flock
+    bin/.update.lock (fd tidak diwariskan ke service); log tee ke DATA_DIR/logs/update-<ts>.log; cd APP_DIR.
+    /readyz saat ini tidak 200 → tanya (default berhenti).
+ 2. Binary baru → bin/filemanager.new: --binary PATH | --release <tar.gz> (sha256 WAJIB: --sha256 atau <file>.sha256;
+    hanya anggota bin/filemanager diekstrak, --no-same-owner) | --ref REF (work tree bersih; git fetch bila ada remote,
+    checkout, ff-only ke upstream) lalu build | default: make build BIN=bin/filemanager.new sebagai pemilik repo.
+    `<new> version` harus jalan.
+ 3. bin/filemanager backup-db --label pre-update (versi yang berjalan, sebagai filemanager) → path dari stdout
+    "backup written: <nama>"; salin bin/filemanager → bin/filemanager.prev (hanya satu versi sebelumnya disimpan).
+ 4. V_BEFORE = versi skema tertinggi yang applied menurut `<new> migrate status`; systemctl stop;
+    `<new> migrate up` (gagal → rollback); mv .new → bin/filemanager; systemctl start; /readyz ≤ 30 s
+    (--ready-timeout; berhenti lebih awal bila unit "failed") → "UPDATE OK".
+ 5. Gagal: stop; selama versi skema > V_BEFORE → `<new> migrate down` (binary baru yang memuat SQL down); bila down
+    gagal atau status tak terbaca → pulihkan DB dari backup pre-update (app.db/-wal/-shm lama → *.failed-<ts>);
+    binary gagal → bin/filemanager.failed; .prev → bin/filemanager; start; /readyz → "ROLLBACK OK in Ns", exit 1;
+    tetap tidak siap → journalctl 50 baris, "ROLLBACK FAILED", exit 2.
 ```
 
-Release dari CI: `tar.gz` berisi `bin/filemanager`, `deploy/`, `docs/`; `update.sh --release <file>` memverifikasi `sha256sum`.
+Release dari CI (job `build`): `filemanager-linux-amd64.tar.gz` berisi `bin/filemanager`, `deploy/`,
+`docs/DEPLOY-AAPANEL.md` + `.sha256`. Test: `deploy/test/update_rollback_test.sh` (binary palsu yang tidak pernah
+siap → rollback 32 s dengan timeout 30 s; migrasi palsu di-`down`; `down` gagal → restore backup; tarball dengan
+checksum salah ditolak sebelum perubahan apa pun). `--dry-run` hanya mencetak rencana.
 
 ### 12.6 Backup dan restore
 
