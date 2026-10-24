@@ -32,7 +32,7 @@ export function startItemDrag(
     ghost.textContent = label
     ghost.setAttribute('aria-hidden', 'true')
     ghost.style.cssText =
-      'position:fixed;top:-1000px;left:-1000px;padding:4px 10px;border-radius:6px;font:500 12px system-ui,sans-serif;background:var(--accent);color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3);pointer-events:none'
+      'position:fixed;top:-1000px;left:-1000px;padding:4px 10px;border-radius:6px;font:500 12px system-ui,sans-serif;background:var(--accent);color:var(--accent-fg);box-shadow:0 2px 8px rgba(0,0,0,.3);pointer-events:none'
     document.body.appendChild(ghost)
     dt.setDragImage(ghost, 12, 12)
     setTimeout(() => ghost.remove(), 0)

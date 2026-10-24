@@ -195,7 +195,8 @@
     "location": "Location",
     "menuTitle": "Columns",
     "reset": "Reset to default",
-    "resize": "Resize column"
+    "resize": "Resize column",
+    "summary": "Size / Modified"
   },
   "grid": {
     "label": "Files in {{path}}",
@@ -277,7 +278,11 @@
   },
   "selection": {
     "all": "Select all",
-    "row": "Select {{name}}"
+    "row": "Select {{name}}",
+    "bar": "Actions for the selected items",
+    "count_one": "{{n}} selected",
+    "count_other": "{{n}} selected",
+    "clear": "Clear selection"
   },
   "filter": {
     "placeholder": "Filter…",

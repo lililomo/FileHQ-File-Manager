@@ -109,7 +109,8 @@
     "downloadToEdit": "Download to edit",
     "versionTab": "Showing version {{no}} from {{at}} (read-only).",
     "versionRestore": "Restore this version",
-    "versionCompare": "Compare with current"
+    "versionCompare": "Compare with current",
+    "mobile": "Small screen: the editor works, but comfortable editing needs a physical keyboard and a wider screen. Use a desktop for longer work."
   },
   "dialog": {
     "closeDirtyTitle": "Save changes to {{name}}?",

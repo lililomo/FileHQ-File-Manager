@@ -61,7 +61,7 @@ export function Toolbar(p: ToolbarProps) {
       role="toolbar"
       aria-label={t('title')}
       data-testid="editor-toolbar"
-      className="flex h-10 shrink-0 items-center gap-0.5 border-b border-border bg-surface px-2"
+      className="flex h-10 min-w-0 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border bg-surface px-2"
     >
       <IconButton
         label={t('toolbar.explorer')}

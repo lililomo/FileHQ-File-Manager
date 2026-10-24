@@ -38,13 +38,7 @@ export function UserMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 gap-2 px-1.5"
-          aria-label={t('common:a11y.userMenu')}
-          data-testid="user-menu"
-        >
+        <Button variant="ghost" size="sm" className="h-8 gap-2 px-1.5" data-testid="user-menu">
           <span
             aria-hidden="true"
             className="grid size-6 place-items-center rounded-full bg-accent-subtle text-[11px] font-semibold text-text"
@@ -52,6 +46,8 @@ export function UserMenu() {
             {initials}
           </span>
           <span className="hidden max-w-32 truncate text-sm font-medium sm:inline">{name}</span>
+          {/* the visible name stays part of the accessible name (WCAG 2.5.3) */}
+          <span className="sr-only">{t('common:a11y.userMenu')}</span>
           <ChevronDown className="size-3.5 text-text-muted" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>

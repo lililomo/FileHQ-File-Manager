@@ -3,15 +3,15 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import type { Item } from './api'
 
-/** Tailwind classes per tag colour (light/dark safe, SPEC §9.1 semantic colours). */
+/** Token classes per tag colour (`--tag-*` in tokens.css, light + dark). */
 const TAG_DOT_CLASS: Record<string, string> = {
-  red: 'bg-rose-500',
-  orange: 'bg-orange-500',
-  yellow: 'bg-yellow-400',
-  green: 'bg-emerald-500',
-  blue: 'bg-sky-500',
-  purple: 'bg-violet-500',
-  gray: 'bg-zinc-400',
+  red: 'bg-tag-red',
+  orange: 'bg-tag-orange',
+  yellow: 'bg-tag-yellow',
+  green: 'bg-tag-green',
+  blue: 'bg-tag-blue',
+  purple: 'bg-tag-purple',
+  gray: 'bg-tag-gray',
 }
 
 export function TagDot({ color, className }: { color: string; className?: string }) {
@@ -53,7 +53,7 @@ function Badges({ item, className }: { item: Item; className?: string | undefine
       ) : null}
       {item.favorite ? (
         <Star
-          className="size-3.5 fill-amber-400 text-amber-500"
+          className="size-3.5 fill-star-fill text-star"
           role="img"
           aria-label={t('badges.favorite')}
           data-badge="favorite"

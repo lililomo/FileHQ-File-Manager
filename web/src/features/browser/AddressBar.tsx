@@ -154,6 +154,7 @@ function PathInput({
         }}
         aria-label={t('nav.pathLabel')}
         aria-invalid={invalid || undefined}
+        aria-describedby={invalid ? 'path-input-error' : undefined}
         placeholder={t('nav.pathPlaceholder')}
         spellCheck={false}
         autoComplete="off"
@@ -161,7 +162,7 @@ function PathInput({
         data-testid="path-input"
       />
       {invalid ? (
-        <span role="alert" className="ml-2 shrink-0 text-xs text-danger">
+        <span role="alert" id="path-input-error" className="ml-2 shrink-0 text-xs text-danger">
           {t('nav.pathInvalid')}
         </span>
       ) : null}

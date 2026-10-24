@@ -8,7 +8,7 @@ import { ViewerOverlay } from '@/features/viewer/ViewerOverlay'
 import { opensInViewer } from '@/features/viewer/viewers'
 import { EditorModal } from '@/features/editor/EditorModal'
 import { isEditableByName } from '@/features/editor/languages'
-import { FolderOpen, FolderPlus, Upload } from 'lucide-react'
+import { FolderOpen, FolderPlus, Upload, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -50,6 +50,8 @@ import {
 import { announce } from '@/lib/announce'
 import { ApiError } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
+import { createLongPress } from '@/lib/longPress'
+import { IconButton } from '@/components/ui/icon-button'
 import { pushScope, registerShortcut } from '@/lib/shortcuts'
 import { useIsMobile, useMediaQuery } from '@/lib/useMediaQuery'
 import { cutPaths, useClipboardStore } from '@/stores/clipboard'
@@ -100,10 +102,11 @@ import { useListing } from './useListing'
 import { ListView } from './views/ListView'
 import { LargeIconsView, TilesView, XLIconsView } from './views/presets'
 import { ViewSwitcher } from './views/ViewSwitcher'
-import { baseName, parentPath, pathToSplat, ROOT } from './path'
+import { baseName, joinPath, parentPath, pathToSplat, ROOT } from './path'
 import { cycleSort, normalizeSort, sameSort, type SortPref } from './sortCycle'
 
 const MOBILE_PREF: ColumnsPref = { visible: MOBILE_COLUMNS, order: MOBILE_COLUMNS, widths: {} }
+const MOBILE_SELECTION_ACTIONS = ['copy', 'cut', 'rename', 'delete']
 const SORT_FIELDS: SortField[] = [
   'name',
   'size',
@@ -712,9 +715,16 @@ export function BrowserLayout({
   const commitRename = useCallback(
     (item: Item, newName: string) => {
       setRenaming(null)
-      void ops.rename(item.path, newName).then(() => focusGrid())
+      // the renamed item stays selected (keyboard users go on with Delete/Ctrl+C;
+      // Step 21 keyboard-only flow)
+      const renamed = joinPath(parentOf(item.path), newName)
+      setSelection(selectOnly(renamed))
+      void ops.rename(item.path, newName).then((res) => {
+        if (!res) setSelection(selectOnly(item.path))
+        focusGrid()
+      })
     },
-    [ops],
+    [ops, setSelection],
   )
   const cancelRename = useCallback(() => {
     setRenaming(null)
@@ -938,6 +948,7 @@ export function BrowserLayout({
   }, [meta])
   const saveNote = useCallback((p: string, note: string) => meta.setNote(p, note), [meta])
 
+  const longPress = useMemo(() => createLongPress(), [])
   // Decide the context-menu variant before Radix opens it: right-clicking an
   // unselected item selects it; otherwise the current selection is used.
   const onContextMenuCapture = useCallback(
@@ -1188,6 +1199,8 @@ export function BrowserLayout({
   )
   return (
     <div className="relative flex h-full min-h-0 flex-col" data-testid="browser" data-view={view}>
+      {/* page heading for screen readers (the breadcrumb is the visible one) */}
+      <h1 className="sr-only">{path === ROOT ? t('fileops:picker.root') : baseName(path)}</h1>
       <AddressBar
         path={path}
         canBack={tabs.canBack()}
@@ -1272,9 +1285,11 @@ export function BrowserLayout({
           onOpenChange={setMenuOpen}
         >
           <div
-            className="flex min-h-0 min-w-0 flex-1 flex-col"
+            className="flex min-h-0 min-w-0 flex-1 flex-col [-webkit-touch-callout:none]"
             data-columns={visibleCount}
             onContextMenuCapture={onContextMenuCapture}
+            // touch: 500 ms long-press = context menu (SPEC §9.9)
+            {...longPress}
             // OS drops on an empty folder (no grid underneath) still upload here
             {...(!isMobile ? dropTargetProps({ dir: path }) : {})}
           >
@@ -1298,6 +1313,34 @@ export function BrowserLayout({
         className="shrink-0 empty:hidden"
         data-testid="mini-player-slot"
       />
+      {isMobile && selCount > 0 ? (
+        // phones: the actions for the selection sit in a bottom bar (SPEC §9.9)
+        <div
+          role="toolbar"
+          aria-label={t('files:selection.bar')}
+          className="flex shrink-0 items-center gap-1 border-t border-border bg-surface px-2 py-1"
+          data-testid="selection-bar"
+        >
+          <span className="mr-auto truncate pl-1 text-sm font-medium">
+            {t('files:selection.count', {
+              count: selCount,
+              n: formatNumber(selCount, i18n.resolvedLanguage ?? 'id'),
+            })}
+          </span>
+          <ToolbarActions
+            ctx={actionCtx}
+            primaryIds={MOBILE_SELECTION_ACTIONS}
+            testIdPrefix="selection"
+          />
+          <IconButton
+            label={t('files:selection.clear')}
+            onClick={() => setSelection(clearSelection())}
+            data-testid="selection-clear"
+          >
+            <X aria-hidden="true" />
+          </IconButton>
+        </div>
+      ) : null}
       <StatusBar
         total={filter ? filtered.length : total}
         selectedCount={selCount}

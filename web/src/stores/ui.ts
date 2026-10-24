@@ -21,6 +21,9 @@ export interface UIState {
   accent: Accent
   density: Density
   sidebarCollapsed: boolean
+  /** 768–1279 px: the sidebar is 48 px icons unless expanded (not persisted, SPEC §9.9). */
+  sidebarTabletExpanded: boolean
+  toggleTabletSidebar: () => void
   setTheme: (pref: ThemePref) => void
   setResolvedTheme: (resolved: ResolvedTheme) => void
   setAccent: (accent: Accent) => void
@@ -49,6 +52,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   accent: initialAccent(),
   density: initialDensity(),
   sidebarCollapsed: false,
+  sidebarTabletExpanded: false,
+  toggleTabletSidebar: () => set((s) => ({ sidebarTabletExpanded: !s.sidebarTabletExpanded })),
   setTheme: (pref) => {
     const resolved = applyTheme(pref)
     set({ theme: pref, resolvedTheme: resolved })

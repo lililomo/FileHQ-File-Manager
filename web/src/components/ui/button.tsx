@@ -11,25 +11,28 @@ const buttonVariants = cva(
         default: 'bg-primary text-primary-foreground hover:bg-primary/90',
         primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
         danger:
-          'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40',
+          'bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40',
         destructive:
-          'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40',
+          'bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40',
         outline:
           'border bg-background shadow-xs hover:bg-surface-2 hover:text-text dark:border-input dark:bg-input/30 dark:hover:bg-input/50',
         secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
         ghost: 'hover:bg-surface-2 hover:text-text dark:hover:bg-surface-2/50',
         link: 'text-primary underline-offset-4 hover:underline',
       },
+      // below md (phones) every regular/icon button is at least 44 × 44 px
+      // (SPEC §9.9 touch targets); xs stays 24 px (WCAG 2.5.8 minimum) for
+      // dense secondary controls
       size: {
-        default: 'h-8 px-3 py-1.5 has-[>svg]:px-2.5',
-        md: 'h-8 px-3 py-1.5 has-[>svg]:px-2.5',
+        default: 'h-8 px-3 py-1.5 has-[>svg]:px-2.5 max-md:min-h-11',
+        md: 'h-8 px-3 py-1.5 has-[>svg]:px-2.5 max-md:min-h-11',
         xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: 'h-7 gap-1.5 rounded-md px-2.5 text-xs has-[>svg]:px-2',
-        lg: 'h-9 rounded-md px-4 has-[>svg]:px-3',
-        icon: 'size-8',
+        sm: 'h-7 gap-1.5 rounded-md px-2.5 text-xs has-[>svg]:px-2 max-md:min-h-11',
+        lg: 'h-9 rounded-md px-4 has-[>svg]:px-3 max-md:min-h-11',
+        icon: 'size-8 max-md:min-h-11 max-md:min-w-11',
         'icon-xs': "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
-        'icon-sm': 'size-7',
-        'icon-lg': 'size-9',
+        'icon-sm': 'size-7 max-md:min-h-11 max-md:min-w-11',
+        'icon-lg': 'size-9 max-md:min-h-11 max-md:min-w-11',
       },
     },
     defaultVariants: {

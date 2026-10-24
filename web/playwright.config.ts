@@ -18,7 +18,17 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // auth.spec.ts exercises the forced first-password change, so it runs before every
+  // other spec (a11y.spec.ts sorts before it alphabetically since Step 21)
+  projects: [
+    { name: 'auth', testMatch: /auth\.spec\.ts$/, use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'chromium',
+      testIgnore: /auth\.spec\.ts$/,
+      dependencies: ['auth'],
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
   webServer: {
     command: 'node e2e/backend.mjs',
     url: `${baseURL}/healthz`,

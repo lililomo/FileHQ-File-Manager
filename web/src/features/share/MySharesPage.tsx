@@ -159,8 +159,10 @@ export function MySharesPage() {
                 <TableHead>{t('share:mine.recipients')}</TableHead>
                 <TableHead className="hidden md:table-cell">{t('share:mine.protection')}</TableHead>
                 <TableHead className="hidden md:table-cell">{t('share:mine.expiry')}</TableHead>
-                <TableHead className="hidden lg:table-cell">{t('share:mine.stats')}</TableHead>
-                <TableHead className="hidden lg:table-cell">{t('share:mine.lastAccess')}</TableHead>
+                <TableHead className="hidden 2xl:table-cell">{t('share:mine.stats')}</TableHead>
+                <TableHead className="hidden 2xl:table-cell">
+                  {t('share:mine.lastAccess')}
+                </TableHead>
                 <TableHead>{t('share:mine.status')}</TableHead>
                 <TableHead className="text-right">{t('share:mine.actions')}</TableHead>
               </TableRow>
@@ -248,10 +250,10 @@ export function MySharesPage() {
                         ? formatDate(s.expiresAt, lang, { time: true })
                         : t('share:mine.never')}
                     </TableCell>
-                    <TableCell className="hidden text-xs lg:table-cell">
+                    <TableCell className="hidden text-xs 2xl:table-cell">
                       {s.viewCount} / {s.downloadCount}
                     </TableCell>
-                    <TableCell className="hidden text-xs lg:table-cell">
+                    <TableCell className="hidden text-xs 2xl:table-cell">
                       {s.lastAccessAt
                         ? formatDate(s.lastAccessAt, lang, { time: true })
                         : t('share:mine.never')}

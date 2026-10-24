@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { PageSpinner } from '@/components/PageSpinner'
+import { useIsMobile } from '@/lib/useMediaQuery'
 import { pushScope, registerShortcut } from '@/lib/shortcuts'
 import { useActiveTab, useEditorStore } from '@/stores/editor'
 import { useSessionStore } from '@/stores/session'
@@ -48,6 +49,7 @@ const SESSION_DEBOUNCE_MS = 2000
  *  from the server and saved 2 s after changes; drafts live in IndexedDB. */
 export function EditorWorkspace(p: EditorWorkspaceProps) {
   const { t } = useTranslation('editor')
+  const isMobile = useIsMobile()
   const [monaco, setMonaco] = useState<MonacoApi | null>(null)
   const [closeReq, setCloseReq] = useState<CloseRequest | null>(null)
   const [diff, setDiff] = useState<DiffSpec | null>(null)
@@ -59,8 +61,10 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
   const [find, setFind] = useState<{ open: boolean; seed?: string | undefined }>({ open: false })
   const prefs = useEditorPrefs()
   const explorerOpen = p.mode === 'modal' ? prefs.explorer && false : prefs.explorer
+  // the modal and phones (SPEC §9.9) start without the explorer; the toggle is per session
   const [modalExplorer, setModalExplorer] = useState(false)
-  const showExplorer = p.mode === 'modal' ? modalExplorer : explorerOpen
+  const transientExplorer = p.mode === 'modal' || isMobile
+  const showExplorer = transientExplorer ? modalExplorer : explorerOpen
   const tabs = useEditorStore((s) => s.tabs)
   const activePath = useEditorStore((s) => s.activePath)
   const hydrated = useEditorStore((s) => s.hydrated)
@@ -251,14 +255,15 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
     [t],
   )
   const toggleExplorer = useCallback(() => {
-    if (p.mode === 'modal') setModalExplorer((v) => !v)
+    if (transientExplorer) setModalExplorer((v) => !v)
     else setEditorPref('explorer', !prefs.explorer)
-  }, [p.mode, prefs.explorer])
+  }, [transientExplorer, prefs.explorer])
 
   if (!ws) return <PageSpinner />
   return (
     <WorkspaceContext.Provider value={ws}>
       <div className="flex h-full min-h-0 flex-col bg-bg" data-testid="editor-workspace">
+        <h1 className="sr-only">{active ? `${t('title')}: ${active.name}` : t('title')}</h1>
         <Toolbar
           tab={active}
           mode={p.mode}
@@ -268,6 +273,16 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
           onMaximize={p.onMaximize}
           onClose={p.onClose}
         />
+        {isMobile ? (
+          // SPEC §9.9: usable on phones, with an honest note about the limits
+          <p
+            role="note"
+            className="border-b border-border bg-surface-2 px-3 py-1.5 text-xs text-text-muted"
+            data-testid="editor-mobile-note"
+          >
+            {t('banner.mobile')}
+          </p>
+        ) : null}
         <div className="flex min-h-0 flex-1">
           {showExplorer ? (
             <Explorer

@@ -40,6 +40,10 @@ export function StatusBar({ tab }: { tab: EditorTab | null }) {
   const insertSpaces = opts?.insertSpaces ?? true
   const tabSize = opts?.tabSize ?? 4
   void indentState
+  const indentText = insertSpaces
+    ? t('status.spaces', { n: tabSize })
+    : t('status.tabs', { n: tabSize })
+  const encodingText = `${tab.encoding.toUpperCase()}${tab.bom ? ` ${t('status.bom')}` : ''}`
   const chip =
     'rounded px-1.5 py-0.5 hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-focus outline-none'
   return (
@@ -66,8 +70,13 @@ export function StatusBar({ tab }: { tab: EditorTab | null }) {
       <span className="tabular-nums">{formatBytes(tab.size, i18n.resolvedLanguage ?? 'id')}</span>
       {/* indentation */}
       <DropdownMenu>
-        <DropdownMenuTrigger className={chip} aria-label={t('status.indent')} disabled={!model}>
-          {insertSpaces ? t('status.spaces', { n: tabSize }) : t('status.tabs', { n: tabSize })}
+        <DropdownMenuTrigger
+          className={chip}
+          // WCAG 2.5.3: the accessible name starts with the visible text
+          aria-label={`${indentText} — ${t('status.indent')}`}
+          disabled={!model}
+        >
+          {indentText}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuCheckboxItem
@@ -109,12 +118,11 @@ export function StatusBar({ tab }: { tab: EditorTab | null }) {
       <DropdownMenu>
         <DropdownMenuTrigger
           className={chip}
-          aria-label={t('status.encoding')}
+          aria-label={`${encodingText} — ${t('status.encoding')}`}
           data-testid="status-encoding"
           disabled={tab.status !== 'ready'}
         >
-          {tab.encoding.toUpperCase()}
-          {tab.bom ? ` ${t('status.bom')}` : ''}
+          {encodingText}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
           <DropdownMenuLabel>
@@ -162,7 +170,7 @@ export function StatusBar({ tab }: { tab: EditorTab | null }) {
       <DropdownMenu>
         <DropdownMenuTrigger
           className={chip}
-          aria-label={t('eol.change')}
+          aria-label={`${t(`eol.${tab.eol}`)} — ${t('eol.change')}`}
           data-testid="status-eol"
           disabled={tab.status !== 'ready' || tab.readOnly}
         >
@@ -186,7 +194,7 @@ export function StatusBar({ tab }: { tab: EditorTab | null }) {
       <DropdownMenu>
         <DropdownMenuTrigger
           className={chip}
-          aria-label={t('status.language')}
+          aria-label={`${languageLabel(tab.language)} — ${t('status.language')}`}
           data-testid="status-language"
           disabled={tab.status !== 'ready'}
         >

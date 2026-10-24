@@ -25,14 +25,20 @@ type LooseT = (key: string, options?: Record<string, unknown>) => string
 export function ToolbarActions({
   ctx,
   compact = false,
+  primaryIds = TOOLBAR_PRIMARY,
+  testIdPrefix = 'toolbar',
 }: {
   ctx: ActionContext | null
   compact?: boolean
+  /** icon buttons shown directly (the rest of the applicable actions go under "⋯") */
+  primaryIds?: string[]
+  testIdPrefix?: string
 }) {
   const { t } = useTranslation(['files'])
   const lt = t as unknown as LooseT
-  const primary = compact ? [] : TOOLBAR_PRIMARY
-  const moreIds = compact ? [...TOOLBAR_PRIMARY, ...TOOLBAR_MORE] : TOOLBAR_MORE
+  const primary = compact ? [] : primaryIds
+  const rest = [...TOOLBAR_PRIMARY, ...TOOLBAR_MORE].filter((id) => !primary.includes(id))
+  const moreIds = compact ? [...TOOLBAR_PRIMARY, ...TOOLBAR_MORE] : rest
   const more = moreIds
     .map((id) => actionById(id))
     .filter(
@@ -55,7 +61,7 @@ export function ToolbarActions({
             disabled={!enabled}
             onClick={() => ctx && a.run(ctx)}
             className={a.destructive && enabled ? 'hover:text-danger' : undefined}
-            data-testid={`toolbar-${id}`}
+            data-testid={`${testIdPrefix}-${id}`}
           >
             <Icon aria-hidden="true" />
           </IconButton>
@@ -66,12 +72,16 @@ export function ToolbarActions({
           <IconButton
             label={t('files:toolbar.more')}
             disabled={more.length === 0}
-            data-testid="toolbar-more"
+            data-testid={`${testIdPrefix}-more`}
           >
             <MoreHorizontal aria-hidden="true" />
           </IconButton>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-60" data-testid="toolbar-more-menu">
+        <DropdownMenuContent
+          align="start"
+          className="w-60"
+          data-testid={`${testIdPrefix}-more-menu`}
+        >
           {more.map((a) => {
             const Icon = a.icon
             const keys = actionShortcut(a)
@@ -80,7 +90,7 @@ export function ToolbarActions({
                 key={a.id}
                 variant={a.destructive ? 'destructive' : 'default'}
                 onSelect={() => ctx && a.run(ctx)}
-                data-testid={`toolbar-more-${a.id}`}
+                data-testid={`${testIdPrefix}-more-${a.id}`}
               >
                 <Icon aria-hidden="true" />
                 {actionLabel(lt, a)}

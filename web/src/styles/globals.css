@@ -48,7 +48,16 @@
   --color-muted: var(--surface-2);
   --color-muted-foreground: var(--text-muted);
   --color-destructive: var(--danger);
-  --color-destructive-foreground: #ffffff;
+  --color-destructive-foreground: var(--danger-fg);
+  --color-tag-red: var(--tag-red);
+  --color-tag-orange: var(--tag-orange);
+  --color-tag-yellow: var(--tag-yellow);
+  --color-tag-green: var(--tag-green);
+  --color-tag-blue: var(--tag-blue);
+  --color-tag-purple: var(--tag-purple);
+  --color-tag-gray: var(--tag-gray);
+  --color-star: var(--star);
+  --color-star-fill: var(--star-fill);
   --color-input: var(--border);
   --color-ring: var(--focus);
 

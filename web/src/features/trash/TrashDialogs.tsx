@@ -93,10 +93,11 @@ export function RestoreToDialog({
               autoComplete="off"
               spellCheck={false}
               aria-invalid={!!error}
+              aria-describedby={error ? 'restore-to-path-error' : undefined}
               data-testid="restore-to-path"
             />
             {error ? (
-              <p className="text-xs text-danger" role="alert">
+              <p className="text-xs text-danger" role="alert" id="restore-to-path-error">
                 {error}
               </p>
             ) : null}

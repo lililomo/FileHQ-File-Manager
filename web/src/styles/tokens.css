@@ -44,8 +44,8 @@
   --accent: #2563eb;
   --accent-fg: #ffffff;
   --accent-subtle: #eaf1fe;
-  --success: #16a34a;
-  --warning: #d97706;
+  --success: #15803d;
+  --warning: #b45309;
   --danger: #dc2626;
   --focus: var(--accent);
 
@@ -60,6 +60,17 @@
   --icon-sheet: #22c55e;
   --icon-text: #64748b;
   --icon-other: #94a3b8;
+  /* colour tags and the favourite star (SPEC §8.7; review B m-07: no Tailwind palette in components) */
+  --tag-red: #f43f5e;
+  --tag-orange: #f97316;
+  --tag-yellow: #facc15;
+  --tag-green: #10b981;
+  --tag-blue: #0ea5e9;
+  --tag-purple: #8b5cf6;
+  --tag-gray: #a1a1aa;
+  --star: #f59e0b;
+  --star-fill: #fbbf24;
+  --danger-fg: #ffffff;
 
   --elevation-popover: 0 4px 16px rgb(0 0 0 / 0.12);
   --font-family-sans:
@@ -97,6 +108,16 @@
   --success: #22c55e;
   --warning: #f59e0b;
   --danger: #f87171;
+  --tag-red: #fb7185;
+  --tag-orange: #fb923c;
+  --tag-yellow: #fde047;
+  --tag-green: #34d399;
+  --tag-blue: #38bdf8;
+  --tag-purple: #a78bfa;
+  --tag-gray: #a1a1aa;
+  --star: #fbbf24;
+  --star-fill: #fcd34d;
+  --danger-fg: #ffffff;
   --elevation-popover: 0 4px 16px rgb(0 0 0 / 0.4);
   --code-keyword: #c4b5fd;
   --code-string: #86efac;

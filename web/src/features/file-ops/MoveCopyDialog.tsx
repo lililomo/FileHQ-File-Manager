@@ -150,10 +150,11 @@ export function MoveCopyDialog({
               spellCheck={false}
               autoComplete="off"
               aria-invalid={typedError ? true : undefined}
+              aria-describedby={typedError ? 'movecopy-path-error' : undefined}
               data-testid="movecopy-path"
             />
             {typedError ? (
-              <p className="text-xs text-danger" role="alert">
+              <p className="text-xs text-danger" role="alert" id="movecopy-path-error">
                 {typedError}
               </p>
             ) : null}

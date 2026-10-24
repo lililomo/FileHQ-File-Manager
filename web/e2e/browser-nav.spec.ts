@@ -129,7 +129,7 @@ test('375 px: drawer sidebar, two columns, no horizontal scroll', async ({ page 
   const headers = page.getByRole('columnheader')
   await expect(headers).toHaveCount(2)
   await expect(headers.nth(0)).toHaveText('Nama')
-  await expect(headers.nth(1)).toHaveText('Diubah')
+  await expect(headers.nth(1)).toHaveText('Ukuran / Diubah')
   await expect(page.getByRole('navigation', { name: 'Navigasi utama' })).toBeHidden()
   await page.getByRole('button', { name: 'Buka menu' }).click()
   await expect(page.getByRole('navigation', { name: 'Navigasi utama' })).toBeVisible()

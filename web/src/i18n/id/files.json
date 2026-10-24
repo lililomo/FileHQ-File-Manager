@@ -195,7 +195,8 @@
     "location": "Lokasi",
     "menuTitle": "Kolom",
     "reset": "Kembalikan default",
-    "resize": "Ubah lebar kolom"
+    "resize": "Ubah lebar kolom",
+    "summary": "Ukuran / Diubah"
   },
   "grid": {
     "label": "Daftar file di {{path}}",
@@ -258,8 +259,8 @@
   },
   "sort": {
     "by": "Urutkan berdasarkan",
-    "asc": "Naik",
-    "desc": "Turun",
+    "asc": "Menaik",
+    "desc": "Menurun",
     "foldersFirst": "Folder di atas",
     "field": {
       "name": "Nama",
@@ -277,7 +278,11 @@
   },
   "selection": {
     "all": "Pilih semua",
-    "row": "Pilih {{name}}"
+    "row": "Pilih {{name}}",
+    "bar": "Aksi untuk item terpilih",
+    "count_one": "{{n}} dipilih",
+    "count_other": "{{n}} dipilih",
+    "clear": "Batalkan pilihan"
   },
   "filter": {
     "placeholder": "Filter…",

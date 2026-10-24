@@ -1,6 +1,6 @@
 {
   "button": {
-    "text": "Tasks",
+    "text": "Task",
     "label_zero": "Task (tidak ada yang berjalan)",
     "label_one": "Task ({{count}} berjalan)",
     "label_other": "Task ({{count}} berjalan)"

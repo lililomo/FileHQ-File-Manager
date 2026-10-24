@@ -263,6 +263,7 @@ function SettingsForm({
                         id={`setting-${it.key}`}
                         className="h-8 font-mono text-xs"
                         aria-invalid={!!errors[it.key]}
+                        aria-describedby={errors[it.key] ? `setting-${it.key}-error` : undefined}
                         data-testid={`setting-input-${it.key}`}
                         {...register(it.key)}
                       />
@@ -271,6 +272,7 @@ function SettingsForm({
                       <p
                         className="mt-1 text-xs text-danger"
                         role="alert"
+                        id={`setting-${it.key}-error`}
                         data-testid={`setting-error-${it.key}`}
                       >
                         {errorText(it.key)}

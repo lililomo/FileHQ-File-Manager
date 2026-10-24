@@ -244,10 +244,11 @@ export function CompressDialog({ paths, dir, onClose, onCloseAutoFocus }: Compre
               spellCheck={false}
               autoComplete="off"
               aria-invalid={typedError ? true : undefined}
+              aria-describedby={typedError ? 'compress-dest-error' : undefined}
               data-testid="compress-dest"
             />
             {typedError ? (
-              <p className="text-xs text-danger" role="alert">
+              <p className="text-xs text-danger" role="alert" id="compress-dest-error">
                 {typedError}
               </p>
             ) : null}
@@ -275,10 +276,11 @@ export function CompressDialog({ paths, dir, onClose, onCloseAutoFocus }: Compre
                   onChange={(e) => setConfirm(e.target.value)}
                   autoComplete="new-password"
                   aria-invalid={passwordMismatch ? true : undefined}
+                  aria-describedby={passwordMismatch ? 'compress-confirm-error' : undefined}
                   data-testid="compress-confirm"
                 />
                 {passwordMismatch ? (
-                  <p className="text-xs text-danger" role="alert">
+                  <p className="text-xs text-danger" role="alert" id="compress-confirm-error">
                     {t('archive:compress.mismatch')}
                   </p>
                 ) : null}
@@ -310,6 +312,7 @@ export function CompressDialog({ paths, dir, onClose, onCloseAutoFocus }: Compre
                 onChange={(e) => setSplit(e.target.value)}
                 placeholder={t('archive:compress.splitNone')}
                 aria-invalid={splitInvalid ? true : undefined}
+                aria-describedby={splitInvalid ? 'compress-split-error' : undefined}
                 data-testid="compress-split"
               />
             </div>
@@ -323,7 +326,7 @@ export function CompressDialog({ paths, dir, onClose, onCloseAutoFocus }: Compre
             {t('archive:compress.deleteSource')}
           </label>
           {singleFileBlocked ? (
-            <p className="text-xs text-danger" role="alert">
+            <p className="text-xs text-danger" role="alert" id="compress-split-error">
               {t('archive:compress.singleFileOnly')}
             </p>
           ) : null}

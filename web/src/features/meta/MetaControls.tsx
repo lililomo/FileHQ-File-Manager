@@ -37,10 +37,7 @@ export function MetaControls({
           onClick={() => onToggleFavorite(item)}
           data-testid="meta-favorite"
         >
-          <Star
-            className={cn(item.favorite && 'fill-amber-400 text-amber-500')}
-            aria-hidden="true"
-          />
+          <Star className={cn(item.favorite && 'fill-star-fill text-star')} aria-hidden="true" />
           {t('badges.favorite')}
         </Button>
       ) : null}

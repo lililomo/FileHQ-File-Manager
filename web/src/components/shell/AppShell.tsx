@@ -9,6 +9,7 @@ import { uploader } from '@/features/upload/useUploader'
 import { useUploaderEffects } from '@/features/upload/useUploaderEffects'
 import { MiniPlayer } from '@/features/viewer/audio/MiniPlayer'
 import { useMiniPlayerSlot } from '@/features/viewer/audio/miniPlayerSlot'
+import { useRouteTitle } from '@/lib/routeTitle'
 import { cn } from '@/lib/utils'
 import { usePlayerStore } from '@/stores/player'
 import { GlobalOverlays } from './GlobalOverlays'
@@ -18,6 +19,7 @@ import { TopBar } from './TopBar'
 export function AppShell({ children }: { children: ReactNode }) {
   const { t } = useTranslation()
   useQuotaSync()
+  useRouteTitle()
   useTaskEvents()
   // re-picking files for transfers left over from a previous page load
   const pickRef = useRef<UploadInputsHandle>(null)
@@ -30,6 +32,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="flex h-dvh flex-col bg-bg text-text">
       <a
         href="#main"
+        data-testid="skip-link"
         className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-accent focus:px-3 focus:py-2 focus:text-accent-fg"
       >
         {t('a11y.skipToContent')}

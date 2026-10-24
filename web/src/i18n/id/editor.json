@@ -109,7 +109,8 @@
     "downloadToEdit": "Unduh untuk mengedit",
     "versionTab": "Menampilkan versi {{no}} dari {{at}} (hanya-baca).",
     "versionRestore": "Pulihkan versi ini",
-    "versionCompare": "Bandingkan dengan sekarang"
+    "versionCompare": "Bandingkan dengan sekarang",
+    "mobile": "Layar kecil: editor bisa dipakai, tetapi pengeditan nyaman butuh keyboard fisik dan layar lebih lebar. Buka di desktop untuk pekerjaan panjang."
   },
   "dialog": {
     "closeDirtyTitle": "Simpan perubahan pada {{name}}?",

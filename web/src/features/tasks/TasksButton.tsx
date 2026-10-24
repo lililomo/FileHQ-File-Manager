@@ -13,7 +13,7 @@ export function TasksButton() {
     <Button
       variant="ghost"
       size="sm"
-      className="h-8 gap-1.5 px-2"
+      className="h-8 gap-1.5 px-2 max-md:min-w-11"
       aria-pressed={open}
       aria-label={t('tasks:button.label', { count: n })}
       title={t('tasks:button.label', { count: n })}

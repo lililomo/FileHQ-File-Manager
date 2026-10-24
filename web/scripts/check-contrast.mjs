@@ -41,8 +41,10 @@ const PAIRS = [
   ['--accent', '--bg', 3, 'ui'],
   ['--accent', '--surface', 3, 'ui'],
   ['--focus', '--bg', 3, 'focus ring'],
-  ['--success', '--bg', 3, 'ui'],
-  ['--warning', '--bg', 3, 'ui'],
+  ['--success', '--bg', 4.5, 'status text (text-success)'],
+  ['--success', '--surface', 4.5, 'status text on surface'],
+  ['--warning', '--bg', 4.5, 'status text (text-warning)'],
+  ['--warning', '--surface', 4.5, 'status text on surface'],
   ['--danger', '--surface', 3, 'ui'],
 ]
 

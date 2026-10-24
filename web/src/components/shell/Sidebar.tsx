@@ -1,11 +1,17 @@
+import { useIsTablet } from '@/lib/useMediaQuery'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/ui'
 import { QuotaIndicator } from './QuotaIndicator'
 import { SidebarNav } from './SidebarNav'
 
-/** 232 px sidebar, 48 px when collapsed (SPEC §9.1 sizes). Hidden below md (drawer instead). */
+/** 232 px sidebar, 48 px when collapsed (SPEC §9.1 sizes). Hidden below md
+ *  (drawer instead); 768–1279 px it is 48 px icons until the top-bar toggle
+ *  expands it (SPEC §9.9). */
 export function Sidebar() {
-  const collapsed = useUIStore((s) => s.sidebarCollapsed)
+  const tablet = useIsTablet()
+  const collapsedPref = useUIStore((s) => s.sidebarCollapsed)
+  const tabletExpanded = useUIStore((s) => s.sidebarTabletExpanded)
+  const collapsed = tablet ? !tabletExpanded : collapsedPref
   return (
     <aside
       className={cn(

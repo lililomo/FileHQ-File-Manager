@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ADMIN_USERNAME, apiResetPrefs, e2eStorageRoot, loginAsAdmin } from './fixtures'
 
@@ -99,6 +99,10 @@ async function measured(page: Page, name: string): Promise<number> {
 }
 
 test.beforeAll(() => seed())
+// the fixture was written straight to disk (never counted in the quota), so it goes the same way
+test.afterAll(() =>
+  rmSync(join(e2eStorageRoot(), ADMIN_USERNAME, DIR), { recursive: true, force: true }),
+)
 
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page)

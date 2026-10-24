@@ -18,10 +18,10 @@
 | Zip streaming 1 GiB: puncak RSS | ≤ baseline + 100 MB | +0,4 MB | +1,2 MB | ✅ |
 | Extract 1 GiB: puncak RSS | ≤ baseline + 100 MB | +1,1 MB | +1,2 MB | ✅ |
 | Render pertama folder 10.500 entri di UI (PRD G3) | < 1 s | **205–273 ms** (Chromium headless, server yang sama) | — (browser = perangkat klien) | ✅ |
-| Navigasi hangat di UI, p95 (PRD G4) | < 150 ms | **86–100 ms** | — | ✅ |
+| Navigasi hangat di UI, p95 (PRD G4) | < 150 ms | **86–100 ms** (spec sendiri); 143 ms di suite penuh | — | ✅ (tipis di suite penuh) |
 | Long task saat scroll 10.500 baris (PROMPT 21 AC) | ≤ 100 ms | **maks 62–85 ms** (5–12 task > 50 ms dalam ±21 s scroll agresif) | — | ✅ (sasaran < 50 ms: sebagian, §6) |
 | Sort 10.000 entri dari server sampai baris pertama (SPEC §11.5) | < 300 ms | 171–234 ms | — | ✅ |
-| JS awal (PRD G6) | < 300 KB gzip | **220,2 KB** (20 chunk) | — | ✅ (gagal keras di CI bila ≥ 300 KB) |
+| JS awal (PRD G6) | < 300 KB gzip | **220,6 KB** (21 chunk) | — | ✅ (gagal keras di CI bila ≥ 300 KB) |
 
 Sebelum optimasi Step 21 (binary `26c1913`, harness yang sama): list dingin p95 **287 ms** (4 CPU) / **400 ms** (CPU 0) dan idle RSS setelah login **156 MB / 219 MB** — target idle < 100 MB **gagal** sebelum Step 21.
 
@@ -121,7 +121,7 @@ Playwright Chromium headless di mesin yang sama dengan backend (4 vCPU dibagi br
 | Skenario (gerbang) | Sebelum 21-2 (UI `7867920`) | Sesudah 21-2 (4 run) |
 | --- | --- | --- |
 | Render pertama 10.500 entri, cache server dingin (< 1 s) | 270 ms | 205 / 273 / 232 / 219 ms |
-| Navigasi hangat back/forward, p95 dari 10 (< 150 ms) | 134 ms | 94 / 96 / 86 / 100 ms |
+| Navigasi hangat back/forward, p95 dari 10 (< 150 ms) | 134 ms | 94 / 96 / 86 / 100 ms; **143 ms** di suite E2E penuh (folder root admin sudah berisi data spec lain, mesin dibagi) |
 | Scroll seluruh 10.500 baris (2 tinggi viewport per frame + infinite scroll 20 halaman): long task maks (≤ 100 ms) | **124 ms — gagal**, 356 long task | 85 / 71 / 72 / 62 ms; 78 / 11 / 12 / 5 long task |
 | Sort nama turun sampai baris pertama (< 300 ms) | — | 234 / 195 / 183 / 171 ms |
 
@@ -144,7 +144,7 @@ Sisa yang diketahui: dengan scroll "lempar" 2 viewport per frame, setiap frame m
 
 | | Ukuran gzip |
 | --- | --- |
-| JS awal (20 chunk) | **220,2 KB** (Step 20: 218,4 KB; +1,8 KB = sprite ikon file + `DetailsRow`) |
+| JS awal (21 chunk) | **220,6 KB** (Step 20: 218,4 KB; +1,8 KB di 21-2 = sprite ikon file + `DetailsRow`, +0,4 KB di 21-3 = judul per route, long-press, bottom bar seleksi) |
 | CSS awal | 15,2 KB |
 | JS lazy (289 chunk) | 4.445,5 KB — terbesar: worker TypeScript Monaco 1.450, `editor.api` 681, worker pdf.js 367, `vs` 314, pdf.js 125, Markdown/Prettier 89 + 26, viewer pdf.js 50, Video.js 28 |
 

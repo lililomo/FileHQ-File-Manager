@@ -63,10 +63,16 @@ export function PasswordPrompt({
               autoComplete="off"
               autoFocus
               aria-invalid={error ? true : undefined}
+              aria-describedby={error ? 'archive-password-input-error' : undefined}
               data-testid="archive-password-input"
             />
             {error ? (
-              <p className="text-xs text-danger" role="alert" data-testid="archive-password-error">
+              <p
+                className="text-xs text-danger"
+                role="alert"
+                id="archive-password-input-error"
+                data-testid="archive-password-error"
+              >
                 {error}
               </p>
             ) : null}

@@ -32,6 +32,8 @@ export type ColumnId =
   | 'duration'
   | 'shared'
   | 'location'
+  /** phones only: size (or item count) over the modified time (SPEC §9.9) */
+  | 'summary'
 
 export const ALL_COLUMNS: ColumnId[] = [
   'name',
@@ -50,7 +52,7 @@ export const ALL_COLUMNS: ColumnId[] = [
   'location',
 ]
 export const DEFAULT_COLUMNS: ColumnId[] = ['name', 'size', 'type', 'mtime', 'note']
-export const MOBILE_COLUMNS: ColumnId[] = ['name', 'mtime']
+export const MOBILE_COLUMNS: ColumnId[] = ['name', 'summary']
 /** Columns that exist only in search/recent contexts. */
 export const CONTEXT_COLUMNS: ColumnId[] = ['location']
 
@@ -78,6 +80,7 @@ export const COLUMN_META: Record<ColumnId, ColumnMeta> = {
   duration: { width: 90, align: 'right', sort: 'duration' },
   shared: { width: 110 },
   location: { width: 240, mono: true },
+  summary: { width: 112, align: 'right', sort: 'mtime' },
 }
 
 /** `view.columns` preference (SPEC §8.18). */
@@ -197,6 +200,17 @@ function dateCell(value: string | null | undefined, lang: string, memo: CellMemo
   )
 }
 
+function sizeText(t: TFunction<'files'>, it: Item, lang: string): string {
+  if (it.isDir) {
+    // a computed folder size ("Hitung ukuran", Step 10a) wins over the item count
+    if (it.size > 0) return formatBytes(it.size, lang)
+    return it.itemCount === null || it.itemCount === undefined
+      ? DASH
+      : t('grid.folderItems', { count: it.itemCount, n: formatNumber(it.itemCount, lang) })
+  }
+  return formatBytes(it.size, lang)
+}
+
 export interface ColumnOptions {
   /** Inline note editing (Step 10b); undefined = read-only cell. */
   onNoteSave?: ((path: string, note: string) => Promise<boolean>) | undefined
@@ -240,16 +254,7 @@ export function buildColumns(
       id: 'size',
       header: () => t('columns.size'),
       meta: COLUMN_META.size,
-      cell: (it) => {
-        if (it.isDir) {
-          // a computed folder size ("Hitung ukuran", Step 10a) wins over the item count
-          if (it.size > 0) return formatBytes(it.size, lang)
-          return it.itemCount === null || it.itemCount === undefined
-            ? DASH
-            : t('grid.folderItems', { count: it.itemCount, n: formatNumber(it.itemCount, lang) })
-        }
-        return formatBytes(it.size, lang)
-      },
+      cell: (it) => sizeText(t, it, lang),
     },
     {
       id: 'type',
@@ -331,6 +336,23 @@ export function buildColumns(
       header: () => t('columns.shared'),
       meta: COLUMN_META.shared,
       cell: (it) => t(`shared.${it.shared}` as 'shared.none'),
+    },
+    {
+      id: 'summary',
+      header: () => t('columns.summary'),
+      meta: COLUMN_META.summary,
+      cell: (it) => {
+        const size = sizeText(t, it, lang)
+        const d = it.mtime ? memo.date(it.mtime, lang) : null
+        return (
+          <span className="flex min-w-0 flex-col items-end leading-tight">
+            <span className="tabular truncate text-xs text-text">{size}</span>
+            <span className="tabular truncate text-xs text-text-muted" title={d?.full}>
+              {d ? d.rel : DASH}
+            </span>
+          </span>
+        )
+      },
     },
     {
       id: 'location',

@@ -89,3 +89,30 @@ export async function apiResetPrefs(request: APIRequestContext): Promise<void> {
   })
   expect(res.status(), await res.text()).toBe(200)
 }
+
+/** Permanently deletes paths (cleanup of specs that must not leave folders in the
+ *  admin root for the specs running after them). Missing paths are ignored. */
+export async function apiDeletePermanent(
+  request: APIRequestContext,
+  paths: string[],
+): Promise<void> {
+  const token = await csrfToken(request)
+  const res = await request.post('/api/v1/files/delete-permanent', {
+    data: { paths },
+    headers: { 'X-CSRF-Token': token, Origin: 'http://127.0.0.1:18090' },
+  })
+  expect([200, 202, 404], await res.text()).toContain(res.status())
+}
+
+/** Sets server-side preferences (null = back to the default). */
+export async function apiSetPrefs(
+  request: APIRequestContext,
+  prefs: Record<string, unknown>,
+): Promise<void> {
+  const token = await csrfToken(request)
+  const res = await request.put('/api/v1/me/preferences', {
+    data: { prefs },
+    headers: { 'X-CSRF-Token': token, Origin: 'http://127.0.0.1:18090' },
+  })
+  expect(res.status(), await res.text()).toBe(200)
+}

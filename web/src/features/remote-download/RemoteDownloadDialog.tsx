@@ -203,10 +203,11 @@ export function RemoteDownloadDialog({
               spellCheck={false}
               autoComplete="off"
               aria-invalid={typedError ? true : undefined}
+              aria-describedby={typedError ? 'remote-dest-error' : undefined}
               data-testid="remote-dest"
             />
             {typedError ? (
-              <p className="text-xs text-danger" role="alert">
+              <p className="text-xs text-danger" role="alert" id="remote-dest-error">
                 {typedError}
               </p>
             ) : null}

@@ -66,7 +66,7 @@ function SiblingMenu({ segment, parent }: { segment: Segment; parent: string }) 
           type="button"
           aria-label={label}
           data-testid={`crumb-menu-${segment.path}`}
-          className="rounded p-0.5 text-text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          className="grid min-h-6 min-w-6 place-items-center rounded text-text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
         >
           <ChevronDown className="size-3.5" aria-hidden="true" />
         </button>

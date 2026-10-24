@@ -47,6 +47,8 @@ interface NameState {
 /** `/search` (SPEC §8.12, §9.3): name and content search with filters,
  *  history and replace in files. The query, folder and tab live in the URL
  *  so "Cari di folder ini" / Ctrl+Shift+F / the top bar can deep-link. */
+const RESULTS_ID = 'search-results'
+
 export function SearchPage({ params }: { params: SearchParams }) {
   const { t, i18n } = useTranslation(['search', 'files'])
   const lang = i18n.resolvedLanguage ?? 'id'
@@ -235,10 +237,20 @@ export function SearchPage({ params }: { params: SearchParams }) {
           <h1 className="text-lg font-semibold">{t('search:title')}</h1>
           <Tabs value={kind} onValueChange={(v) => setKind(v as SearchKind)} className="ml-2">
             <TabsList>
-              <TabsTrigger value="name" data-testid="search-tab-name">
+              <TabsTrigger
+                value="name"
+                id={`${RESULTS_ID}-name`}
+                aria-controls={RESULTS_ID}
+                data-testid="search-tab-name"
+              >
                 {t('search:tabs.name')}
               </TabsTrigger>
-              <TabsTrigger value="content" data-testid="search-tab-content">
+              <TabsTrigger
+                value="content"
+                id={`${RESULTS_ID}-content`}
+                aria-controls={RESULTS_ID}
+                data-testid="search-tab-content"
+              >
                 {t('search:tabs.content')}
               </TabsTrigger>
             </TabsList>
@@ -384,7 +396,14 @@ export function SearchPage({ params }: { params: SearchParams }) {
       </header>
       {showFilters ? <Filters kind={kind} value={filters} onChange={setFilters} /> : null}
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <div className="flex min-h-0 flex-1 flex-col">
+        {/* one results panel for both tabs (the triggers point here, not at an
+            unrendered TabsContent — axe aria-valid-attr-value) */}
+        <div
+          className="flex min-h-0 flex-1 flex-col"
+          id={RESULTS_ID}
+          role="tabpanel"
+          aria-labelledby={`${RESULTS_ID}-${kind}`}
+        >
           <div
             className="flex items-center gap-2 border-b border-border px-4 py-1.5 text-xs text-text-muted"
             aria-live="polite"

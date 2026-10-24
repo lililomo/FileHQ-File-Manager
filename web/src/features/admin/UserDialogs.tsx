@@ -173,12 +173,18 @@ export function CreateUserDialog({ defaultQuotaBytes, onClose, onCreated }: Crea
               autoComplete="off"
               spellCheck={false}
               aria-invalid={!!errors.username}
+              aria-describedby={errors.username ? 'user-username-error' : undefined}
               data-testid="user-username"
               {...register('username')}
             />
             <p className="text-xs text-text-muted">{t('users.form.usernameHint')}</p>
             {errors.username ? (
-              <p className="text-xs text-danger" role="alert" data-testid="user-username-error">
+              <p
+                className="text-xs text-danger"
+                role="alert"
+                id="user-username-error"
+                data-testid="user-username-error"
+              >
                 {fieldOf(errors.username.message)}
               </p>
             ) : null}

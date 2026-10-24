@@ -7,6 +7,7 @@ import { NotificationsBell } from '@/features/notifications/NotificationsBell'
 import { TasksButton } from '@/features/tasks/TasksButton'
 import { IconButton } from '@/components/ui/icon-button'
 import { Kbd, KbdGroup } from '@/components/ui/kbd'
+import { useIsTablet } from '@/lib/useMediaQuery'
 import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { LanguageToggle } from './LanguageToggle'
@@ -21,11 +22,13 @@ export function TopBar() {
   const navigate = useNavigate()
   const appName = useSessionStore((s) => s.config?.appName) || t('common:app.name')
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
+  const toggleTabletSidebar = useUIStore((s) => s.toggleTabletSidebar)
+  const tablet = useIsTablet()
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 border-b border-border bg-surface px-2">
       <IconButton
         label={t('common:a11y.toggleSidebar')}
-        onClick={toggleSidebar}
+        onClick={tablet ? toggleTabletSidebar : toggleSidebar}
         className="hidden md:inline-flex"
       >
         <PanelLeft aria-hidden="true" />
@@ -34,10 +37,11 @@ export function TopBar() {
       <Link
         to="/files/$"
         params={{ _splat: '' }}
-        className="flex items-center gap-2 rounded-md px-1.5 py-1 font-semibold text-text"
+        className="flex items-center justify-center gap-2 rounded-md px-1.5 py-1 font-semibold text-text max-md:min-h-11 max-md:min-w-11"
       >
         <AppLogo />
-        <span>{appName}</span>
+        {/* phones keep the name for screen readers only (room for 44 px targets) */}
+        <span className="max-sm:sr-only">{appName}</span>
       </Link>
       <div className="mx-auto hidden w-full max-w-md px-4 sm:block">
         <Button

@@ -174,10 +174,11 @@ export function ExtractDialog({
                 spellCheck={false}
                 autoComplete="off"
                 aria-invalid={typedError ? true : undefined}
+                aria-describedby={typedError ? 'extract-dest-error' : undefined}
                 data-testid="extract-dest"
               />
               {typedError ? (
-                <p className="text-xs text-danger" role="alert">
+                <p className="text-xs text-danger" role="alert" id="extract-dest-error">
                   {typedError}
                 </p>
               ) : null}
