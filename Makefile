@@ -18,7 +18,8 @@ BIN     := bin/filemanager
 WEBDIST := backend/internal/webassets/dist
 
 .PHONY: help deps dev build build-backend build-web test test-backend test-web lint lint-backend lint-web \
-        format check-deps clean ci vuln audit fuzz openapi-lint sqlc sqlc-check migrate check-sort-policy bench perf
+        format check-deps clean ci vuln audit fuzz openapi-lint sqlc sqlc-check migrate check-sort-policy bench perf \
+        install update shellcheck test-deploy
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -124,6 +125,24 @@ perf: build-backend ## Performance harness: listing 10k cold/warm, navigation, t
 	$(PERF_ENV) FM_PERF_DIR=$(CURDIR)/.perfdata/run FM_PERF_CPUS=1 FM_PERF_LABEL=cpu0 \
 		$(if $(filter 1,$(PERF_CPUS)),,taskset -c 1-$(shell echo $$(( $(PERF_CPUS) - 1 )))) \
 		$(GO) test ./internal/perf/ -run '^TestPerf$$' -count=1 -v -timeout 40m
+
+# Step 22 (SPEC §12, docs/DEPLOY-AAPANEL.md). install/update change the server
+# (user, storage owner, systemd): run them only on purpose, e.g.
+#   make install ARGS="--dry-run"   make install ARGS="--binary /path/filemanager"
+#   make update ARGS="--ref v1.0.1" make update ARGS="--release filemanager-linux-amd64.tar.gz"
+SUDO := $(if $(filter 0,$(shell id -u)),,sudo)
+install: ## Install/repair on this server via deploy/install.sh (ARGS="--dry-run" to only print the plan)
+	$(SUDO) bash deploy/install.sh $(ARGS)
+
+update: ## Update with DB backup + automatic rollback via deploy/update.sh (ARGS="--dry-run|--ref R|--binary F|--release T")
+	$(SUDO) bash deploy/update.sh $(ARGS)
+
+shellcheck: ## Lint the deployment scripts
+	shellcheck -x deploy/*.sh deploy/test/*.sh deploy/test/shim/*
+
+test-deploy: shellcheck ## install.sh idempotency + update.sh rollback tests (scratch dirs, systemctl shim; needs bin/filemanager)
+	bash deploy/test/install_test.sh
+	bash deploy/test/update_rollback_test.sh
 
 ci: lint test build openapi-lint sqlc-check ## What CI runs (lint, test, build, openapi, sqlc freshness)
 

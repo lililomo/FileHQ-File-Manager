@@ -1,0 +1,69 @@
+# FileManager (file.kppbwi.app) — systemd unit (SPEC §12.2).
+# Installed by deploy/install.sh to /etc/systemd/system/filemanager.service.
+# The installer rewrites the three paths and the user below only when they are
+# overridden; edit this template, not the installed copy.
+[Unit]
+Description=FileManager (file.kppbwi.app)
+Documentation=file:///www/wwwroot/file.kppbwi.app/docs/DEPLOY-AAPANEL.md
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=filemanager
+Group=filemanager
+WorkingDirectory=/www/wwwroot/file.kppbwi.app
+EnvironmentFile=/www/wwwroot/file.kppbwi.app/.env
+# GC works harder before the kernel OOM killer does (SPEC §1.6, Step 21).
+Environment=GOMEMLIMIT=512MiB
+# CLI tools write temporary files next to the data, not to the small private /tmp.
+Environment=TMPDIR=/www/storage/FileManager/.system/tmp
+ExecStart=/www/wwwroot/file.kppbwi.app/bin/filemanager serve
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+KillSignal=SIGTERM
+LimitNOFILE=65536
+UMask=0027
+
+# --- Hardening (systemd-analyze security filemanager) ---
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/www/storage/FileManager
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+# Other users' processes are invisible in /proc (per-service hidepid, ADR-08).
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RemoveIPC=true
+# libvips (orc) may generate code at run time; keep W^X off until verified.
+MemoryDenyWriteExecute=false
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# @resources stays allowed: nice/ionice (internal/exec) need setpriority and
+# ioprio_set, and the Go runtime adjusts RLIMIT_NOFILE.
+SystemCallFilter=~@privileged
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+# Optional — enable ONLY with REMOTE_DOWNLOAD_ENABLED=false (remote download
+# needs outbound connections):
+#IPAddressDeny=any
+#IPAddressAllow=localhost
+
+[Install]
+WantedBy=multi-user.target

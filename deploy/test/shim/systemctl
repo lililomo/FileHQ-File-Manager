@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Test double for systemctl (deploy tests only, put first on PATH). It runs
+# "the service" as a plain background process: $FM_APP_DIR/bin/filemanager
+# serve with the variables of $FM_APP_DIR/.env, so install.sh/update.sh can be
+# exercised without systemd or root. State lives in $FM_SHIM_STATE.
+set -euo pipefail
+: "${FM_SHIM_STATE:?FM_SHIM_STATE not set}" "${FM_APP_DIR:?FM_APP_DIR not set}"
+mkdir -p "$FM_SHIM_STATE"
+pidfile=$FM_SHIM_STATE/service.pid
+echo "systemctl $*" >>"$FM_SHIM_STATE/calls.log"
+
+running() { [[ -f $pidfile ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; }
+
+start() {
+	running && return 0
+	(
+		cd "$FM_APP_DIR"
+		while IFS= read -r line; do
+			[[ $line =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "${line?}"
+		done <.env
+		exec ./bin/filemanager serve
+	) >>"$FM_SHIM_STATE/service.log" 2>&1 &
+	echo $! >"$pidfile"
+	echo start >>"$FM_SHIM_STATE/starts.log"
+}
+
+stop() {
+	running || { rm -f "$pidfile"; return 0; }
+	local pid i
+	pid=$(cat "$pidfile")
+	kill -TERM "$pid" 2>/dev/null || true
+	for ((i = 0; i < 100; i++)); do
+		kill -0 "$pid" 2>/dev/null || break
+		sleep 0.1
+	done
+	kill -KILL "$pid" 2>/dev/null || true
+	rm -f "$pidfile"
+}
+
+args=()
+for a in "$@"; do [[ $a == --* ]] || args+=("$a"); done
+now=0
+for a in "$@"; do [[ $a == --now ]] && now=1; done
+case ${args[0]:-} in
+daemon-reload) ;;
+enable)
+	touch "$FM_SHIM_STATE/enabled"
+	if ((now)); then start; fi
+	;;
+start) start ;;
+stop) stop ;;
+restart) stop; start ;;
+is-active)
+	if running; then echo active; else echo inactive; exit 3; fi
+	;;
+is-enabled)
+	if [[ -f $FM_SHIM_STATE/enabled ]]; then echo enabled; else echo disabled; exit 1; fi
+	;;
+status)
+	if running; then echo "active (pid $(cat "$pidfile"))"; else echo inactive; exit 3; fi
+	;;
+*) echo "shim systemctl: unsupported: $*" >&2; exit 1 ;;
+esac

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Test double for journalctl: the tail of the shim service log.
+set -euo pipefail
+: "${FM_SHIM_STATE:?FM_SHIM_STATE not set}"
+tail -n 50 "$FM_SHIM_STATE/service.log" 2>/dev/null || true

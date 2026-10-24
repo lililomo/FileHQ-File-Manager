@@ -47,3 +47,6 @@ Thumbs.db
 
 # Step 21 perf harness scratch data (make perf)
 .perfdata/
+
+# Step 22 deploy tests scratch (deploy/test/*.sh)
+/.deploytest/
