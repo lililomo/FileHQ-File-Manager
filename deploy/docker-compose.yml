@@ -1,0 +1,35 @@
+# FileManager — optional docker compose (not the aaPanel path; SPEC ADR-20).
+#   cp .env.example .env   # fill APP_SECRET (openssl rand -hex 32), ADMIN_INITIAL_PASSWORD
+#   docker compose -f deploy/docker-compose.yml up -d --build
+# Then point a reverse proxy (aaPanel Reverse Proxy → http://127.0.0.1:8080)
+# at it exactly as for the systemd install (deploy/nginx-aapanel.conf).
+name: filemanager
+services:
+  filemanager:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: filemanager:local
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      # Paths and listener inside the container override the host .env.
+      STORAGE_ROOT: /storage
+      DATA_DIR: /storage/.system
+      LISTEN_ADDR: 0.0.0.0:8080
+      # The host proxy reaches the container through the docker bridge
+      # gateway: trust only private bridge ranges for X-Forwarded-*.
+      TRUSTED_PROXIES: 127.0.0.1,172.16.0.0/12
+    ports:
+      - "127.0.0.1:8080:8080"   # loopback only — never 0.0.0.0
+    volumes:
+      - storage:/storage
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+volumes:
+  storage:

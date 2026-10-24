@@ -2,7 +2,8 @@
 # deploy/test/update_rollback_test.sh — update.sh against a scratch install
 # (install.sh + systemctl shim): a good binary updates; a binary that never
 # answers /readyz is rolled back to the previous binary within 60 s (PRD
-# E14-US4); a new migration is rolled back with "migrate down"; when the down
+# E14-US4); a release tarball is checked against its sha256; a new migration
+# is rolled back with "migrate down"; when the down
 # migration fails the pre-update backup is restored. Needs bin/filemanager.
 set -euo pipefail
 # shellcheck source=deploy/test/lib_test.sh
@@ -113,6 +114,21 @@ check "good: UPDATE OK" grep -q 'UPDATE OK' "$ROOT/good.log"
 check "good: previous binary kept as .prev" test -x "$APP/bin/filemanager.prev"
 check "good: pre-update backup written" compgen -G "$BACKUPS/app-*-pre-update.db" >/dev/null
 check "good: /readyz 200" test "$(http_code "$READY")" = 200
+
+# 2b. CI release tarball: a wrong checksum stops before anything changes;
+# with FILE.sha256 next to it the update goes through.
+mkdir -p "$ROOT/rel/bin"
+cp "$REAL" "$ROOT/rel/bin/filemanager"
+tar -C "$ROOT/rel" -czf "$ROOT/fm.tar.gz" bin/filemanager
+sum=$(sha256sum "$APP/bin/filemanager")
+run_update release-badsum --release "$ROOT/fm.tar.gz" --sha256 "$(printf '0%.0s' {1..64})"
+check "release with a wrong checksum refused" test "$RC" != 0
+check "release with a wrong checksum: binary untouched" test "$sum" = "$(sha256sum "$APP/bin/filemanager")"
+check "release with a wrong checksum: message" grep -q 'checksum mismatch' "$ROOT/release-badsum.log"
+(cd "$ROOT" && sha256sum fm.tar.gz >fm.tar.gz.sha256)
+run_update release --release "$ROOT/fm.tar.gz"
+check "release with .sha256: UPDATE OK" grep -q 'UPDATE OK' "$ROOT/release.log"
+check "release: /readyz 200" test "$(http_code "$READY")" = 200
 
 # 3. binary that never becomes ready, default 30 s timeout: rollback <= 60 s.
 fake_binary "$ROOT/broken" plain

@@ -140,9 +140,10 @@ update: ## Update with DB backup + automatic rollback via deploy/update.sh (ARGS
 shellcheck: ## Lint the deployment scripts
 	shellcheck -x deploy/*.sh deploy/test/*.sh deploy/test/shim/*
 
-test-deploy: shellcheck ## install.sh idempotency + update.sh rollback tests (scratch dirs, systemctl shim; needs bin/filemanager)
+test-deploy: shellcheck ## install.sh idempotency, update.sh rollback, Nginx snippet tests (scratch dirs, shims; needs bin/filemanager + nginx)
 	bash deploy/test/install_test.sh
 	bash deploy/test/update_rollback_test.sh
+	bash deploy/test/nginx_snippet_test.sh
 
 ci: lint test build openapi-lint sqlc-check ## What CI runs (lint, test, build, openapi, sqlc freshness)
 

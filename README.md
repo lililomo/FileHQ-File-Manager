@@ -10,7 +10,7 @@ aaPanel ditambah editor kode, viewer media, arsip, remote download, dan sharing.
 | [`SPEC.md`](SPEC.md) | Bagaimana: arsitektur, konfigurasi, model data, API, keamanan, deployment, ADR |
 | [`PROMPT.md`](PROMPT.md) | Urutan step implementasi (satu step per sesi AI) |
 | [`PROGRESS.md`](PROGRESS.md) | Checklist & jurnal step |
-| `docs/DEPLOY-AAPANEL.md` | Langkah deploy klik-per-klik di aaPanel (Step 22) |
+| [`docs/DEPLOY-AAPANEL.md`](docs/DEPLOY-AAPANEL.md) | Deploy klik-per-klik di aaPanel, update/rollback, backup/restore, troubleshooting |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Kontrol keamanan yang sudah ada |
 | [`docs/openapi.yaml`](docs/openapi.yaml) | Kontrak API |
 
@@ -19,7 +19,7 @@ aaPanel ditambah editor kode, viewer media, arsip, remote download, dan sharing.
 ```text
 backend/   Go module kppbwi.app/filemanager (cmd/filemanager, internal/*)
 web/       React + TypeScript + Vite (pnpm)
-deploy/    install.sh, update.sh, systemd unit, snippet Nginx aaPanel (Step 22)
+deploy/    install.sh, update.sh, systemd unit, snippet Nginx aaPanel, Dockerfile (opsional), test/
 docs/      SPEC pendukung, openapi.yaml, SECURITY.md
 public/    document root site aaPanel: hanya .well-known/
 bin/       hasil build: bin/filemanager (frontend ter-embed)
@@ -61,6 +61,20 @@ curl -i http://127.0.0.1:8080/healthz
 (catatan: systemd tidak mendukung komentar di belakang nilai pada baris yang sama — `install.sh` menulis `.env` bersih).
 `ALLOW_ROOT=true` hanya untuk uji lokal; service produksi berjalan sebagai user `filemanager`.
 
+## Deploy (produksi)
+
+Ringkas — langkah lengkap dan klik-per-klik di [`docs/DEPLOY-AAPANEL.md`](docs/DEPLOY-AAPANEL.md):
+
+```bash
+sudo bash deploy/install.sh --dry-run    # rencana saja (make install ARGS="--dry-run")
+sudo bash deploy/install.sh              # idempoten: apt, Go/Node bila build, user filemanager, storage 0750, .env 0600, systemd
+# aaPanel: Website → Reverse Proxy → file.kppbwi.app → http://127.0.0.1:8080, tempel deploy/nginx-aapanel.conf (PART A/B), SSL + Force HTTPS
+sudo bash deploy/update.sh               # update: backup DB → migrate → restart → rollback otomatis bila /readyz gagal
+make test-deploy                         # shellcheck + test install/rollback/snippet Nginx di folder scratch
+```
+
+Docker (`deploy/Dockerfile`, `deploy/docker-compose.yml`) tersedia sebagai opsi, bukan jalur utama.
+
 ## Konfigurasi
 
 Salin `.env.example` ke `.env` (chmod 600) dan isi `APP_SECRET` (`openssl rand -hex 32`) serta password admin awal.
@@ -81,7 +95,7 @@ mudah dipindah ke GitLab CI/Gitea Actions; sampai remote tersedia, `make ci` men
 
 ## Upload (tus) di belakang Nginx
 
-Upload memakai protokol tus (`/api/v1/upload/tus/`, chunk `UPLOAD_CHUNK_SIZE`, default 16 MB). Di depan aplikasi, Nginx aaPanel harus mengalirkan badan request dan meneruskan header tus (final di `deploy/nginx-aapanel.conf`, Step 22):
+Upload memakai protokol tus (`/api/v1/upload/tus/`, chunk `UPLOAD_CHUNK_SIZE`, default 16 MB). Di depan aplikasi, Nginx aaPanel harus mengalirkan badan request dan meneruskan header tus (konfigurasi final: `deploy/nginx-aapanel.conf` PART A):
 
 ```nginx
 proxy_request_buffering off;      # chunk dialirkan langsung, tidak ditampung di disk Nginx

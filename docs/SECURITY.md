@@ -27,7 +27,7 @@ berbahaya (zip-slip/bomb), konten user (XSS), user Linux lain di server (`ps`, `
 | Information disclosure | path absolut, stack trace, enumerasi user, rahasia di log/argv, GPS EXIF, token di log, DB backup | `fsjail.Error` tanpa path host, 500 generik, login generik + argon2 dummy, suggest ≥ 2 char, redaksi log + `LogPath`, GPS opt-in, password CLI via stdin, `ADMIN_CAN_BROWSE_USERS` + audit, backup hanya admin + limiter + audit | `secrets_test.go`, `review_e_test.go`, `media_info_test.go`, `archive/password_test.go` |
 | XSS/konten user | HTML/SVG/Markdown/subtitle/nama file | konten aktif selalu `attachment`+`octet-stream`+`sandbox`; CSP final tanpa `unsafe-inline` script; DOMPurify profil ketat; nama file sebagai text node; `nosniff` | `download/policy_test.go`, E2E `review-d.spec.ts`, `security.spec.ts` |
 | DoS | zip bomb, folder raksasa, regex, upload tak terbatas, SSE, thumbnail CPU, body besar | limit entri/ukuran/rasio; paging + cache listing; RE2 + timeout + 1 pencarian aktif; `MAX_UPLOAD_SIZE` + kuota; maks 5 SSE; worker pool `nice`; `MaxBytes` 1 MB; **rate limit terpusat §10.5** | `archive/limits_test.go`, `search/*_test.go`, `ratelimit_test.go`, `events_test` |
-| Elevation | user → admin, viewer → editor, admin ke folder user, shell via nama file, setuid dari arsip, eksekusi upload | `RequireAdmin` (daftar route ditegakkan test), permission dicek per request di server, `as_user` + audit, argv tanpa shell + `--`, mode bit dibuang, storage di luar web root, systemd `NoNewPrivileges` (Step 22) | `idor_test.go`, `scope_test.go`, `admin_test.go`, `archive/safe_test.go` |
+| Elevation | user → admin, viewer → editor, admin ke folder user, shell via nama file, setuid dari arsip, eksekusi upload | `RequireAdmin` (daftar route ditegakkan test), permission dicek per request di server, `as_user` + audit, argv tanpa shell + `--`, mode bit dibuang, storage di luar web root, unit systemd `User=filemanager` + `NoNewPrivileges`/`ProtectSystem=strict`/`CapabilityBoundingSet=` kosong (`deploy/filemanager.service`) | `idor_test.go`, `scope_test.go`, `admin_test.go`, `archive/safe_test.go` |
 | SSRF | remote download ke jaringan internal | resolve + denylist + pin IP + redirect per hop | `netguard_test.go` |
 | Supply chain | dependensi rentan | `govulncheck` (gagal pada kerentanan yang dicapai kode), `pnpm audit --audit-level=high`, lockfile, toolchain dipin (`toolchain go1.27.3`), tanpa CDN | CI job `audit`, `make audit` |
 
@@ -87,8 +87,8 @@ berbahaya (zip-slip/bomb), konten user (XSS), user Linux lain di server (`ps`, `
 | V7.3 | Log injection: JSON terstruktur (slog) | ada | `config/logger.go` |
 | V7.4 | Error handling generik (500 `INTERNAL`) | ada | `middleware_test.go` |
 | V8.1 | Data sensitif tidak di cache (`no-store` API, `private` konten) | ada | `middleware.go`, `serve.go` |
-| V8.3 | Rahasia hanya di env; `.env` 600 (Step 22) | ada / 22 | `config`, `install.sh` |
-| V9.1 | TLS di proxy; HSTS; `upgrade-insecure-requests` | ada (aaPanel) | `middleware.go`, Step 22 |
+| V8.3 | Rahasia hanya di env; `.env` 0600 milik `filemanager`, tanpa komentar inline, password admin acak hanya ke tty | ada | `config`, `deploy/install.sh`, `deploy/test/install_test.sh` |
+| V9.1 | TLS di proxy; HSTS; `upgrade-insecure-requests` | ada (aaPanel; smoke test di server menunggu persetujuan pemilik) | `middleware.go`, `docs/DEPLOY-AAPANEL.md` |
 | V10.3 | Supply chain: audit otomatis, lockfile, toolchain dipin | ada | CI `audit` |
 | V11.1 | Rate limit logika bisnis (unggah, share, remote download, task) | ada | `ratelimit_test.go`, `remotedl_test.go` |
 | V12.1–12.3 | Upload: ukuran, ekstensi diblokir, nama tersanitasi, tidak dieksekusi (di luar web root), traversal | ada | `upload_test.go`, `archive/safe_test.go` |
@@ -97,7 +97,7 @@ berbahaya (zip-slip/bomb), konten user (XSS), user Linux lain di server (`ps`, `
 | V13.1 | Header keamanan API, CORS mati | ada | `security.spec.ts` |
 | V13.2 | Metode HTTP dibatasi (`405`), body dibatasi | ada | `router.go` |
 | V14.2 | Dependensi tanpa kerentanan dikenal | ada | `make audit` |
-| V14.3 | Tanpa debug di production (`APP_ENV`), `/readyz` & `/metrics` tidak di-proxy | ada / 22 | `config`, `nginx-aapanel.conf` |
+| V14.3 | Tanpa debug di production (`APP_ENV`), `/readyz` & `/metrics` tidak di-proxy; source/binary/dotfile 404 di Nginx | ada | `config`, `deploy/nginx-aapanel.conf`, `deploy/test/nginx_snippet_test.sh` |
 | V14.4 | `Content-Type` + charset, `X-Content-Type-Options`, `Referrer-Policy`, CSP, `Permissions-Policy` | ada | `middleware_test.go` |
 | V14.5 | Validasi `Origin`/`Host` (OriginCheck host-only) | ada | `review_a_test.go` |
 
@@ -109,11 +109,13 @@ Tidak berlaku: V1 (arsitektur formal), V2.7 (out-of-band), V2.9 (kriptografi har
 - **`script-src 'wasm-unsafe-eval'`**: pdf.js 6.x mendekode JPX/JBIG2/ICC lewat WASM dari origin sendiri; direktif hanya mengizinkan kompilasi WebAssembly, bukan `eval` JS.
 - **Signed URL adalah bearer**: pencabutan sesi tidak membatalkan URL yang masih hidup (TTL 5 menit untuk download/zip, 2 jam media/thumb); akun nonaktif/dihapus dan pencabutan share tetap ditolak saat pemakaian.
 - **Unduh backup DB** (`GET /admin/maintenance/backups/{name}`): sesi admin + limiter 5/10 menit + audit + `no-store`; **tanpa konfirmasi ulang password** sampai sudo mode (password + TOTP) di Step 23a. Backup memuat hash argon2id, `token_enc` AES-GCM (hanya terbuka dengan `APP_SECRET`), hash sesi.
-- **Limiter in-memory** hilang saat restart, kecuali login yang membaca `login_attempts`; Nginx (Step 22) menambahkan lapisan `limit_req` opsional.
+- **Limiter in-memory** hilang saat restart, kecuali login yang membaca `login_attempts`; `deploy/nginx-aapanel.conf` PART C memberi contoh `limit_req` opsional di Nginx (tidak dipasang default).
 - **Preview-only share** hanya menyembunyikan tombol unduh; tidak mencegah penyimpanan konten yang sudah dirender.
 - Arsip **rar** hanya dibaca (tanpa lisensi `rar`) dan belum pernah diuji dengan arsip nyata; arsip 7z ber-password yang rusak dilaporkan `ARCHIVE_PASSWORD_WRONG`.
 - `ADMIN_CAN_BROWSE_USERS=true` di server ini: setiap akses admin ke folder user tercatat (`admin.browse_user`); UI read-only, API tulis dijurnal.
 - `/api/v1/version` publik (versi + nama aplikasi + logo) untuk halaman login — tidak memuat informasi sensitif.
+- **Log Nginx aaPanel**: token link publik (`/s/<token>`, `/api/v1/public/…`) tidak dicatat (`access_log off`, PART B), tetapi URL lain tercatat lengkap termasuk query (`sig=` signed URL, bearer ≤ 2 jam). Statistik situs aaPanel (`log_format site_total`, dikirim ke `/tmp/site_total.sock`) juga memuat header `Cookie` (sesi) — opsi `access_log` di PART A mematikannya untuk situs ini (perlu verifikasi efek pada halaman statistik).
+- **HSTS dua kali** di belakang aaPanel (header aaPanel `max-age=31536000` + header aplikasi dengan `includeSubDomains`); browser memakai yang pertama (RFC 6797 §8.1) — dapat diterima.
 - `media_positions` tidak ditulis ulang saat rename/move (LRU 500); `refUpdater.Delete` menghapus blob versi di dalam transaksi (bila transaksi gagal setelahnya, baris tanpa blob → `integrity_check` melaporkan).
 
 ### Spike 7-Zip (Step 14a)
@@ -127,7 +129,8 @@ user Linux non-root — mengurangi dampak bila ada rahasia di argv proses lain (
 tool monitoring aaPanel yang berjalan sebagai user non-root tidak lagi melihat proses `filemanager`; systemd dan
 root tidak terpengaruh. Perintah (opsional, dicatat di `docs/DEPLOY-AAPANEL.md` Step 22):
 `mount -o remount,hidepid=2 /proc` + baris `proc /proc proc defaults,hidepid=2 0 0` di `/etc/fstab`. **Perlu
-verifikasi** pada aaPanel 8.0.7 bahwa panel (berjalan sebagai root) tetap menampilkan status proses.
+verifikasi** pada aaPanel 8.0.7 bahwa panel (berjalan sebagai root) tetap menampilkan status proses. Tanpa itu pun
+unit systemd memakai `ProtectProc=invisible`: proses `filemanager` sendiri tidak melihat proses user lain.
 
 ## 6. Dependency & toolchain
 

@@ -50,3 +50,7 @@ Thumbs.db
 
 # Step 22 deploy tests scratch (deploy/test/*.sh)
 /.deploytest/
+# Created by aaPanel in the site directory (Reverse Proxy project cache, ACME files)
+/proxy_cache_dir/
+/.well-known/
+/.user.ini

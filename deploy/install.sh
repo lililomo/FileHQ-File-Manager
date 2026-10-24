@@ -288,7 +288,7 @@ ensure_app_dir() {
 	for d in "$APP_DIR" "$APP_DIR/public"; do
 		for f in index.html 404.html .htaccess .user.ini; do
 			[[ -e $d/$f ]] || continue
-			if git -C "$APP_DIR" ls-files --error-unmatch -- "$d/$f" >/dev/null 2>&1; then
+			if git_ro ls-files --error-unmatch -- "$d/$f" >/dev/null 2>&1; then
 				continue
 			fi
 			if [[ $f == .user.ini ]] && command -v chattr >/dev/null; then
@@ -413,9 +413,9 @@ ensure_binary() {
 		say "binary: using existing $("$bin" version)"
 	else
 		owner=$(repo_owner "$APP_DIR")
-		head=$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo none)
+		head=$(git_ro rev-parse --short HEAD 2>/dev/null || echo none)
 		if ((REBUILD == 0)) && [[ -x $bin && $(binary_commit "$bin") == "$head" ]] &&
-			[[ -z $(git --no-optional-locks -C "$APP_DIR" status --porcelain --untracked-files=no 2>/dev/null) ]]; then
+			[[ -z $(git_ro status --porcelain --untracked-files=no 2>/dev/null) ]]; then
 			say "binary already built from $head (--rebuild forces a build)"
 		else
 			act "build bin/filemanager as $owner" build_as "$owner"

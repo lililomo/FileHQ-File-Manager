@@ -143,6 +143,11 @@ wait_ready() {
 	return 1
 }
 
+# git_ro <args...> — read-only git query on $APP_DIR as the current user
+# (root): no index refresh, and no "dubious ownership" refusal when the
+# checkout belongs to another account.
+git_ro() { git --no-optional-locks -c safe.directory="$APP_DIR" -C "$APP_DIR" "$@"; }
+
 # repo_owner <dir> — owner of the git checkout (keeps git and builds out of
 # the service account; see SPEC §12.1 step 8).
 repo_owner() {

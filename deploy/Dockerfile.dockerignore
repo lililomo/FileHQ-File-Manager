@@ -1,0 +1,20 @@
+# Build context = repo root; BuildKit reads this file for deploy/Dockerfile.
+.git
+.env
+.env.*
+!.env.example
+bin/
+.devdata/
+.perfdata/
+.deploytest/
+web/node_modules/
+web/dist/
+web/public/pdfjs/
+web/playwright-report/
+web/test-results/
+web/bundle-report/
+backend/internal/webassets/dist/*
+!backend/internal/webassets/dist/.gitkeep
+**/*.db
+**/*.db-wal
+**/*.db-shm

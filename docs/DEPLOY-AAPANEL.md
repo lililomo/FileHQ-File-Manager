@@ -1,0 +1,369 @@
+# Deploy FileManager di Ubuntu + aaPanel (`https://file.kppbwi.app`)
+
+Panduan klik-per-klik Step 22 (SPEC §12, ADR-20/22, PRD E14). Aplikasi berjalan sebagai **satu binary** di
+`/www/wwwroot/file.kppbwi.app/bin/filemanager`, dijalankan **systemd** sebagai user `filemanager`, hanya
+mendengarkan `127.0.0.1:8080`; **Nginx aaPanel** menjadi satu-satunya pintu publik (HTTPS) dan meneruskan
+semua request ke aplikasi. Storage user ada di `/www/storage/FileManager` (milik `filemanager`, 0750).
+
+Penanda:
+
+- **Terverifikasi** = dicek langsung di server ini (aaPanel 8.0.7, Ubuntu 24.04.5) atau dibaca dari source
+  aaPanel yang terpasang (`/www/server/panel/mod/project/proxy/comMod.py`), tanggal 25 Okt 2026.
+- **Perlu verifikasi** = nama menu/tombol UI atau perilaku yang belum dilihat langsung; cocokkan saat
+  mengerjakan, lalu perbarui dokumen ini.
+
+## Isi
+
+1. [Ringkasan perubahan di server](#1-ringkasan-perubahan-di-server)
+2. [Prasyarat](#2-prasyarat)
+3. [Langkah 1 — `deploy/install.sh`](#3-langkah-1--deployinstallsh)
+4. [Langkah 2 — site di aaPanel](#4-langkah-2--site-di-aapanel)
+5. [Langkah 3 — SSL Let's Encrypt + Force HTTPS](#5-langkah-3--ssl-lets-encrypt--force-https)
+6. [Langkah 4 — verifikasi](#6-langkah-4--verifikasi)
+7. [Catatan penting](#7-catatan-penting)
+8. [Update & rollback](#8-update--rollback)
+9. [Backup & restore](#9-backup--restore)
+10. [Troubleshooting](#10-troubleshooting)
+11. [Membatalkan instalasi](#11-membatalkan-instalasi)
+12. [Hasil smoke test](#12-hasil-smoke-test)
+
+## 1. Ringkasan perubahan di server
+
+| Bagian | Sebelum (25 Okt 2026, terverifikasi) | Sesudah `install.sh` + aaPanel |
+| --- | --- | --- |
+| User Linux | `filemanager` belum ada | user sistem `filemanager` (home `/nonexistent`, shell `/usr/sbin/nologin`) |
+| `/www/storage/FileManager` | `www:www` 0755, isi hanya `.system` (`root:root`) | `filemanager:filemanager` 0750, `.system` + subfolder 0750 milik `filemanager` |
+| `/www/wwwroot/file.kppbwi.app` | repo milik `root` | **pemilik tidak diubah** (lihat 7.1); `.env` → `filemanager` 0600; `bin/filemanager` 0755; `public/.well-known/` 0755 |
+| `.env` | ada, `APP_SECRET` kosong | `APP_SECRET` 64 hex diisi, komentar di belakang nilai dibuang, salinan lama `.env.bak-<ts>` (0600) |
+| systemd | unit `filemanager` belum ada | `/etc/systemd/system/filemanager.service` (enable + start) |
+| Port | 8080 bebas; UFW mengizinkan 20, 80, 443 | `127.0.0.1:8080` (loopback); **UFW/firewall aaPanel tidak disentuh** |
+| aaPanel | belum ada site `file.kppbwi.app` (domain saat ini dijawab site default Nginx) | site tipe **Reverse Proxy** → `http://127.0.0.1:8080`, SSL Let's Encrypt, Force HTTPS |
+| DNS | `file.kppbwi.app A <SERVER_IP>` = IP server | tetap |
+
+`install.sh` **tidak pernah** menyentuh UFW, firewall aaPanel, Nginx, atau konfigurasi aaPanel.
+
+## 2. Prasyarat
+
+- DNS: record **A** `file.kppbwi.app` → IP server (sudah: `<SERVER_IP>`, terverifikasi dengan `dig`).
+- Port 80 dan 443 terbuka di UFW (sudah, terverifikasi `ufw status`). Port 8080 **tidak** dibuka.
+- Ubuntu 22.04/24.04 (server: 24.04.5). RAM: build di server butuh ± 1,5 GB+; server kini 5,9 GB + swap 2,8 GB
+  (cukup). Server yang lebih kecil: build di CI lalu `--binary`, atau swap 2 GB (install.sh menawarkan, default tidak).
+- Akses root (`sudo`) dan login aaPanel.
+- Checkout repo di `/www/wwwroot/file.kppbwi.app` (sudah).
+
+## 3. Langkah 1 — `deploy/install.sh`
+
+Selalu lihat rencananya dulu (hanya membaca, tidak mengubah apa pun):
+
+```bash
+cd /www/wwwroot/file.kppbwi.app
+sudo bash deploy/install.sh --dry-run          # atau: make install ARGS="--dry-run"
+```
+
+Lalu jalankan sungguhan (bisa diulang kapan saja — idempoten; run kedua tidak mengubah apa pun dan tidak me-restart):
+
+```bash
+sudo bash deploy/install.sh                    # build di server (make build sebagai pemilik repo)
+# atau, dengan binary hasil CI / build sebelumnya:
+make build && sudo bash deploy/install.sh --binary bin/filemanager
+```
+
+| Flag | Arti |
+| --- | --- |
+| `--dry-run` | cetak rencana; tidak ada perubahan |
+| `--yes` | jawab pertanyaan dengan default aman (swapfile dan `chown -R` isi storage = **tidak**) |
+| `--binary PATH` | pasang binary jadi (CI); Go/Node tidak diperiksa |
+| `--skip-build` (`--no-build`) | pakai `bin/filemanager` yang sudah ada |
+| `--rebuild` | build ulang walau binary sudah dari commit HEAD |
+| `--with-unrar` | pasang `unrar` (multiverse, non-free) dan isi `UNRAR_PATH` |
+| `--skip-apt` | lewati apt |
+| `--skip-aapanel` | jangan hapus file default aaPanel dan jangan cetak checklist aaPanel (CI) |
+| `--no-swap` | jangan menawarkan swapfile |
+
+Urutan kerja (SPEC §12.1): cek root + OS → RAM/swap → apt (`ffmpeg libvips-tools poppler-utils ripgrep 7zip curl
+ca-certificates openssl`; hanya yang belum terpasang) → Go (≥ versi `go` di `backend/go.mod`; bila kurang, unduh rilis
+stable terbaru dari indeks resmi `https://go.dev/dl/?mode=json` dan cocokkan SHA-256) → Node ≥ 22 + corepack →
+user `filemanager` → `.env` → storage → `public/.well-known` → binary → `check-deps` + `migrate up` sebagai
+`filemanager` → unit systemd → tunggu `/readyz` (≤ 30 s) → checklist aaPanel.
+
+`.env`:
+
+- Belum ada → disalin dari `.env.example` **tanpa komentar di belakang nilai** (systemd `EnvironmentFile=` membaca
+  `nilai   # komentar` apa adanya), `APP_SECRET=$(openssl rand -hex 32)`, `ADMIN_INITIAL_PASSWORD` ditanyakan tanpa
+  echo (kosong = acak 24 karakter). Password acak ditampilkan **sekali di terminal (`/dev/tty`)**, tidak pernah ke
+  stdout/log; tanpa terminal (CI) lihat `.env`.
+- Sudah ada → hanya dilengkapi (`APP_SECRET` kosong/`CHANGE_ME`, password admin `CHANGE_ME`) dan dibersihkan dari
+  komentar inline; salinan lama `.env.bak-<tanggal>` (0600). Nilai lain tidak diubah.
+- Selalu `filemanager` 0600. Peringatan bila `ALLOW_ROOT=true` atau `LISTEN_ADDR` bukan loopback.
+
+Storage: bila `/www/storage/FileManager` masih `www:www` (kondisi server ini) install.sh memperingatkan lalu mengganti
+ke `filemanager:filemanager` 0750. Bila sudah ada folder user di dalamnya, `chown -R` **ditanyakan** (default tidak).
+`.system` selalu di-`chown -R` (berisi DB/cache aplikasi; di server ini masih milik `root` dari smoke test Step 1).
+
+Unit systemd `deploy/filemanager.service`: `User=filemanager`, `EnvironmentFile=…/.env`, `GOMEMLIMIT=512MiB`,
+`TMPDIR=…/.system/tmp`, `Restart=on-failure`, `LimitNOFILE=65536`, `UMask=0027`, hardening `ProtectSystem=strict`
+(APP_DIR read-only bagi proses) + `ReadWritePaths=/www/storage/FileManager`, `ProtectHome`, `PrivateTmp`,
+`PrivateDevices`, `ProtectKernel*`, `ProtectProc=invisible`, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`,
+`SystemCallFilter=@system-service ~@privileged` (+ `SystemCallErrorNumber=EPERM`), `CapabilityBoundingSet=` kosong.
+`@resources` sengaja **tidak** diblokir: `nice`/`ionice` (`internal/exec`) memerlukan `setpriority`/`ioprio_set`.
+`MemoryDenyWriteExecute` tetap `false` (libvips/orc dapat membuat kode saat runtime; perlu verifikasi).
+
+## 4. Langkah 2 — site di aaPanel
+
+### 4.A Jalur utama: proyek **Reverse Proxy** (aaPanel 8.0.7)
+
+Fakta dari source aaPanel yang terpasang (terverifikasi):
+
+- Tipe proyek Reverse Proxy ada dan dipakai `proxy.kppbwi.app` di server ini.
+- Konfigurasi Nginx site **dibangun ulang dari JSON** `/www/server/proxy_project/sites/<domain>/<domain>.json`
+  setiap kali pengaturan diubah. Edit manual pada `/www/server/panel/vhost/nginx/file.kppbwi.app.conf` akan hilang.
+  Hanya dua kolom kustom yang ikut disimpan: **custom configuration per URL proxy** (dirender di dalam
+  `location ^~ / { … }`) dan **server block** site (dirender di dalam `server { }` antara `#SERVER-BLOCK START/END`).
+  Timeout proxy adalah kolom tersendiri per URL proxy.
+- Site directory **selalu** `/www/wwwroot/<domain>` = `/www/wwwroot/file.kppbwi.app` (tidak bisa diatur saat membuat;
+  running directory `/public` tidak tersedia di tipe ini). Karena semua path di-proxy (`location ^~ /`), Nginx tidak
+  menyajikan file dari folder itu kecuali `/.well-known/`.
+- aaPanel membuat `/www/wwwroot/file.kppbwi.app/proxy_cache_dir` (milik `www`) dan menambah `proxy_cache_path` di
+  level http. `nginx.conf` aaPanel juga memuat `proxy.conf` dengan `proxy_cache cache_one;` untuk **semua** site →
+  PART A mematikannya untuk site ini (`proxy_cache off`) agar salinan file user tidak pernah tersimpan di
+  `/www/server/nginx/proxy_cache_dir`.
+- **Bahaya:** menghapus proyek dengan opsi hapus direktori (`remove_path=1`) menjalankan
+  `rm -rf /www/wwwroot/file.kppbwi.app` — itu repo, binary, dan `.env`. Jangan pernah mencentang opsi itu.
+
+Klik-per-klik (nama menu/tombol **perlu verifikasi**):
+
+1. aaPanel → **Website** → tab **Reverse Proxy** (atau "Proxy Project") → **Add**.
+2. Isi: Domain `file.kppbwi.app`; Target URL `http://127.0.0.1:8080`; Send domain (proxy host) `$http_host`;
+   Remark `FileManager`. Simpan. (Jangan aktifkan cache.)
+3. Buka site `file.kppbwi.app` → bagian **Proxy** / daftar URL proxy → baris `/` → **Edit**:
+   - Timeout: **connect 10**, **send 3600**, **read 3600** (detik). Default aaPanel 60/600/600 memutus SSE dan
+     unduhan panjang. Biarkan **WebSocket** aktif (default).
+   - **Custom configuration** (konfigurasi kustom URL ini): tempel isi **PART A** dari `deploy/nginx-aapanel.conf`
+     (baris di antara `# --- BEGIN PART A` dan `# --- END PART A ---`). Jangan menambahkan `proxy_read_timeout`
+     dsb. di sini — aaPanel sudah menulisnya dari kolom timeout dan Nginx menolak direktif ganda.
+   - **Cache** URL ini: **off**.
+4. Site → **Config file** / **Configuration** → bagian **server block** (bukan "http block") → tempel **PART B**.
+   Simpan: aaPanel menulis ulang vhost, menjalankan `nginx -t`, lalu reload.
+5. Hapus file default aaPanel di site directory bila ada (`index.html`, `404.html`, `.htaccess`, `.user.ini` — yang
+   terakhir `chattr -i` dulu). Menjalankan ulang `sudo bash deploy/install.sh` melakukannya otomatis (file yang
+   di-track git tidak disentuh).
+6. Cek hasil di server (hanya membaca):
+
+   ```bash
+   nginx -T 2>/dev/null | sed -n '/server_name file.kppbwi.app/,/^}/p' | grep -nE 'proxy_pass|proxy_request_buffering|proxy_buffering|proxy_cache|client_max_body_size|proxy_read_timeout|location = /readyz|access_log'
+   ```
+
+   Harus terlihat `proxy_pass http://127.0.0.1:8080`, `proxy_request_buffering off`, `proxy_buffering off`,
+   `proxy_cache off`, `client_max_body_size 64m`, `proxy_read_timeout 3600s`, `location = /readyz`.
+
+Alternatif otomatis (opsional, **perlu verifikasi** pada versi panel lain): `deploy/aapanel/site.py` memanggil API
+internal panel yang sama dengan UI (pola `proxy.kppbwi.app/deploy/aapanel/site.py`):
+
+```bash
+P=/www/server/panel/pyenv/bin/python3
+sudo $P deploy/aapanel/site.py status
+sudo $P deploy/aapanel/site.py create        # Reverse Proxy → 127.0.0.1:8080, $http_host
+sudo $P deploy/aapanel/site.py configure     # timeout 10/3600/3600 + PART A + PART B
+sudo $P deploy/aapanel/site.py ssl           # Let's Encrypt (HTTP-01)
+sudo $P deploy/aapanel/site.py force-https
+```
+
+### 4.B Alternatif: site PHP "Static" + Reverse proxy (teks brief; perlu verifikasi)
+
+1. **Website** → **PHP project** → **Add site**: domain `file.kppbwi.app`, site directory
+   `/www/wwwroot/file.kppbwi.app`, PHP **Static**, tanpa database & FTP.
+2. Site → **Site directory** → **Running directory** `/public` → simpan (document root = `public/`, jadi
+   `.well-known` disajikan dari `public/.well-known`).
+3. Site → **Reverse proxy** → **Add**: nama `app`, target `http://127.0.0.1:8080`, send domain `$http_host`,
+   proxy directory `/`. Di editor konfigurasi proxy itu tempel **PART A** (jika direktif timeout belum ada di file
+   proxy, tambahkan `proxy_connect_timeout 10s; proxy_send_timeout 3600s; proxy_read_timeout 3600s;`).
+4. Site → **Config** → tempel **PART B** di dalam `server { }` (di mana saja; aturan `if` level server dievaluasi
+   sebelum pemilihan location).
+5. Hapus `index.html`, `404.html`, `.htaccess`, `.user.ini` (`chattr -i` dulu) yang dibuat aaPanel.
+6. Setelah mengubah SSL/proxy di kemudian hari, ulangi pengecekan `nginx -T` di 4.A langkah 6 — apakah aaPanel
+   mempertahankan baris kustom pada tipe site ini **perlu verifikasi**.
+
+### 4.C Kenapa PART B memakai `if` level server, bukan `location ~`
+
+Blok proxy aaPanel adalah `location ^~ /`. Prefix `^~` yang cocok menghentikan Nginx sebelum mengevaluasi
+location regex mana pun — termasuk `location ~ ^/(\.user.ini|\.htaccess|\.git|\.env|…)` bawaan aaPanel, yang jadi
+tidak pernah berlaku untuk site proxy (dibuktikan `deploy/test/nginx_snippet_test.sh`: tanpa PART B, `/.env`,
+`/bin/filemanager`, `/readyz` diteruskan ke aplikasi). `if ($uri ~ …) { return 404; }` di level server dijalankan
+pada fase rewrite server, sebelum location dipilih, dan `$uri` sudah ter-decode dan dinormalisasi (`/%2e%65nv`,
+`/assets/../.env` ikut tertolak). `/readyz` dan `/metrics` memakai `location =` (exact match selalu menang).
+
+## 5. Langkah 3 — SSL Let's Encrypt + Force HTTPS
+
+1. Site → **SSL** → **Let's Encrypt** → centang `file.kppbwi.app` → verifikasi **file** (HTTP-01) → **Apply**.
+2. Setelah terbit: aktifkan **Force HTTPS** (aaPanel menambah rewrite `#HTTP_TO_HTTPS` dan header
+   `Strict-Transport-Security`).
+3. `.well-known`: vhost aaPanel meng-include `/www/server/panel/vhost/nginx/well-known/<domain>.conf` (Lua,
+   terverifikasi) sebelum blok proxy: file `/.well-known/<x>` dibaca dari **document root** site
+   (varian A: `/www/wwwroot/file.kppbwi.app/.well-known/`, varian B: `public/.well-known/`), fallback
+   `/www/wwwroot/java_node_ssl/.well-known/`; ditambah `location /.well-known { root … }`. Snippet tidak
+   menduplikasi location ini dan aturan dotfile PART B mengecualikan `.well-known`.
+4. Perpanjangan otomatis dijalankan cron aaPanel; uji perpanjangan (renew/dry-run) dari UI bila tersedia —
+   **perlu verifikasi** tombolnya.
+
+## 6. Langkah 4 — verifikasi
+
+Di server:
+
+```bash
+systemctl status filemanager --no-pager            # active (running)
+ps -o user=,pid=,rss=,cmd= -C filemanager          # user filemanager
+ss -ltnp | grep 8080                               # hanya 127.0.0.1:8080
+ufw status | grep 8080 || echo "8080 tidak ada di UFW"
+curl -s http://127.0.0.1:8080/readyz               # {"status":"ok",...}
+sudo -u filemanager /www/wwwroot/file.kppbwi.app/bin/filemanager check-deps --env-file /www/wwwroot/file.kppbwi.app/.env
+systemd-analyze security filemanager | tail -1     # target <= 4.0 (OK/MEDIUM)
+stat -c '%U:%G %a %n' /www/storage/FileManager /www/wwwroot/file.kppbwi.app/.env
+```
+
+Dari luar (laptop):
+
+```bash
+curl -sI https://file.kppbwi.app/healthz             # 200 + strict-transport-security
+curl -sI http://file.kppbwi.app/healthz              # 301 → https
+curl -sI https://file.kppbwi.app/.env                # 404
+curl -sI https://file.kppbwi.app/bin/filemanager     # 404
+curl -sI https://file.kppbwi.app/backend/go.mod      # 404
+curl -sI https://file.kppbwi.app/readyz              # 404
+# ACME: file uji di document root (varian A)
+sudo install -d -m 0755 /www/wwwroot/file.kppbwi.app/.well-known/acme-challenge
+echo fm-acme-ok | sudo tee /www/wwwroot/file.kppbwi.app/.well-known/acme-challenge/fm-test >/dev/null
+curl -s http://file.kppbwi.app/.well-known/acme-challenge/fm-test   # fm-acme-ok (dari Nginx, bukan aplikasi)
+sudo rm /www/wwwroot/file.kppbwi.app/.well-known/acme-challenge/fm-test
+# Range pada aset statis (nama dari halaman utama)
+A=$(curl -s https://file.kppbwi.app/ | grep -o '/assets/[^"]*\.js' | head -1)
+curl -s -o /dev/null -w '%{http_code}\n' -r 0-99 "https://file.kppbwi.app$A"   # 206
+```
+
+Di browser:
+
+1. Login `admin` dengan `ADMIN_INITIAL_PASSWORD` → wajib ganti password → login ulang.
+2. Hapus `ADMIN_INITIAL_PASSWORD` dari `.env` lalu `sudo systemctl restart filemanager` (aplikasi memberi WARN di log
+   selama nilai itu masih ada).
+3. Upload file 100 MB (tidak boleh 413 — chunk 16 MB < `client_max_body_size 64m`).
+4. Jalankan task panjang (mis. compress folder besar) dan biarkan panel task terbuka ≥ 2 menit: progress mengalir
+   tanpa putus (SSE, `proxy_buffering off` + timeout 3600 s).
+5. Download file besar lalu jeda/lanjut di download manager (Range 206); putar video dan geser posisi.
+6. Admin → Dashboard: status dependency (ffmpeg, vips, pdftoppm, 7z, rg) **ada**; thumbnail gambar/video/PDF
+   muncul — membuktikan CLI berjalan di bawah filter syscall unit.
+
+## 7. Catatan penting
+
+1. **Pemilik APP_DIR tidak diubah ke `filemanager`** (deviasi dari brief, lihat SPEC §12.1): git menolak work tree
+   milik user lain (`detected dubious ownership`), dan service tidak boleh bisa menulis ulang binary-nya sendiri.
+   Service hanya perlu membaca `.env` (0600 miliknya) dan menjalankan `bin/filemanager`; `ProtectSystem=strict`
+   membuat APP_DIR read-only bagi proses. Build dijalankan sebagai pemilik repo.
+2. **Jangan memakai user `www`** untuk service atau storage: situs PHP lain yang berjalan sebagai `www` bisa
+   membaca file user.
+3. **Jangan edit vhost manual** (`/www/server/panel/vhost/nginx/file.kppbwi.app.conf`): aaPanel membangunnya ulang
+   dari JSON. Semua kustomisasi lewat PART A/B di UI.
+4. **Port 8080 tidak dibuka** di UFW maupun firewall aaPanel (Security). Aplikasi hanya loopback.
+5. **Jangan hapus proyek Reverse Proxy dengan opsi hapus direktori** (`rm -rf /www/wwwroot/file.kppbwi.app`).
+6. Log aaPanel: token link publik tidak dicatat (PART B `access_log off`). Statistik situs aaPanel
+   (`site_total`) memuat header `Cookie`; untuk mematikannya bagi site ini aktifkan baris `access_log` opsional di
+   PART A (perlu verifikasi efek pada halaman statistik).
+7. HSTS dikirim dua kali (aaPanel + aplikasi); browser memakai yang pertama — dapat diterima.
+8. Opsional `hidepid=2` untuk `/proc` (SECURITY.md §5, perlu verifikasi dengan monitor aaPanel); unit sudah
+   memakai `ProtectProc=invisible`.
+9. Gzip: aplikasi sudah mengompresi JSON/HTML/CSS/JS ≥ 1 KB (Step 21); gzip global aaPanel boleh dibiarkan.
+   Brotli tidak tersedia (modul tidak ada di build Nginx aaPanel, terverifikasi `nginx -V`).
+10. `METRICS_ADDR=127.0.0.1:9090` boleh diisi di `.env` untuk Prometheus lokal; tidak pernah di-proxy.
+
+## 8. Update & rollback
+
+```bash
+sudo bash deploy/update.sh --dry-run                                   # rencana saja
+sudo bash deploy/update.sh                                              # build checkout saat ini
+sudo bash deploy/update.sh --ref v1.0.1                                 # git fetch (jika ada remote) + checkout + build
+sudo bash deploy/update.sh --binary /path/filemanager                   # binary dari CI
+sudo bash deploy/update.sh --release filemanager-linux-amd64.tar.gz     # tarball CI + .sha256 di sebelahnya
+```
+
+Alur: `backup-db --label pre-update` (versi yang sedang jalan, `VACUUM INTO`) → `bin/filemanager.prev` →
+`systemctl stop` → `migrate up` dengan binary baru → binary baru dipasang → `start` → `/readyz` ≤ 30 s
+(`--ready-timeout`). Gagal → **rollback otomatis**: migrasi baru di-`down` dengan binary baru sampai versi skema
+lama (jika `down` gagal: DB dipulihkan dari backup pre-update; file lama disimpan `app.db.failed-<ts>`), binary
+`.prev` dikembalikan, start, exit 1; binary gagal disimpan `bin/filemanager.failed`. Log:
+`/www/storage/FileManager/.system/logs/update-<ts>.log`. Backup berlabel tidak dirotasi — hapus manual sesekali.
+Rollback manual ke versi lebih lama: `sudo bash deploy/update.sh --binary <binary lama>` atau `--ref <tag lama>`.
+
+## 9. Backup & restore
+
+- **Storage** `/www/storage/FileManager`: backup harian lewat aaPanel (**Cron** → **Backup directory**, perlu
+  verifikasi nama menu) atau rsync/restic ke lokasi lain. Kecualikan `.system/tmp`, `.system/uploads`,
+  `.system/thumbs`. aaPanel berjalan sebagai root, jadi folder 0750 milik `filemanager` tetap terbaca.
+- **Database**: job `backup_db` 02:30 (`VACUUM INTO .system/backups/app-<yyyyMMdd-HHmmss>.db`, simpan 7) +
+  `filemanager backup-db [--label L]` manual; ikut backup storage.
+- **`.env`** disimpan terpisah dan terenkripsi (berisi `APP_SECRET`; tanpa nilai yang sama sesi/link
+  bertanda tangan tidak terbaca).
+- **Restore**:
+
+  ```bash
+  sudo systemctl stop filemanager
+  # pulihkan /www/storage/FileManager (atau subset user) dari backup
+  cd /www/storage/FileManager/.system/db
+  sudo mv app.db app.db.old; sudo rm -f app.db-wal app.db-shm
+  sudo install -m 0640 -o filemanager -g filemanager ../backups/app-<ts>.db app.db
+  sudo chown -R filemanager:filemanager /www/storage/FileManager
+  sudo systemctl start filemanager
+  ```
+
+  Lalu di Admin → Maintenance jalankan `recalc_quota` dan `integrity_check`.
+
+## 10. Troubleshooting
+
+| Gejala | Penyebab umum | Tindakan |
+| --- | --- | --- |
+| 502 Bad Gateway | service mati / crash saat start / `LISTEN_ADDR` beda | `systemctl status filemanager`, `journalctl -u filemanager -n 100`, `curl 127.0.0.1:8080/readyz`, `check-deps` |
+| Service tidak start: `configuration error(s)` | `.env` tidak valid (mis. `APP_SECRET` bukan 64 hex, komentar inline) | jalankan ulang `sudo bash deploy/install.sh` (membersihkan + melengkapi `.env`) |
+| `refusing to run as root` | binary dijalankan manual sebagai root | jalankan lewat systemd / `sudo -u filemanager` |
+| 413 saat upload | PART A belum ditempel/tertimpa (`client_max_body_size` http aaPanel 50m) | `nginx -T \| grep client_max_body_size` |
+| Upload lambat, disk Nginx penuh | `proxy_request_buffering on` | PART A |
+| SSE putus/progress baru muncul di akhir | `proxy_buffering on` atau timeout 600 s default | PART A + timeout 3600 s di kolom proxy |
+| Download besar putus | `proxy_read_timeout`/`send_timeout` | timeout 3600 s |
+| `nginx: [emerg] "proxy_read_timeout" directive is duplicate` | timeout ditulis di custom configuration | hapus dari PART A; pakai kolom timeout |
+| `/.env` atau `/bin/filemanager` 200 | PART B tidak terpasang | tempel PART B di server block |
+| SSL gagal / perpanjangan gagal | `.well-known` tidak terbaca Nginx (`www`) | `ls -ld` document root `.well-known` 0755; DNS A benar; port 80 terbuka |
+| `Permission denied` di log | owner storage salah (mis. file dari root) | `sudo chown -R filemanager:filemanager /www/storage/FileManager` |
+| Thumbnail/arsip gagal hanya di service | filter syscall/sandbox | `journalctl -u filemanager`; uji `systemd-run -p User=filemanager -p SystemCallFilter=@system-service …`; laporkan sebelum melonggarkan unit |
+| OOM saat `make build` | RAM kecil | swap 2 GB atau `--binary` dari CI |
+| `update.sh`: `another update is running` | update lain berjalan / lock tertinggal di proses lama | tunggu; cek `pgrep -af update.sh` |
+| `update.sh`: `ROLLBACK FAILED` | binary lama juga tidak siap (mis. `.env` rusak) | baca log update + `journalctl`; perbaiki `.env`; `systemctl start filemanager` |
+
+## 11. Membatalkan instalasi
+
+```bash
+sudo systemctl disable --now filemanager
+sudo rm /etc/systemd/system/filemanager.service && sudo systemctl daemon-reload
+sudo cp -a /www/wwwroot/file.kppbwi.app/.env.bak-<ts> /www/wwwroot/file.kppbwi.app/.env   # bila perlu
+sudo chown www:www /www/storage/FileManager && sudo chmod 0755 /www/storage/FileManager       # kondisi semula
+sudo chown -R root:root /www/storage/FileManager/.system                                      # kondisi semula
+sudo userdel filemanager
+```
+
+aaPanel: hapus site Reverse Proxy **tanpa** opsi hapus direktori; hapus sertifikat dari menu SSL bila perlu.
+
+## 12. Hasil smoke test
+
+### 12.1 Di server — **MENUNGGU persetujuan pemilik**
+
+Belum dijalankan: install nyata, site aaPanel, SSL, dan verifikasi bagian 6 mengubah state server (user, owner
+storage, systemd, aaPanel). Setelah disetujui, catat di sini: output `check-deps`, `systemd-analyze security
+filemanager`, header `curl -I https://file.kppbwi.app/healthz`, hasil upload 100 MB / SSE 2 menit / Range 206, dan
+perpanjangan SSL.
+
+### 12.2 Tanpa mengubah server (25 Okt 2026)
+
+| Pemeriksaan | Hasil |
+| --- | --- |
+| `shellcheck -x deploy/*.sh deploy/test/*.sh deploy/test/shim/*` (0.9.0) | bersih |
+| `sudo bash deploy/install.sh --dry-run` di server | exit 0; snapshot sebelum/sesudah identik (storage, `.env`, `/etc/systemd/system`, `/etc/passwd`, `/etc/fstab`, swap, git) |
+| `deploy/test/install_test.sh` (folder scratch + shim systemctl) | dry-run tidak membuat apa pun; run 1 & 2 exit 0, run 2 tanpa perubahan/restart; `.env` berkomentar dibersihkan + backup; Debian ditolak |
+| `deploy/test/update_rollback_test.sh` | binary baik → UPDATE OK; binary yang tidak pernah siap → rollback **32 s** (timeout 30 s); migrasi baru → `migrate down`; `down` gagal → DB dari backup pre-update |
+| `deploy/test/nginx_snippet_test.sh` (Nginx aaPanel 1.30.6, prefix scratch, template server block Reverse Proxy) | `nginx -t` OK; 21 path sensitif → 404 dari Nginx; ACME dari document root; `/s/<token>` tidak di access log; 60 MiB lolos, 70 MiB → 413; Range 206; `proxy_cache` global tidak terpakai |
+| `systemd-analyze verify deploy/filemanager.service` | tanpa pesan (exit 0) |
+| `systemd-analyze security --offline=yes deploy/filemanager.service` | **1.4 OK** (unit belum dipasang; nilai final dicatat setelah install) |

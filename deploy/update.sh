@@ -126,7 +126,7 @@ plan_only() {
 	elif [[ -n $REF ]]; then
 		printf '[dry-run] git fetch + checkout %s as %s, then make build → bin/filemanager.new\n' "$REF" "$(repo_owner "$APP_DIR")"
 	else
-		printf '[dry-run] make build of the current checkout (%s) → bin/filemanager.new\n' "$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo '?')"
+		printf '[dry-run] make build of the current checkout (%s) → bin/filemanager.new\n' "$(git_ro rev-parse --short HEAD 2>/dev/null || echo '?')"
 	fi
 	printf '[dry-run] %s backup-db --label pre-update (as %s) → %s/backups/app-%s-pre-update.db\n' "$BIN" "$SVC_USER" "$DATA_DIR" "$TS"
 	printf '[dry-run] copy bin/filemanager → bin/filemanager.prev; systemctl stop %s; new binary migrate up\n' "$SERVICE"
@@ -150,16 +150,16 @@ fetch_new_binary() {
 	else
 		owner=$(repo_owner "$APP_DIR")
 		if [[ -n $REF ]]; then
-			[[ -z $(git --no-optional-locks -C "$APP_DIR" status --porcelain --untracked-files=no) ]] || die "tracked files are modified in $APP_DIR; commit or stash first"
-			if [[ -n $(git -C "$APP_DIR" remote) ]]; then
+			[[ -z $(git_ro status --porcelain --untracked-files=no) ]] || die "tracked files are modified in $APP_DIR; commit or stash first"
+			if [[ -n $(git_ro remote) ]]; then
 				as_user "$owner" git -C "$APP_DIR" fetch --tags --prune --quiet
 			fi
 			as_user "$owner" git -C "$APP_DIR" checkout --quiet "$REF"
-			if git -C "$APP_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+			if git_ro rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
 				as_user "$owner" git -C "$APP_DIR" merge --ff-only --quiet '@{u}'
 			fi
 		fi
-		say "build $(git -C "$APP_DIR" rev-parse --short HEAD) as $owner"
+		say "build $(git_ro rev-parse --short HEAD) as $owner"
 		as_user "$owner" env "PATH=/usr/local/go/bin:$PATH" make -C "$APP_DIR" build BIN=bin/filemanager.new
 	fi
 	"$NEW" version >/dev/null || die "the new binary does not run"

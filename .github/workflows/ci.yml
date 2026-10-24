@@ -213,3 +213,99 @@ jobs:
           name: filemanager-linux-amd64
           path: bin/filemanager
           retention-days: 14
+      - name: Release tarball for deploy/update.sh --release
+        run: |
+          tar -czf filemanager-linux-amd64.tar.gz bin/filemanager deploy docs/DEPLOY-AAPANEL.md
+          sha256sum filemanager-linux-amd64.tar.gz > filemanager-linux-amd64.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: filemanager-release
+          path: filemanager-linux-amd64.tar.gz*
+          retention-days: 14
+
+  deploy-scripts:
+    # Step 22: shellcheck, install.sh twice in scratch dirs (idempotent,
+    # dry-run inert), update.sh rollback with a binary that never gets ready
+    # (<= 60 s), and deploy/nginx-aapanel.conf inside a copy of the aaPanel
+    # Reverse Proxy server block (throw-away Nginx on loopback).
+    runs-on: ubuntu-24.04
+    needs: [backend, web]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          check-latest: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm -C web install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install -y shellcheck nginx-light ffmpeg libvips-tools poppler-utils ripgrep 7zip
+      - run: make build GOMAXPROCS=2
+      - name: make test-deploy
+        run: FM_NGINX=/usr/sbin/nginx make test-deploy
+
+  install-smoke:
+    # Real systemd on the runner VM (a container has no init): install.sh
+    # --skip-aapanel --no-swap twice as root with the CI binary, then the
+    # service must answer /healthz as user filemanager on loopback only.
+    runs-on: ubuntu-24.04
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: filemanager-linux-amd64
+          path: ${{ runner.temp }}/dist
+      - name: Copy the checkout to the production path
+        run: |
+          chmod 0755 "$RUNNER_TEMP/dist/filemanager"
+          sudo mkdir -p /www/wwwroot
+          sudo cp -a "$GITHUB_WORKSPACE" /www/wwwroot/file.kppbwi.app
+      - name: install.sh (first run)
+        run: sudo bash /www/wwwroot/file.kppbwi.app/deploy/install.sh --yes --skip-aapanel --no-swap --binary "$RUNNER_TEMP/dist/filemanager"
+      - name: install.sh (second run, must be a no-op)
+        run: sudo bash /www/wwwroot/file.kppbwi.app/deploy/install.sh --yes --skip-aapanel --no-swap --binary "$RUNNER_TEMP/dist/filemanager" | tee second.log && grep -q 'nothing changed' second.log
+      - name: Smoke
+        run: |
+          curl -fsS http://127.0.0.1:8080/healthz
+          curl -fsS -o /dev/null http://127.0.0.1:8080/readyz
+          systemctl is-active filemanager
+          test "$(ps -o user= -p "$(systemctl show -p MainPID --value filemanager)")" = filemanager
+          sudo ss -ltnp | grep ':8080 ' | grep -q '127.0.0.1:8080'
+          test "$(sudo stat -c '%U:%G %a' /www/storage/FileManager)" = "filemanager:filemanager 750"
+          test "$(sudo stat -c '%U %a' /www/wwwroot/file.kppbwi.app/.env)" = "filemanager 600"
+          /www/wwwroot/file.kppbwi.app/bin/filemanager version
+          sudo systemd-analyze security filemanager | tail -1
+      - name: Thumbnail tools run under the unit's sandbox
+        run: |
+          sudo systemd-run --wait --collect --pipe -p User=filemanager -p ProtectSystem=strict -p PrivateDevices=true \
+            -p SystemCallFilter=@system-service -p SystemCallFilter=~@privileged -p SystemCallErrorNumber=EPERM \
+            -p NoNewPrivileges=true -p ProtectProc=invisible \
+            /usr/bin/nice -n 10 /usr/bin/ionice -c 3 /usr/bin/ffmpeg -hide_banner -f lavfi -i testsrc=size=64x64:rate=1 -frames:v 1 -f null -
+      - name: update.sh with the same binary (backup + restart path)
+        run: sudo bash /www/wwwroot/file.kppbwi.app/deploy/update.sh --yes --binary "$RUNNER_TEMP/dist/filemanager"
+      - if: failure()
+        run: sudo journalctl -u filemanager -n 200 --no-pager
+
+  docker:
+    # Optional image (ADR-20): must build and answer /healthz.
+    runs-on: ubuntu-24.04
+    needs: [backend, web]
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build
+        run: docker build -f deploy/Dockerfile -t filemanager:ci --build-arg VERSION=ci --build-arg COMMIT=${GITHUB_SHA::7} .
+      - name: Smoke
+        run: |
+          docker run -d --name fm -p 127.0.0.1:8080:8080 \
+            -e APP_BASE_URL=https://file.example.test -e APP_SECRET="$(openssl rand -hex 32)" \
+            -e ADMIN_INITIAL_PASSWORD="$(openssl rand -hex 12)" filemanager:ci
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 1; done
+          curl -fsS -o /dev/null http://127.0.0.1:8080/readyz
+          docker exec fm /app/bin/filemanager check-deps
+      - if: always()
+        run: docker logs fm || true
