@@ -1,20 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { ADMIN_USERNAME, apiMkdir, e2eStorageRoot, loginAsAdmin } from './fixtures'
+import { apiMkdir, loginAsAdmin } from './fixtures'
 
 test.describe.configure({ mode: 'serial' })
 
-// Performance targets (PRD §8 / SPEC §8.3) are meant for a real client machine. This suite runs
-// Chromium, the Go backend and the test runner on one shared vCPU, so the strict thresholds are
-// enforced only with E2E_PERF_STRICT=1 (Step 21 measures on proper hardware); otherwise the
-// numbers are logged and only a generous ceiling is asserted.
-const STRICT = process.env.E2E_PERF_STRICT === '1'
-const LIMIT = {
-  firstRender: STRICT ? 1000 : 6000,
-  warmBack: STRICT ? 150 : 1500,
-  longTask: STRICT ? 100 : 800,
-}
+// Timing gates (10 000 entries, warm navigation, scroll long tasks) live in perf.spec.ts
+// since Step 21 and measure inside the page; this file only keeps a generous ceiling.
+const LIMIT = { warmBack: 1500 }
 
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page)
@@ -127,80 +118,6 @@ test('warm cache: returning to a visited folder renders instantly, then revalida
   const elapsed = Date.now() - t0
   console.log(`[perf] back-navigation with warm cache: ${elapsed} ms`)
   expect(elapsed).toBeLessThan(LIMIT.warmBack)
-})
-
-test('10,000 files: first render < 1 s, virtualised scroll without long tasks', async ({
-  page,
-}) => {
-  test.setTimeout(120_000)
-  const home = join(e2eStorageRoot(), ADMIN_USERNAME)
-  const big = join(home, 'besar')
-  mkdirSync(big, { recursive: true })
-  for (let i = 1; i <= 10_000; i++) writeFileSync(join(big, `file${i}.txt`), '')
-
-  await page.goto('/files')
-  // Diagnostic: backend-only latency under e2e conditions (different sort → separate cache entry).
-  const tb = Date.now()
-  const probe = await page.request.get('/api/v1/files/list?path=/besar&sort=mtime&dir=desc')
-  console.log(
-    `[perf] backend-only cold list (sort=mtime): ${Date.now() - tb} ms, status ${probe.status()}`,
-  )
-  await page.evaluate(() => {
-    const w = window as unknown as { __longTasks: number[]; __po?: PerformanceObserver }
-    w.__longTasks = []
-    w.__po = new PerformanceObserver((list) => {
-      for (const e of list.getEntries()) w.__longTasks.push(Math.round(e.duration))
-    })
-    w.__po.observe({ type: 'longtask', buffered: true })
-  })
-  const t0 = Date.now()
-  await page.getByRole('row', { name: /besar/ }).dblclick()
-  await expect(page.getByRole('row', { name: /file1\.txt/ })).toBeVisible()
-  const firstRender = Date.now() - t0
-  await expect(page.getByTestId('status-items')).toHaveText('10.000 item')
-  const timings = await page.evaluate(() =>
-    performance
-      .getEntriesByType('resource')
-      .filter((e) => e.name.includes('/files/list'))
-      .map(
-        (e) =>
-          `${Math.round(e.duration)} ms ${e.name.slice(e.name.indexOf('?'), e.name.indexOf('?') + 40)}`,
-      ),
-  )
-  const firstTasks = await page.evaluate(() =>
-    (window as unknown as { __longTasks: number[] }).__longTasks.slice(),
-  )
-  console.log(
-    `[perf] 10k first render (dblclick → first row visible): ${firstRender} ms; list requests: ${timings.join(' | ')}; long tasks so far: ${firstTasks.join(',')}`,
-  )
-  expect(firstRender).toBeLessThan(LIMIT.firstRender)
-
-  // only a window of rows is in the DOM
-  const rowsInDom = await page.locator('[data-testid="details-body"] [role="row"]').count()
-  expect(rowsInDom).toBeLessThan(80)
-
-  // scroll to the bottom repeatedly; infinite scroll loads the remaining 19 pages (500 items each)
-  const grid = page.getByTestId('details-grid')
-  await grid.focus()
-  const lastRow = page.locator('[data-path="/besar/file10000.txt"]')
-  const tScroll = Date.now()
-  for (let i = 0; i < 120 && (await lastRow.count()) === 0; i++) {
-    await grid.evaluate((el) => {
-      el.scrollTop = el.scrollHeight
-    })
-    await page.waitForTimeout(250)
-  }
-  await page.keyboard.press('End')
-  await expect(page.getByRole('row', { name: /file10000\.txt/ })).toBeVisible({ timeout: 30_000 })
-  console.log(`[perf] 10k: all 20 pages loaded by scrolling in ${Date.now() - tScroll} ms`)
-  const longTasks = await page.evaluate(
-    () => (window as unknown as { __longTasks: number[] }).__longTasks,
-  )
-  const maxTask = longTasks.length ? Math.max(...longTasks) : 0
-  console.log(
-    `[perf] 10k scroll: long tasks ${longTasks.length} (max ${maxTask} ms): ${longTasks.join(',')}`,
-  )
-  expect(maxTask).toBeLessThanOrEqual(LIMIT.longTask)
 })
 
 test('375 px: drawer sidebar, two columns, no horizontal scroll', async ({ page }) => {

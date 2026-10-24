@@ -322,6 +322,29 @@ export function BrowserLayout({
     return items.filter((it) => it.name.toLowerCase().includes(q))
   }, [items, filter])
 
+  // Scroll offsets are remembered per folder for back/forward (Step 7a). Writing
+  // the tabs store on every scroll event re-rendered the whole browser chrome
+  // each frame (Step 21 profile); the offset is now stored once scrolling
+  // pauses, and flushed when the folder changes.
+  const pendingScroll = useRef<{ path: string; offset: number; timer: number } | null>(null)
+  const flushScroll = useCallback(() => {
+    const p = pendingScroll.current
+    if (!p) return
+    window.clearTimeout(p.timer)
+    pendingScroll.current = null
+    useTabsStore.getState().setScroll(p.path, p.offset)
+  }, [])
+  const rememberScroll = useCallback(
+    (offset: number) => {
+      const prev = pendingScroll.current
+      if (prev && prev.path !== path) flushScroll()
+      if (pendingScroll.current) window.clearTimeout(pendingScroll.current.timer)
+      pendingScroll.current = { path, offset, timer: window.setTimeout(flushScroll, 150) }
+    },
+    [path, flushScroll],
+  )
+  useEffect(() => flushScroll, [path, flushScroll])
+
   // --- selection (per tab, cleared on navigation) ---
   const selection = useSelectionStore((s) => s.byTab[tabId]) ?? EMPTY_SELECTION
   const setSelection = useCallback(
@@ -1083,7 +1106,7 @@ export function BrowserLayout({
       activeIndex,
       onActiveIndexChange: setActiveIndex,
       initialScroll: tab.scroll[path] ?? 0,
-      onScrollChange: (off: number) => useTabsStore.getState().setScroll(path, off),
+      onScrollChange: rememberScroll,
       renamingPath: renaming,
       renderRename,
       cutPaths: cut,

@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { Outlet, createRootRouteWithContext } from '@tanstack/react-router'
 import { Suspense, lazy } from 'react'
+import { FileIconSprite } from '@/components/file-icon/FileIcon'
 import { LiveRegion } from '@/components/LiveRegion'
 import { NotFoundPage } from '@/components/NotFoundPage'
 import { PageSpinner } from '@/components/PageSpinner'
@@ -31,6 +32,7 @@ function RootComponent() {
       <Outlet />
       <Toaster />
       <LiveRegion />
+      <FileIconSprite />
       {RouterDevtools ? (
         <Suspense fallback={null}>
           <RouterDevtools position="bottom-right" />

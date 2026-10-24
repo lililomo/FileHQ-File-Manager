@@ -17,6 +17,7 @@ export default defineConfig([
     'coverage',
     'playwright-report',
     'test-results',
+    'bundle-report',
     'public',
     'src/routeTree.gen.ts',
     'src/lib/api.gen.ts',

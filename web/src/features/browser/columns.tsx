@@ -153,11 +153,46 @@ export function typeLabel(t: TFunction<'files'>, item: Item): string {
 
 const DASH = '—'
 
-function dateCell(value: string | null | undefined, lang: string) {
+/** Memo of formatted strings for one column set (one language). Rows render
+ *  again and again while scrolling; Intl formatting and i18next lookups were a
+ *  visible share of each frame (Step 21 profile). Relative times are reused
+ *  for 30 s, then recomputed. */
+class CellMemo {
+  private dates = new Map<string, { rel: string; full: string; at: number }>()
+  private types = new Map<string, string>()
+
+  date(value: string, lang: string): { rel: string; full: string } {
+    const now = Date.now()
+    const hit = this.dates.get(value)
+    if (hit && now - hit.at < 30_000) return hit
+    if (this.dates.size > 20_000) this.dates.clear()
+    const next = {
+      rel: formatRelativeTime(value, lang, now),
+      full: formatDateTimeFull(value, lang),
+      at: now,
+    }
+    this.dates.set(value, next)
+    return next
+  }
+
+  type(t: TFunction<'files'>, item: Item): string {
+    const key = `${item.typeLabel}|${item.ext}|${item.isSymlink && item.broken ? 1 : 0}|${item.ext ? '' : item.name.split('.').pop()}`
+    let v = this.types.get(key)
+    if (v === undefined) {
+      if (this.types.size > 5_000) this.types.clear()
+      v = typeLabel(t, item)
+      this.types.set(key, v)
+    }
+    return v
+  }
+}
+
+function dateCell(value: string | null | undefined, lang: string, memo: CellMemo) {
   if (!value) return DASH
+  const f = memo.date(value, lang)
   return (
-    <span title={formatDateTimeFull(value, lang)} className="tabular">
-      {formatRelativeTime(value, lang)}
+    <span title={f.full} className="tabular">
+      {f.rel}
     </span>
   )
 }
@@ -172,6 +207,7 @@ export function buildColumns(
   lang: string,
   opts: ColumnOptions = {},
 ): ColumnDef[] {
+  const memo = new CellMemo()
   return [
     {
       id: 'name',
@@ -219,13 +255,13 @@ export function buildColumns(
       id: 'type',
       header: () => t('columns.type'),
       meta: COLUMN_META.type,
-      cell: (it) => <span className="truncate">{typeLabel(t, it)}</span>,
+      cell: (it) => <span className="truncate">{memo.type(t, it)}</span>,
     },
     {
       id: 'mtime',
       header: () => t('columns.mtime'),
       meta: COLUMN_META.mtime,
-      cell: (it) => dateCell(it.mtime, lang),
+      cell: (it) => dateCell(it.mtime, lang, memo),
     },
     {
       id: 'note',
@@ -237,13 +273,13 @@ export function buildColumns(
       id: 'btime',
       header: () => t('columns.btime'),
       meta: COLUMN_META.btime,
-      cell: (it) => dateCell(it.btime, lang),
+      cell: (it) => dateCell(it.btime, lang, memo),
     },
     {
       id: 'atime',
       header: () => t('columns.atime'),
       meta: COLUMN_META.atime,
-      cell: (it) => dateCell(it.atime, lang),
+      cell: (it) => dateCell(it.atime, lang, memo),
     },
     {
       id: 'ext',

@@ -7,3 +7,4 @@ test-results
 public
 src/routeTree.gen.ts
 src/lib/api.gen.ts
+bundle-report

@@ -17,10 +17,11 @@
 | Upload 1 GiB: puncak RSS (PRD G5, PROMPT 21) | ≤ baseline + 100 MB | +0,4 MB | +0,1 MB | ✅ |
 | Zip streaming 1 GiB: puncak RSS | ≤ baseline + 100 MB | +0,4 MB | +1,2 MB | ✅ |
 | Extract 1 GiB: puncak RSS | ≤ baseline + 100 MB | +1,1 MB | +1,2 MB | ✅ |
-| Render pertama folder 10.000 (PRD G3) | < 1 s | lihat §8 | — | lihat §8 |
-| Navigasi hangat di UI (PRD G4) | < 150 ms | lihat §8 | — | lihat §8 |
-| Long task saat scroll (PROMPT 21) | ≤ 100 ms (sasaran < 50) | lihat §8 | — | lihat §8 |
-| JS awal (PRD G6) | < 300 KB gzip | lihat §9 | — | lihat §9 |
+| Render pertama folder 10.500 entri di UI (PRD G3) | < 1 s | **205–273 ms** (Chromium headless, server yang sama) | — (browser = perangkat klien) | ✅ |
+| Navigasi hangat di UI, p95 (PRD G4) | < 150 ms | **86–100 ms** | — | ✅ |
+| Long task saat scroll 10.500 baris (PROMPT 21 AC) | ≤ 100 ms | **maks 62–85 ms** (5–12 task > 50 ms dalam ±21 s scroll agresif) | — | ✅ (sasaran < 50 ms: sebagian, §6) |
+| Sort 10.000 entri dari server sampai baris pertama (SPEC §11.5) | < 300 ms | 171–234 ms | — | ✅ |
+| JS awal (PRD G6) | < 300 KB gzip | **220,2 KB** (20 chunk) | — | ✅ (gagal keras di CI bila ≥ 300 KB) |
 
 Sebelum optimasi Step 21 (binary `26c1913`, harness yang sama): list dingin p95 **287 ms** (4 CPU) / **400 ms** (CPU 0) dan idle RSS setelah login **156 MB / 219 MB** — target idle < 100 MB **gagal** sebelum Step 21.
 
@@ -36,15 +37,15 @@ Sebelum optimasi Step 21 (binary `26c1913`, harness yang sama): list dingin p95 
 1. `make bench` dua kali (`GOMAXPROCS` = semua CPU dan 1): benchmark in-process `listing.List` 10.000 entri dingin/cache (`backend/internal/listing/service_test.go`).
 2. `TestPerf` (`backend/internal/perf/perf_test.go`, perlu `FM_PERF_BIN`/`FM_PERF_DIR`, dilewati di `make test`):
    - start binary nyata, login admin + ganti password awal (alur SPEC §8.2), fixture `perf.Generate` (`backend/internal/perf/gen.go`): `/Besar` = 10.000 file (nama angka beragam lebar, huruf besar/kecil, Unicode NFC, Jepang, spasi, dotfile, multi-titik; 16 ekstensi; 0–32 KB) + 500 folder (0–3 file), `/Gambar` = 200 PNG 64–320 px. Listing `/Besar` = **10.500 entri** (sedikit lebih berat dari target 10.000).
-   - **list dingin**: sebelum setiap permintaan, harness membuat + menghapus file di `/Besar` dari luar proses → `mtime` folder berubah → entri cache §8.3 tidak valid (inilah "dingin" dalam praktik: folder baru disentuh atau TTL 15 s lewat). Page cache kernel tetap hangat; `drop_caches` sengaja tidak dipakai di server produksi. 50× sort nama + 20× sort `mtime desc`, halaman pertama 500 item. Permintaan pertama setelah start dilaporkan terpisah.
+   - **list dingin**: sebelum setiap permintaan, harness membuat + menghapus file di `/Besar` dari luar proses → `mtime` folder berubah → entri cache SPEC §8.3 tidak valid (inilah "dingin" dalam praktik: folder baru disentuh atau TTL 15 s lewat). Page cache kernel tetap hangat; `drop_caches` sengaja tidak dipakai di server produksi. 50× sort nama + 20× sort `mtime desc`, halaman pertama 500 item. Permintaan pertama setelah start dilaporkan terpisah.
    - **list hangat**: 50× permintaan yang sama (cache hit).
    - **infinite scroll**: 21 halaman lewat `nextCursor`.
    - **navigasi**: 6 folder yang sudah dibuka, 120 permintaan bergiliran.
-   - **thumbnail**: `files/sign` 200 path (`thumb`, 256 px), 20 permintaan paralel (= satu viewport grid, batas paralel per user §10.5), polling `202` tiap 200 ms (UI memakai `Retry-After: 2`), lalu 180 sisanya dengan lebar 20; bersamaan, `files/list` diminta tiap 100 ms untuk membuktikan UI tidak menunggu thumbnail.
+   - **thumbnail**: `files/sign` 200 path (`thumb`, 256 px), 20 permintaan paralel (= satu viewport grid, batas paralel per user SPEC §10.5), polling `202` tiap 200 ms (UI memakai `Retry-After: 2`), lalu 180 sisanya dengan lebar 20; bersamaan, `files/list` diminta tiap 100 ms untuk membuktikan UI tidak menunggu thumbnail.
    - **upload 1 GiB** tus (64 PATCH × 16 MiB, data acak `perf.Stream` tanpa file sumber), **zip streaming 1 GiB** (`files/zip` method store, body dibuang), **extract 1 GiB** (zip Store 8 anggota ditulis `perf.WriteStoreZip`, task `archives/extract` ditunggu sampai `done`).
    - Memori: `VmRSS`/`RssAnon`/`RssFile`/`VmHWM` dari `/proc/<pid>/status` (sampling 50 ms selama beban), gauge Go `go_heap_objects_bytes`/`go_heap_released_bytes`/`go_memory_total_bytes` dari `/metrics` (`METRICS_ADDR` loopback) — pengganti `pprof`, yang tidak pernah diekspos.
    - Gerbang: test gagal bila list dingin p95 ≥ 500 ms, hangat p95 ≥ 100 ms, idle RSS ≥ 100 MB, atau puncak RSS beban > baseline + 100 MB (`FM_PERF_ASSERT=0` hanya melapor).
-   - Rate limit API/list/sign/thumb/csrf/tus dimatikan **hanya** di harness (mengukur latensi, bukan anggaran §10.5; 50 list/detik bukan pola klien).
+   - Rate limit API/list/sign/thumb/csrf/tus dimatikan **hanya** di harness (mengukur latensi, bukan anggaran SPEC §10.5; 50 list/detik bukan pola klien).
 3. Hasil mentah: `.perfdata/results-<n>cpu.json` (tidak di-commit).
 
 ## 4. Hasil backend
@@ -111,11 +112,48 @@ Profil CPU `BenchmarkListDir10k` (`go test -cpuprofile`) sebelum optimasi: 38 % 
 | Middleware gzip sendiri: hanya ≥ 1 KB, tipe JSON/HTML/CSS/JS/SVG, tidak menyentuh HEAD/`Range`/206/`Content-Encoding`/unduhan/SSE, `ETag` kuat → lemah, `Vary`, jalur `ReadFrom` (sendfile) tetap untuk respons tak terkompresi | `httpapi/compress.go` | halaman 242 KB → 5 KB; respons < 1 KB tidak lagi dikompresi |
 | Gauge memori Go di `/metrics` | `metrics/metrics.go` | observabilitas tanpa pprof |
 
-Sudah ada sebelum Step 21 (diverifikasi, tidak diubah): cache listing LRU 64 MB + invalidasi (§8.3), `json.Encoder` langsung ke writer (tanpa buffer ganda), `Cache-Control: public, max-age=31536000, immutable` untuk `/assets/*` berhash (`webassets`), HTTP keep-alive (`IdleTimeout` 120 s), antrian thumbnail prioritas + `nice`. Tidak dibuat: brotli di aplikasi (tanpa dependensi baru; opsional di Nginx bila modul tersedia — perlu verifikasi di aaPanel) dan prakompresi aset (aset immutable diunduh sekali per rilis; gzip level 6 per permintaan ±10 ms CPU untuk JS awal).
+Sudah ada sebelum Step 21 (diverifikasi, tidak diubah): cache listing LRU 64 MB + invalidasi (SPEC §8.3), `json.Encoder` langsung ke writer (tanpa buffer ganda), `Cache-Control: public, max-age=31536000, immutable` untuk `/assets/*` berhash (`webassets`), HTTP keep-alive (`IdleTimeout` 120 s), antrian thumbnail prioritas + `nice`. Tidak dibuat: brotli di aplikasi (tanpa dependensi baru; opsional di Nginx bila modul tersedia — perlu verifikasi di aaPanel) dan prakompresi aset (aset immutable diunduh sekali per rilis; gzip level 6 per permintaan ±10 ms CPU untuk JS awal).
 
-## 6. Pengukuran ulang
+## 6. Frontend (`web/e2e/perf.spec.ts`)
+
+Playwright Chromium headless di mesin yang sama dengan backend (4 vCPU dibagi browser, binary, runner), binary `make build` (bundle produksi). Fixture: `perf10k/` = 10.000 file (12 ekstensi, nama `file<i>`/`Laporan <i> (final)`) + 500 folder. Waktu diambil **di dalam halaman**: `performance.mark` saat `dblclick`/`click` (listener capture) dan `performance.measure` pada frame setelah baris target ada di DOM (`MutationObserver` → `requestAnimationFrame` → `setTimeout 0`), sehingga round trip Playwright tidak terhitung. Long task dari `PerformanceObserver({type:'longtask'})`. **Tracing Playwright dimatikan** untuk spec ini: snapshot DOM tracing (`trace: retain-on-failure` global) terukur sebagai long task aplikasi (terlihat di profil CDP).
+
+| Skenario (gerbang) | Sebelum 21-2 (UI `7867920`) | Sesudah 21-2 (4 run) |
+| --- | --- | --- |
+| Render pertama 10.500 entri, cache server dingin (< 1 s) | 270 ms | 205 / 273 / 232 / 219 ms |
+| Navigasi hangat back/forward, p95 dari 10 (< 150 ms) | 134 ms | 94 / 96 / 86 / 100 ms |
+| Scroll seluruh 10.500 baris (2 tinggi viewport per frame + infinite scroll 20 halaman): long task maks (≤ 100 ms) | **124 ms — gagal**, 356 long task | 85 / 71 / 72 / 62 ms; 78 / 11 / 12 / 5 long task |
+| Sort nama turun sampai baris pertama (< 300 ms) | — | 234 / 195 / 183 / 171 ms |
+
+Profil CDP (`Profiler.start` selama scroll, build tanpa minify) menunjukkan penyebab, diperbaiki berurutan:
+
+1. **Offset scroll ditulis ke store tab pada setiap event scroll** → seluruh `BrowserLayout` (toolbar, address bar, tab bar, status bar) dirender ulang tiap frame. Kini offset disimpan setelah scroll berhenti 150 ms dan di-flush saat folder berganti (`BrowserLayout.rememberScroll`; back/forward tetap memulihkan posisi). Ini perbaikan terbesar (356 → 5–12 long task).
+2. **Baris Details tidak di-memo**: kini `DetailsRow` (`React.memo`) dengan handler stabil lewat ref, `colStyle` di-memo, overscan 12 → 10.
+3. **Hook per sel**: `NoteCell` read-only tanpa `useTranslation` (editor terpisah), `ItemBadges` keluar sebelum hook bila tidak ada badge, label tipe dan tanggal relatif/absolut di-memo per set kolom (`CellMemo`, tanggal relatif dihitung ulang tiap 30 s).
+4. **Checkbox baris** memakai elemen ringan ber-`role="checkbox"` (gaya sama dengan `ui/Checkbox`; tabIndex −1, fokus tetap di grid) alih-alih primitive Radix per baris.
+5. **Ikon file sebagai sprite SVG** (`FileIconSprite` sekali di root, setiap ikon = satu `<use>`) alih-alih pohon komponen lucide per sel.
+6. Kolom Dimensi/Durasi (`media=1` memprobe ≤ 50 file sinkron di server): listing biasa dulu, varian ber-media diminta saat browser idle (`requestIdleCallback`, fallback 200 ms) dan menggantikan baris di tempat (`useListing`, `placeholderData`).
+
+Sudah ada sebelumnya dan dipertahankan: route jarang (`admin/*`, `storage`, `settings`, editor, viewer, share) sudah lazy lewat `autoCodeSplitting` TanStack Router; halaman berikut diambil saat 80 % baris yang dimuat sudah dirender (bukan lebih awal). Dicoba lalu dibatalkan: `structuralSharing: false` pada query listing (tidak mengubah angka, kehilangan identitas item saat refetch).
+
+Sisa yang diketahui: dengan scroll "lempar" 2 viewport per frame, setiap frame membuat ±60 baris baru sekaligus; 4–10 frame per lintasan penuh tetap 50–85 ms (di atas sasaran 50 ms, di bawah gerbang 100 ms). View Grid/List/Tiles belum di-memo per sel (perbaikan store scroll berlaku juga untuk semuanya).
+
+## 7. Bundle (`web/scripts/bundle-size.mjs`)
+
+`pnpm build` (dan `pnpm build --report` di CI) mengukur JS yang dimuat `dist/index.html` di awal (entry module + `modulepreload`) dan **gagal (exit 1) bila ≥ 300 KB gzip**; laporan semua chunk ditulis ke `web/bundle-report/bundle-report.{json,md}` (di luar `dist`, jadi tidak ikut ter-embed/disajikan binary — sebelumnya `dist/bundle-size.json` ikut terlayani publik) dan diunggah CI sebagai artefak `bundle-report`. CI juga menguji gerbangnya sendiri (`BUNDLE_BUDGET_KB=100` harus gagal).
+
+| | Ukuran gzip |
+| --- | --- |
+| JS awal (20 chunk) | **220,2 KB** (Step 20: 218,4 KB; +1,8 KB = sprite ikon file + `DetailsRow`) |
+| CSS awal | 15,2 KB |
+| JS lazy (289 chunk) | 4.445,5 KB — terbesar: worker TypeScript Monaco 1.450, `editor.api` 681, worker pdf.js 367, `vs` 314, pdf.js 125, Markdown/Prettier 89 + 26, viewer pdf.js 50, Video.js 28 |
+
+Monaco, pdf.js, Video.js, QR (`qrcode`), Prettier, highlight.js dan Markdown hanya dimuat oleh chunk route/fitur masing-masing (diverifikasi di laporan: tidak ada yang berlabel `initial`). Lucide sudah tree-shake dengan named import (117 file mengimpor 259 nama; ikon yang tidak dipakai, mis. `AlarmClock`, tidak ada di `dist`), jadi import per path ikon tidak diperlukan. Tidak ada dependensi yang tidak dipakai (setiap paket `dependencies` diimpor dari `src/`; `@testing-library/dom` = peer `@testing-library/react`).
+
+## 8. Pengukuran ulang
 
 ```bash
+pnpm -C web e2e perf.spec.ts    # frontend (butuh `make build`)
 make perf                       # ±5 menit, butuh ±3,5 GB ruang sementara di .perfdata/
 FM_PERF_ASSERT=0 make perf      # hanya melapor (tanpa gagal)
 FM_PERF_ONLY=listing …          # (env pada go test) hanya skenario listing
@@ -123,8 +161,8 @@ FM_PERF_ONLY=listing …          # (env pada go test) hanya skenario listing
 
 Untuk mengukur di server lain/setelah deploy: jalankan `make perf` dari checkout di server itu (harness tetap memakai binary dan direktori sendiri; tidak membaca `.env`).
 
-## 7. Batasan yang diketahui
+## 9. Batasan yang diketahui
 
 - Klien dan server satu mesin (loopback): latensi jaringan nyata (TLS lewat Nginx, RTT) tidak termasuk; angka API adalah biaya server.
 - "Dingin" = cache aplikasi tidak valid dengan page cache kernel hangat. Folder yang belum pernah disentuh sejak boot (cache inode/dentry dingin di disk virtual) bisa lebih lambat; tidak diukur karena `drop_caches` memengaruhi semua layanan di server produksi.
-- Fixture memakai file kosong/kecil; ekstensi media palsu memicu probe latar `ProbeOnly` (§8.4) sehingga run pertama juga menanggung ffprobe/vips nice — termasuk dalam angka.
+- Fixture memakai file kosong/kecil; ekstensi media palsu memicu probe latar `ProbeOnly` (SPEC §8.4) sehingga run pertama juga menanggung ffprobe/vips nice — termasuk dalam angka.

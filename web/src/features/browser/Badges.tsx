@@ -29,8 +29,14 @@ export function TagDot({ color, className }: { color: string; className?: string
 /** Name-column badges (SPEC §8.7): favourite star, pin, colour dot and the
  *  share badge placeholder (Step 18b fills `shared`). */
 export function ItemBadges({ item, className }: { item: Item; className?: string }) {
-  const { t } = useTranslation('meta')
+  // most rows carry no badge: bail out before any hook (one subscription less
+  // per visible Details row, Step 21)
   if (!item.favorite && !item.pinned && !item.tag && item.shared === 'none') return null
+  return <Badges item={item} className={className} />
+}
+
+function Badges({ item, className }: { item: Item; className?: string | undefined }) {
+  const { t } = useTranslation('meta')
   return (
     <span
       className={cn('inline-flex shrink-0 items-center gap-1', className)}

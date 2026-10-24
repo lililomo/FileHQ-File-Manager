@@ -12,15 +12,11 @@ import {
 import { useTranslation } from 'react-i18next'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
-import {
-  autoScrollOnDrag,
-  dropTargetProps,
-  endItemDrag,
-  startItemDrag,
-} from '@/features/file-ops/dnd'
+import { autoScrollOnDrag, dropTargetProps, startItemDrag } from '@/features/file-ops/dnd'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/ui'
 import type { Item, SortField } from './api'
+import { DetailsRow, type RowHandlers } from './DetailsRow'
 import {
   buildColumns,
   columnWidth,
@@ -132,7 +128,7 @@ export function DetailsView({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => rowHeight,
-    overscan: 12,
+    overscan: 10,
   })
   const gridId = useRef(`grid-${Math.random().toString(36).slice(2, 8)}`).current
   const active = Math.min(activeIndex, Math.max(0, rows.length - 1))
@@ -255,16 +251,96 @@ export function DetailsView({
 
   const widthOf = (id: ColumnId) =>
     dragWidth && dragWidth.id === id ? dragWidth.width : columnWidth(columns, id)
-  const colStyle = (id: ColumnId, meta: ColumnMeta | undefined): React.CSSProperties => {
-    const w = widthOf(id)
-    return {
-      width: w,
-      flex: meta?.grow ? `1 1 ${w}px` : `0 0 ${w}px`,
-      minWidth: MIN_WIDTH,
-      textAlign: meta?.align ?? 'left',
-      justifyContent: meta?.align === 'right' ? 'flex-end' : 'flex-start',
+  // stable between renders unless widths change, so memoised rows skip re-rendering
+  const colStyle = useCallback(
+    (id: ColumnId, meta: ColumnMeta | undefined): React.CSSProperties => {
+      const w = dragWidth && dragWidth.id === id ? dragWidth.width : columnWidth(columns, id)
+      return {
+        width: w,
+        flex: meta?.grow ? `1 1 ${w}px` : `0 0 ${w}px`,
+        minWidth: MIN_WIDTH,
+        textAlign: meta?.align ?? 'left',
+        justifyContent: meta?.align === 'right' ? 'flex-end' : 'flex-start',
+      }
+    },
+    [columns, dragWidth],
+  )
+
+  const checkLabel = useCallback((name: string) => t('selection.row', { name }), [t])
+
+  // row callbacks read the latest props through a ref; the object handed to the
+  // rows never changes (DetailsRow is memoised)
+  const latest = useRef({
+    selection,
+    items,
+    path,
+    dnd,
+    dragPaths,
+    slowClick,
+    onActiveIndexChange,
+    onSelectionChange,
+    onOpen,
+    dragLabel,
+  })
+  useLayoutEffect(() => {
+    latest.current = {
+      selection,
+      items,
+      path,
+      dnd,
+      dragPaths,
+      slowClick,
+      onActiveIndexChange,
+      onSelectionChange,
+      onOpen,
+      dragLabel,
     }
-  }
+  })
+  const rowHandlers = useMemo<RowHandlers>(
+    () => ({
+      click: (e, item, index, wasOnlySelected) => {
+        const l = latest.current
+        l.slowClick.onClick(e, item, wasOnlySelected)
+        l.onActiveIndexChange(index)
+        l.onSelectionChange(
+          clickSelect(l.selection, l.items, item.path, {
+            ctrl: e.ctrlKey || e.metaKey,
+            shift: e.shiftKey,
+          }),
+        )
+      },
+      doubleClick: (e, item, renaming) => {
+        const l = latest.current
+        l.slowClick.cancel()
+        // the note cell edits inline on double click (Step 10b); since
+        // 16a "open" launches the editor, never treat that as open
+        if (
+          e.target instanceof Element &&
+          e.target.closest('[data-testid="note-cell"], [data-testid="note-editor"]')
+        )
+          return
+        if (!renaming) l.onOpen(item)
+      },
+      check: (e, item, index) => {
+        const l = latest.current
+        e.stopPropagation()
+        l.onActiveIndexChange(index)
+        l.onSelectionChange(toggle(l.selection, item.path))
+      },
+      dragStart: (e, item) => {
+        const l = latest.current
+        const paths = l.dragPaths?.(item) ?? [item.path]
+        if (!paths.includes(item.path)) {
+          l.onSelectionChange(selectOnly(item.path))
+          startItemDrag(e, { paths: [item.path], from: l.path }, l.dragLabel(1))
+          return
+        }
+        startItemDrag(e, { paths, from: l.path }, l.dragLabel(paths.length))
+      },
+      dropOver: (dir) => setDropOver(dir),
+    }),
+    [],
+  )
 
   // --- column resize (pointer drag on the header edge) ---
   const startResize = (e: React.PointerEvent, id: ColumnId) => {
@@ -430,103 +506,30 @@ export function DetailsView({
       >
         {virtualItems.map((v) => {
           const item = rows[v.index]!
-          const isActive = v.index === active
           const selected = isSelected(selection, item.path)
-          const wasOnlySelected =
-            selected && selection.mode === 'explicit' && selection.paths.size === 1
-          const renaming = renamingPath === item.path
-          const isCut = cutPaths?.has(item.path) ?? false
-          const dropProps =
-            dnd && item.isDir && !renaming
-              ? dropTargetProps({ dir: item.path, onOver: setDropOver })
-              : {}
           return (
-            <div
+            <DetailsRow
               key={item.path}
-              id={`${gridId}-row-${v.index}`}
-              role="row"
-              aria-rowindex={v.index + 2}
-              aria-selected={selected}
-              data-index={v.index}
-              data-path={item.path}
-              data-cut={isCut || undefined}
-              data-drop-over={dropOver === item.path || undefined}
-              className={cn(
-                'absolute left-0 flex w-full cursor-default items-center border-b border-border/60 text-sm text-text select-none hover:bg-surface-2',
-                selected && 'bg-accent-subtle hover:bg-accent-subtle',
-                isActive && 'outline outline-1 -outline-offset-1 outline-accent/60',
-                isCut && 'opacity-50',
-                dropOver === item.path &&
-                  'bg-accent/15 outline outline-2 -outline-offset-2 outline-accent',
-              )}
-              style={{ height: rowHeight, transform: `translateY(${v.start}px)` }}
-              draggable={dnd && !renaming}
-              onDragStart={(e) => {
-                if (!dnd) return
-                const paths = dragPaths?.(item) ?? [item.path]
-                if (!paths.includes(item.path)) {
-                  onSelectionChange(selectOnly(item.path))
-                  startItemDrag(e, { paths: [item.path], from: path }, dragLabel(1))
-                  return
-                }
-                startItemDrag(e, { paths, from: path }, dragLabel(paths.length))
-              }}
-              onDragEnd={endItemDrag}
-              {...dropProps}
-              onClick={(e) => {
-                if (renaming) return
-                slowClick.onClick(e, item, wasOnlySelected)
-                onActiveIndexChange(v.index)
-                onSelectionChange(
-                  clickSelect(selection, items, item.path, {
-                    ctrl: e.ctrlKey || e.metaKey,
-                    shift: e.shiftKey,
-                  }),
-                )
-              }}
-              onDoubleClick={(e) => {
-                slowClick.cancel()
-                // the note cell edits inline on double click (Step 10b); since
-                // 16a "open" launches the editor, never treat that as open
-                if (
-                  e.target instanceof Element &&
-                  e.target.closest('[data-testid="note-cell"], [data-testid="note-editor"]')
-                )
-                  return
-                if (!renaming) onOpen(item)
-              }}
-            >
-              {!compact ? (
-                <div
-                  role="gridcell"
-                  className="flex shrink-0 items-center justify-center"
-                  style={{ width: CHECK_WIDTH }}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onActiveIndexChange(v.index)
-                    onSelectionChange(toggle(selection, item.path))
-                  }}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                >
-                  <Checkbox
-                    checked={selected}
-                    aria-label={t('selection.row', { name: item.name })}
-                    tabIndex={-1}
-                    className={cn(!selected && 'opacity-40 hover:opacity-100')}
-                  />
-                </div>
-              ) : null}
-              {visible.map((c) => (
-                <div
-                  key={c.id}
-                  role="gridcell"
-                  className="flex min-w-0 items-center truncate px-3"
-                  style={colStyle(c.id, c.meta)}
-                >
-                  {c.id === 'name' && renaming && renderRename ? renderRename(item) : c.cell(item)}
-                </div>
-              ))}
-            </div>
+              item={item}
+              index={v.index}
+              start={v.start}
+              height={rowHeight}
+              rowId={`${gridId}-row-${v.index}`}
+              selected={selected}
+              onlySelected={selected && selection.mode === 'explicit' && selection.paths.size === 1}
+              active={v.index === active}
+              cut={cutPaths?.has(item.path) ?? false}
+              dropOver={dropOver === item.path}
+              renaming={renamingPath === item.path}
+              renderRename={renamingPath === item.path ? renderRename : undefined}
+              columns={visible}
+              colStyle={colStyle}
+              checkLabel={checkLabel}
+              compact={compact}
+              dnd={dnd}
+              checkWidth={CHECK_WIDTH}
+              handlers={rowHandlers}
+            />
           )
         })}
       </div>
