@@ -2235,7 +2235,13 @@ File itu adalah kontrak; ringkasan (Step 22 menggantikan draf sebelumnya):
   `proxy_buffering off`, `proxy_max_temp_file_size 0`, `proxy_cache off` (menimpa `proxy_cache cache_one` global
   aaPanel), tanpa `add_header`, baris `access_log` opsional (mematikan log statistik `site_total` yang memuat Cookie).
   Timeout **tidak** di PART A (direktif ganda ditolak `nginx -t`) — diisi di kolom timeout URL proxy.
-- **PART B** — server block: `location = /readyz` dan `= /metrics` → 404; `if ($uri ~* "^/(bin|backend|web|deploy|docs|migrations|proxy_cache_dir)(/|$)")`,
+- **PART B** — server block: `set_real_ip_from` untuk 22 rentang resmi Cloudflare (`www.cloudflare.com/ips-v4|ips-v6`,
+  disalin 28 Okt 2026) + `real_ip_header CF-Connecting-IP` — domain `file.kppbwi.app` **proxied Cloudflare** sejak Okt
+  2026, sehingga tanpa ini aplikasi melihat semua pengunjung sebagai IP Cloudflare dan limiter per-IP (§10.5) menghitung
+  semua orang bersama; header hanya dipercaya dari rentang itu (hit langsung ke IP origin tidak bisa memalsukannya),
+  tidak berpengaruh bila DNS dikembalikan ke "DNS only"; `nginx_snippet_test.sh` memastikan header dari peer non-Cloudflare
+  diabaikan dan memperingatkan bila daftar rentang berbeda dari yang dipublikasikan Cloudflare.
+  Lalu `location = /readyz` dan `= /metrics` → 404; `if ($uri ~* "^/(bin|backend|web|deploy|docs|migrations|proxy_cache_dir)(/|$)")`,
   `if ($uri ~* "^/(Makefile|NOTICE|README\.md|PRD\.md|SPEC\.md|PROMPT\.md|PROGRESS\.md|promp-master\.md|go\.mod|go\.sum)$")`
   dan `if ($uri ~ "/\.(?!well-known(/|$))")` → `return 404`; `location ^~ /s/` dan `^~ /api/v1/public/` dengan
   `access_log off` + pengaturan proxy lengkap (token link publik tidak tercatat, review E m-14).

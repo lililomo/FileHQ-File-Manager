@@ -151,6 +151,19 @@ sleep 0.3
 check "share token absent from the Nginx access log" bash -c "! grep -q '$token' '$T/logs/site.log'"
 check "other requests still logged" grep -q 'GET /healthz' "$T/logs/site.log"
 
+# Cloudflare real IP: CF-Connecting-IP is honoured only when the peer is a
+# Cloudflare range; from loopback (a direct hit on the origin) it is ignored.
+spoof=203.0.113.9
+curl -s -o /dev/null -H "CF-Connecting-IP: $spoof" "$U/healthz"
+sleep 0.3
+check "real_ip_header CF-Connecting-IP present in PART B" grep -q '^real_ip_header CF-Connecting-IP;' <<<"$PART_B"
+check "CF-Connecting-IP from a non-Cloudflare peer is ignored" bash -c "! grep -q '^$spoof ' '$T/logs/site.log'"
+live=$({ curl -s --max-time 5 https://www.cloudflare.com/ips-v4; echo; curl -s --max-time 5 https://www.cloudflare.com/ips-v6; echo; } 2>/dev/null | sed '/^$/d' | sort || true)
+if [[ -n $live ]]; then
+	ours=$(grep -oE '^set_real_ip_from [^;]+' <<<"$PART_B" | awk '{print $2}' | sort)
+	[[ $live == "$ours" ]] || echo "WARN: Cloudflare ranges in PART B differ from www.cloudflare.com/ips-v4|v6 — refresh them"
+fi
+
 # Upload body size: 60 MiB passes Nginx (the app answers, without a session
 # not 2xx), 70 MiB is refused by Nginx with 413 (client_max_body_size 64m).
 code60=$(head -c 62914560 /dev/zero | curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/offset+octet-stream' --data-binary @- "$U/api/v1/upload/tus/x" || true)

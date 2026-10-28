@@ -38,13 +38,16 @@ Penanda:
 | systemd | unit `filemanager` belum ada | `/etc/systemd/system/filemanager.service` (enable + start) |
 | Port | 8080 bebas; UFW mengizinkan 20, 80, 443 | `127.0.0.1:8080` (loopback); **UFW/firewall aaPanel tidak disentuh** |
 | aaPanel | belum ada site `file.kppbwi.app` (domain saat ini dijawab site default Nginx) | site tipe **Reverse Proxy** → `http://127.0.0.1:8080`, SSL Let's Encrypt, Force HTTPS |
-| DNS | `file.kppbwi.app A <SERVER_IP>` = IP server | tetap |
+| DNS | `file.kppbwi.app` **proxied Cloudflare** (28 Okt 2026: `dig` menjawab `104.21.74.172`/`172.67.160.85`; IP server `<SERVER_IP>` menjadi origin — sebelumnya record A langsung ke server) | tetap; PART B membaca `CF-Connecting-IP` hanya dari rentang Cloudflare (lihat 7.11) |
 
 `install.sh` **tidak pernah** menyentuh UFW, firewall aaPanel, Nginx, atau konfigurasi aaPanel.
 
 ## 2. Prasyarat
 
-- DNS: record **A** `file.kppbwi.app` → IP server (sudah: `<SERVER_IP>`, terverifikasi dengan `dig`).
+- DNS: `file.kppbwi.app` menunjuk ke server — langsung (record A `<SERVER_IP>`) **atau** lewat proxy Cloudflare
+  (kondisi sejak Okt 2026, terverifikasi 28 Okt 2026: HTTP-01 Let's Encrypt, upload, SSE dan Range tetap berjalan
+  lewat Cloudflare; lihat 7.11). Di Cloudflare pakai mode SSL **Full (strict)** setelah sertifikat origin terpasang;
+  "Always Use HTTPS" tidak diperlukan (Force HTTPS aaPanel sudah mengalihkan).
 - Port 80 dan 443 terbuka di UFW (sudah, terverifikasi `ufw status`). Port 8080 **tidak** dibuka.
 - Ubuntu 22.04/24.04 (server: 24.04.5). RAM: build di server butuh ± 1,5 GB+; server kini 5,9 GB + swap 2,8 GB
   (cukup). Server yang lebih kecil: build di CI lalu `--binary`, atau swap 2 GB (install.sh menawarkan, default tidak).
@@ -156,8 +159,9 @@ Klik-per-klik (nama menu/tombol **perlu verifikasi**):
    Harus terlihat `proxy_pass http://127.0.0.1:8080`, `proxy_request_buffering off`, `proxy_buffering off`,
    `proxy_cache off`, `client_max_body_size 64m`, `proxy_read_timeout 3600s`, `location = /readyz`.
 
-Alternatif otomatis (opsional, **perlu verifikasi** pada versi panel lain): `deploy/aapanel/site.py` memanggil API
-internal panel yang sama dengan UI (pola `proxy.kppbwi.app/deploy/aapanel/site.py`):
+Alternatif otomatis (**terverifikasi 28 Okt 2026 di aaPanel 8.0.7** — keempat perintah inilah yang dipakai saat smoke
+test; **perlu verifikasi** pada versi panel lain): `deploy/aapanel/site.py` memanggil API internal panel yang sama
+dengan UI (pola `proxy.kppbwi.app/deploy/aapanel/site.py`):
 
 ```bash
 P=/www/server/panel/pyenv/bin/python3
@@ -223,20 +227,19 @@ stat -c '%U:%G %a %n' /www/storage/FileManager /www/wwwroot/file.kppbwi.app/.env
 Dari luar (laptop):
 
 ```bash
-curl -sI https://file.kppbwi.app/healthz             # 200 + strict-transport-security
-curl -sI http://file.kppbwi.app/healthz              # 301 → https
-curl -sI https://file.kppbwi.app/.env                # 404
-curl -sI https://file.kppbwi.app/bin/filemanager     # 404
-curl -sI https://file.kppbwi.app/backend/go.mod      # 404
-curl -sI https://file.kppbwi.app/readyz              # 404
+H() { curl -s -D - -o /dev/null "$@"; }               # GET + header (HEAD dijawab 405 oleh /healthz)
+H https://file.kppbwi.app/healthz | grep -iE '^HTTP|strict-transport'   # 200 + strict-transport-security
+H http://file.kppbwi.app/healthz  | grep -iE '^HTTP|^location'          # 301 → https
+for p in /.env /bin/filemanager /backend/go.mod /readyz /metrics; do
+  printf '%-18s %s\n' "$p" "$(curl -s -o /dev/null -w '%{http_code}' https://file.kppbwi.app$p)"; done   # semua 404
 # ACME: file uji di document root (varian A)
 sudo install -d -m 0755 /www/wwwroot/file.kppbwi.app/.well-known/acme-challenge
 echo fm-acme-ok | sudo tee /www/wwwroot/file.kppbwi.app/.well-known/acme-challenge/fm-test >/dev/null
 curl -s http://file.kppbwi.app/.well-known/acme-challenge/fm-test   # fm-acme-ok (dari Nginx, bukan aplikasi)
 sudo rm /www/wwwroot/file.kppbwi.app/.well-known/acme-challenge/fm-test
-# Range pada aset statis (nama dari halaman utama)
+# Range pada aset statis — langsung ke origin (lewat Cloudflare aset yang di-cache dijawab 200 penuh, lihat 7.11)
 A=$(curl -s https://file.kppbwi.app/ | grep -o '/assets/[^"]*\.js' | head -1)
-curl -s -o /dev/null -w '%{http_code}\n' -r 0-99 "https://file.kppbwi.app$A"   # 206
+curl -s -o /dev/null -w '%{http_code}\n' -r 0-99 --resolve file.kppbwi.app:443:<SERVER_IP> "https://file.kppbwi.app$A"   # 206
 ```
 
 Di browser:
@@ -272,6 +275,19 @@ Di browser:
 9. Gzip: aplikasi sudah mengompresi JSON/HTML/CSS/JS ≥ 1 KB (Step 21); gzip global aaPanel boleh dibiarkan.
    Brotli tidak tersedia (modul tidak ada di build Nginx aaPanel, terverifikasi `nginx -V`).
 10. `METRICS_ADDR=127.0.0.1:9090` boleh diisi di `.env` untuk Prometheus lokal; tidak pernah di-proxy.
+11. **Cloudflare di depan origin** (DNS proxied sejak Okt 2026):
+    - Alamat pengunjung: Cloudflare mengirim `CF-Connecting-IP`; PART B memuat `set_real_ip_from` 22 rentang resmi
+      Cloudflare + `real_ip_header CF-Connecting-IP`, sehingga `$remote_addr`, `X-Real-IP`, `X-Forwarded-For`, log
+      Nginx dan limiter per-IP aplikasi melihat IP pengunjung. Hit langsung ke IP origin dengan header palsu
+      diabaikan (peer bukan rentang Cloudflare). Daftar rentang: `www.cloudflare.com/ips-v4` dan `/ips-v6` — bila
+      berubah, perbarui PART B (test snippet memperingatkan).
+    - SSL: sertifikat Let's Encrypt origin diterbitkan lewat HTTP-01 **melalui** Cloudflare (terverifikasi 28 Okt
+      2026); di Cloudflare pilih mode **Full (strict)**. Perpanjangan otomatis aaPanel memakai jalur yang sama.
+    - Batas Cloudflare (paket gratis): body per request ≤ 100 MB (chunk tus 16 MB aman), origin harus mulai
+      menjawab ≤ 100 s (SSE mengirim `: ping` tiap 25 s; task berjalan asinkron). Range pada **aset statis** yang
+      di-cache Cloudflare dijawab `200` penuh (objek cache ter-gzip; bukan masalah fungsi); Range pada file user
+      (`Cache-Control: private`, tidak di-cache) diteruskan ke origin → `206`.
+    - Bila DNS dikembalikan ke "DNS only", tidak ada yang perlu diubah.
 
 ## 8. Update & rollback
 
@@ -349,12 +365,35 @@ aaPanel: hapus site Reverse Proxy **tanpa** opsi hapus direktori; hapus sertifik
 
 ## 12. Hasil smoke test
 
-### 12.1 Di server — **MENUNGGU persetujuan pemilik**
+### 12.1 Di server — 28 Okt 2026 (smoke test nyata, Step 22-3, disetujui pemilik)
 
-Belum dijalankan: install nyata, site aaPanel, SSL, dan verifikasi bagian 6 mengubah state server (user, owner
-storage, systemd, aaPanel). Setelah disetujui, catat di sini: output `check-deps`, `systemd-analyze security
-filemanager`, header `curl -I https://file.kppbwi.app/healthz`, hasil upload 100 MB / SSE 2 menit / Range 206, dan
-perpanjangan SSL.
+Urutan: pra-cek → `install.sh` 2× → verifikasi lokal → `site.py create/configure` → cek ACME → `site.py ssl/force-https`
+→ curl publik → uji browser (Playwright Chromium lewat Cloudflare) → hapus `ADMIN_INITIAL_PASSWORD` → `update.sh` nyata +
+rollback nyata. Semua perintah dijalankan dari server ini; "lewat Cloudflare" = ke `https://file.kppbwi.app` lewat
+DNS publik, "langsung ke origin" = `--resolve file.kppbwi.app:443:<SERVER_IP>`.
+
+| Pemeriksaan | Hasil |
+| --- | --- |
+| Pra-cek (hanya membaca) | git bersih; `install.sh --dry-run` exit 0; storage `www:www 755`, `.system root:root`; 8080 bebas; `.env` disalin ke berkas root-only; **DNS ternyata proxied Cloudflare** (bukan A langsung) → PART B ditambah real IP (7.11) sebelum site dibuat |
+| `install.sh --yes` run 1 (14:35 WIB) | user `filemanager` (uid 993, nologin) dibuat; `.env` dilengkapi `APP_SECRET` (salinan `.env.bak-20261028-143551` 0600); storage → `filemanager:filemanager 0750`, `.system` chown -R; binary HEAD `7597a08` dipakai tanpa build ulang; `check-deps` sebagai `filemanager`: ffmpeg/ffprobe/vipsthumbnail/pdftoppm/7z/rg **ADA**; `migrate up` 15 migrasi; unit dipasang + start; `/readyz` 200 ≤ 2 s |
+| `install.sh --yes` run 2 | `.env up to date`, `unit up to date`, `already running, nothing changed` — `MainPID` dan `ExecMainStartTimestamp` tidak berubah |
+| Verifikasi lokal | `active (running)` sebagai `filemanager`, RSS 25 MB idle; `ss`: hanya `127.0.0.1:8080`; 8080 tidak di UFW; `systemd-analyze security filemanager` = **1.4 OK** (sama dengan offline); `/www/storage/FileManager` 750, `.env` 600 milik `filemanager`; journal tanpa WARN/ERROR |
+| aaPanel `site.py create` + `configure` | site id 2 `project_type=proxy`; timeout 10/3600/3600 "Set successfully"; PART A dan PART B tersimpan; `nginx -t` OK; vhost berisi `proxy_pass http://127.0.0.1:8080`, `proxy_request_buffering off`, `proxy_buffering off`, `proxy_cache off`, `client_max_body_size 64m`, `proxy_read_timeout 3600s`, `location = /readyz`, `set_real_ip_from` + `real_ip_header CF-Connecting-IP`; aaPanel membuat `proxy_cache_dir` (www, di-gitignore), tidak ada `index.html`/`.htaccess`/`.user.ini` |
+| ACME sebelum SSL | `/.well-known/acme-challenge/fm-test` dijawab Nginx dari document root — langsung ke origin **dan** lewat Cloudflare |
+| `site.py ssl` + `force-https` | Let's Encrypt `CN=file.kppbwi.app` (28 Okt 2026 → 26 Jan 2027) lewat HTTP-01 **melalui Cloudflare**, "Certificate saved"; Force HTTPS "Setup successfully"; `openssl s_client` ke origin: `Verify return code: 0 (ok)` |
+| curl publik lewat Cloudflare | `GET /healthz` 200 + `strict-transport-security` (dua header: aplikasi `max-age=31536000; includeSubDomains` dan aaPanel `max-age=31536000`); `http://…/healthz` → 301 `https://`; `/.env` `/bin/filemanager` `/backend/go.mod` `/readyz` `/metrics` `/PROGRESS.md` `/.git/config` → 404; `HEAD /healthz` → 405 (aplikasi hanya GET — perintah di bagian 6 disesuaikan) |
+| curl langsung ke origin | 301 http→https; Range `/assets/*.js` `0-99` → **206** (lewat Cloudflare 200 penuh: objek cache ter-gzip, 7.11) |
+| Browser (Chromium headless, locale id-ID, lewat Cloudflare) | `/login` 200 `server: cloudflare`; login `admin` dengan password awal → dipaksa ke `/change-password` → ganti → `/files`, menu user "admin"; logout + login ulang dengan password baru OK; `/auth/me` 200; log aplikasi mencatat **IP pengunjung asli** (bukan IP Cloudflare) |
+| Upload 100 MB (tus, chunk 16 MB) | `done` dalam 21 s (≈ 4,8 MB/s dari server sendiri lewat Cloudflare), tanpa 413; sha256 via `files/checksum` identik dengan berkas sumber; jpg/mp4/pdf ikut `done` |
+| Thumbnail di bawah unit systemd (filter syscall) | jpg (vips), mp4 (ffmpeg), pdf (pdftoppm) → 200 `image/webp` pada percobaan pertama |
+| Range file user lewat Cloudflare | unduhan 100 MB `bytes=52428800-52428899` → **206**, `content-range` benar, isi identik, `cf-cache-status: DYNAMIC`; media mp4 `bytes=1000-1999` → 206 `video/mp4`, `accept-ranges: bytes` |
+| SSE + task panjang | `/api/v1/events` (fetch Node, cookie sesi) terbuka **547 s** tanpa putus, 252 chunk, gap maksimum 17,3 s, 21 `: ping`; event: `task.created` 2, `task.progress` 222, `task.done` 2, `file.changed` 2, `quota.updated` 2, `notification` 2; task compress folder 2,5 GB acak: zip `max` 91 s, 7z `max` 456 s — keduanya `done`, `task-progress` di panel UI berubah tiap sampel 5 s |
+| Admin → Dashboard | 200, status dependency tampil (ffmpeg, vips, pdftoppm, 7z, rg) |
+| Console browser | 8 error: 6 dari skrip **Cloudflare Insights beacon** (`static.cloudflareinsights.com/beacon.min.js` + inline) yang disuntikkan Cloudflare ke HTML dan **diblokir CSP** aplikasi (tidak memengaruhi fungsi; matikan "Web Analytics"/RUM untuk host ini di dashboard Cloudflare — nama menu perlu verifikasi); 2 × `401` = `/auth/me` sebelum login (normal) |
+| Setelah uji | `ADMIN_INITIAL_PASSWORD` dihapus dari `.env` (tetap `filemanager` 0600), `systemctl restart` → ready 3 s tanpa WARN/ERROR; 7 item uji (7,97 GB) dihapus permanen lewat API |
+| `update.sh --binary` (binary sama) | backup `app-20261028-145807-pre-update.db`; `schema 15 → 15`; **UPDATE OK in 2 s**; downtime `/readyz` ≈ 0,8 s (polling 250 ms) |
+| `update.sh` dengan binary yang `serve`-nya tidak pernah siap | tunggu 30 s → `ROLLBACK` → **ROLLBACK OK in 32 s**, downtime ≈ 30,8 s; service kembali `7597a08`; binary gagal disimpan `bin/filemanager.failed` (dihapus setelah uji), `bin/filemanager.prev` tetap |
+| Belum diuji | perpanjangan SSL otomatis (cron aaPanel; jatuh tempo Jan 2027, **perlu verifikasi** saat tiba — jalur HTTP-01 lewat Cloudflare sudah terbukti); CI `deploy-scripts`/`install-smoke`/`docker` belum pernah berjalan (tidak ada remote git); `hidepid=2` (7.8) tidak diterapkan |
 
 ### 12.2 Tanpa mengubah server (25 Okt 2026)
 
