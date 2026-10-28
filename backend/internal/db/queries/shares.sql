@@ -46,6 +46,17 @@ WHERE owner_user_id = sqlc.arg('owner_user_id')
   AND (path = sqlc.arg('path') OR substr(path, 1, sqlc.arg('prefix_len')) = sqlc.arg('prefix'))
 ORDER BY path;
 
+-- Shares on the scan root, any of its ancestors (ancestors = root and every
+-- parent folder) or anything below it (prefix = root || '/', or '/' for the
+-- user root). Used by the duplicate finder to flag shared files (Step 23c).
+-- The slice stays last: sqlc numbers the args, and an expanded slice before
+-- ?N would shift them.
+-- name: ListSharePathsRelated :many
+SELECT DISTINCT path FROM shares
+WHERE owner_user_id = sqlc.arg('owner_user_id')
+  AND (substr(path, 1, sqlc.arg('prefix_len')) = sqlc.arg('prefix') OR path IN (sqlc.slice('ancestors')))
+ORDER BY path;
+
 -- name: UpdateShare :one
 UPDATE shares
 SET slug = sqlc.arg('slug'),

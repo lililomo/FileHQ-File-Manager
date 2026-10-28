@@ -210,6 +210,7 @@ func newAuthEnv(t testing.TB, extraEnv ...string) *authEnv {
 		}), Quota: env.quota, OpenJail: env.trash.OpenJail, ErrorCode: files.TaskErrorCode, NotifyMinDuration: &zero, ItemDelay: itemDelay})
 	files.RegisterTasks(env.tasks, env.files)
 	env.files.TrashHook = env.share
+	env.files.Shares = env.share
 	// Remote downloads (Step 13): loopback only when a test asks for it
 	// (httptest servers); in-task retries without backoff.
 	remoteGuard := netguard.New(netguard.Policy{AllowLoopback: remoteLoopback})

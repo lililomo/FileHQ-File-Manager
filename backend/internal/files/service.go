@@ -81,6 +81,11 @@ type Service struct {
 	// TrashHook observes delete-to-trash and restore (Step 18a: shares are
 	// disabled with reason item_trashed and offered for reactivation).
 	TrashHook TrashHook
+	// Shares flags shared files in duplicate reports (Step 23c); nil = none.
+	Shares ShareLookup
+	// DuplicateDeadline overrides the duplicate scan deadline (tests); 0 =
+	// DuplicateDeadline.
+	DuplicateDeadline time.Duration
 }
 
 // New builds a Service.

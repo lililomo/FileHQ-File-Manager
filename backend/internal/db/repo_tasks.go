@@ -34,6 +34,10 @@ type TaskRepo interface {
 	InsertTaskLog(ctx context.Context, p sqlc.InsertTaskLogParams) error
 	ListTaskLogs(ctx context.Context, taskID string, afterID, limit int64) ([]sqlc.TaskLog, error)
 	CountTaskLogs(ctx context.Context, taskID string) (int64, error)
+	// LatestUserTaskOfTypeState is the newest task of one type and state of
+	// a user (duplicate finder result, Step 23c); sql.ErrNoRows when none.
+	LatestUserTaskOfTypeState(ctx context.Context, userID, typ, state string) (sqlc.Task, error)
+	ListUserActiveTasksOfType(ctx context.Context, userID, typ string) ([]sqlc.Task, error)
 }
 
 // NotificationRepo persists in-app notifications (SPEC §4.2, §8.16).
@@ -163,4 +167,12 @@ func (s *Store) DeleteNotification(ctx context.Context, userID, id string) (int6
 
 func (s *Store) PruneNotifications(ctx context.Context, userID string, keep int64) (int64, error) {
 	return s.w.PruneNotifications(ctx, sqlc.PruneNotificationsParams{UserID: userID, Keep: keep})
+}
+
+func (s *Store) LatestUserTaskOfTypeState(ctx context.Context, userID, typ, state string) (sqlc.Task, error) {
+	return s.r.LatestUserTaskOfTypeState(ctx, sqlc.LatestUserTaskOfTypeStateParams{UserID: &userID, Type: typ, State: state})
+}
+
+func (s *Store) ListUserActiveTasksOfType(ctx context.Context, userID, typ string) ([]sqlc.Task, error) {
+	return s.r.ListUserActiveTasksOfType(ctx, sqlc.ListUserActiveTasksOfTypeParams{UserID: &userID, Type: typ})
 }

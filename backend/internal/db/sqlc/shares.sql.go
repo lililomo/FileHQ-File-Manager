@@ -692,6 +692,61 @@ func (q *Queries) ListShareAccessLogs(ctx context.Context, arg ListShareAccessLo
 	return items, nil
 }
 
+const listSharePathsRelated = `-- name: ListSharePathsRelated :many
+SELECT DISTINCT path FROM shares
+WHERE owner_user_id = ?1
+  AND (substr(path, 1, ?2) = ?3 OR path IN (/*SLICE:ancestors*/?))
+ORDER BY path
+`
+
+type ListSharePathsRelatedParams struct {
+	OwnerUserID string   `json:"owner_user_id"`
+	PrefixLen   int64    `json:"prefix_len"`
+	Prefix      string   `json:"prefix"`
+	Ancestors   []string `json:"ancestors"`
+}
+
+// Shares on the scan root, any of its ancestors (ancestors = root and every
+// parent folder) or anything below it (prefix = root || '/', or '/' for the
+// user root). Used by the duplicate finder to flag shared files (Step 23c).
+// The slice stays last: sqlc numbers the args, and an expanded slice before
+// ?N would shift them.
+func (q *Queries) ListSharePathsRelated(ctx context.Context, arg ListSharePathsRelatedParams) ([]string, error) {
+	query := listSharePathsRelated
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.OwnerUserID)
+	queryParams = append(queryParams, arg.PrefixLen)
+	queryParams = append(queryParams, arg.Prefix)
+	if len(arg.Ancestors) > 0 {
+		for _, v := range arg.Ancestors {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ancestors*/?", strings.Repeat(",?", len(arg.Ancestors))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ancestors*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		items = append(items, path)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listShareRecipients = `-- name: ListShareRecipients :many
 SELECT sr.share_id, sr.recipient_user_id, sr.permission, sr.note, sr.created_at,
        u.username, u.display_name, u.status AS user_status

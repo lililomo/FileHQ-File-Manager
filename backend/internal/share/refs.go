@@ -76,7 +76,10 @@ func (s *Service) Restored(ctx context.Context, userID, path string) []string {
 	return ids
 }
 
-var _ files.TrashHook = (*Service)(nil)
+var (
+	_ files.TrashHook   = (*Service)(nil)
+	_ files.ShareLookup = (*Service)(nil)
+)
 
 // OpenJailFunc opens the owner's jail for the broken-link check.
 type OpenJailFunc func(ctx context.Context, userID string) (*fsjail.Jail, func(), error)

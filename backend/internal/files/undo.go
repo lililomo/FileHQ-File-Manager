@@ -32,6 +32,10 @@ type UndoInfo struct {
 	Trash   []UndoTrashItem `json:"trash,omitempty"`   // restore
 	BatchID string          `json:"batchId,omitempty"`
 	Created []string        `json:"created,omitempty"` // delete_created (copy, duplicate, symlink)
+	// Symlinks (restore after "replace with symlink", Step 23c) maps each
+	// restored path to the link target written there; the link is removed
+	// before the original comes back.
+	Symlinks map[string]string `json:"symlinks,omitempty"`
 }
 
 type undoEntry struct {

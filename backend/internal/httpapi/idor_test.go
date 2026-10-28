@@ -74,6 +74,7 @@ var idorRoutes = map[string]idorKind{
 	"POST /api/v1/me/totp/setup": idorSelf, "POST /api/v1/me/totp/enable": idorSelf, "POST /api/v1/me/totp/disable": idorSelf,
 	"POST /api/v1/me/totp/recovery-codes": idorSelf,
 	"GET /api/v1/me/storage-analysis":     idorSelf, "POST /api/v1/me/storage-analysis": idorSelf,
+	"GET /api/v1/me/duplicates": idorSelf, "POST /api/v1/me/duplicates": idorSelf, "POST /api/v1/me/duplicates/symlink": idorSelf,
 	"GET /api/v1/meta/favorites": idorSelf, "PUT /api/v1/meta/favorites": idorSelf, "DELETE /api/v1/meta/favorites": idorSelf,
 	"PUT /api/v1/meta/notes": idorSelf, "DELETE /api/v1/meta/notes": idorSelf, "GET /api/v1/meta/pins": idorSelf,
 	"PUT /api/v1/meta/pins": idorSelf, "DELETE /api/v1/meta/pins": idorSelf, "GET /api/v1/meta/tagged": idorSelf,

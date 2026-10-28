@@ -18,6 +18,9 @@ type ShareRepo interface {
 	ListSharesByOwnerPath(ctx context.Context, ownerID, path string) ([]sqlc.Share, error)
 	ListSharesInDir(ctx context.Context, ownerID, dir string) ([]sqlc.ListSharesInDirRow, error)
 	ListSharesUnderPath(ctx context.Context, ownerID, path string) ([]sqlc.Share, error)
+	// ListSharePathsRelated returns the distinct paths of the owner's shares
+	// on root, an ancestor of root, or below root (Step 23c).
+	ListSharePathsRelated(ctx context.Context, ownerID, root string) ([]string, error)
 	UpdateShare(ctx context.Context, p sqlc.UpdateShareParams) (sqlc.Share, error)
 	SetShareToken(ctx context.Context, p sqlc.SetShareTokenParams) (int64, error)
 	SetShareDisabled(ctx context.Context, p sqlc.SetShareDisabledParams) (int64, error)
@@ -107,6 +110,21 @@ func (s *Store) ListSharesByOwner(ctx context.Context, p sqlc.ListSharesByOwnerP
 
 func (s *Store) ListSharesByOwnerPath(ctx context.Context, ownerID, path string) ([]sqlc.Share, error) {
 	return s.r.ListSharesByOwnerPath(ctx, sqlc.ListSharesByOwnerPathParams{OwnerUserID: ownerID, Path: path})
+}
+
+func (s *Store) ListSharePathsRelated(ctx context.Context, ownerID, root string) ([]string, error) {
+	ancestors := []string{"/"}
+	prefix := "/"
+	if root != "/" && root != "" {
+		prefix = root + "/"
+		for i := 1; i < len(root); i++ {
+			if root[i] == '/' {
+				ancestors = append(ancestors, root[:i])
+			}
+		}
+		ancestors = append(ancestors, root)
+	}
+	return s.r.ListSharePathsRelated(ctx, sqlc.ListSharePathsRelatedParams{OwnerUserID: ownerID, Ancestors: ancestors, PrefixLen: int64(len(prefix)), Prefix: prefix})
 }
 
 func (s *Store) ListSharesInDir(ctx context.Context, ownerID, dir string) ([]sqlc.ListSharesInDirRow, error) {

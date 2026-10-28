@@ -272,6 +272,49 @@ func (q *Queries) LatestTaskOfType(ctx context.Context, type_ string) (Task, err
 	return i, err
 }
 
+const latestUserTaskOfTypeState = `-- name: LatestUserTaskOfTypeState :one
+SELECT id, user_id, type, state, title, payload_json, result_json, error_code, error_message, progress_done, progress_total, progress_unit, eta_seconds, speed_bps, cancel_requested, locks_json, hidden, retry_of, created_at, started_at, finished_at, updated_at FROM tasks
+WHERE user_id = ?1 AND type = ?2 AND state = ?3
+ORDER BY finished_at DESC, created_at DESC, id DESC
+LIMIT 1
+`
+
+type LatestUserTaskOfTypeStateParams struct {
+	UserID *string `json:"user_id"`
+	Type   string  `json:"type"`
+	State  string  `json:"state"`
+}
+
+func (q *Queries) LatestUserTaskOfTypeState(ctx context.Context, arg LatestUserTaskOfTypeStateParams) (Task, error) {
+	row := q.db.QueryRowContext(ctx, latestUserTaskOfTypeState, arg.UserID, arg.Type, arg.State)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Type,
+		&i.State,
+		&i.Title,
+		&i.PayloadJson,
+		&i.ResultJson,
+		&i.ErrorCode,
+		&i.ErrorMessage,
+		&i.ProgressDone,
+		&i.ProgressTotal,
+		&i.ProgressUnit,
+		&i.EtaSeconds,
+		&i.SpeedBps,
+		&i.CancelRequested,
+		&i.LocksJson,
+		&i.Hidden,
+		&i.RetryOf,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listActiveTasksOfType = `-- name: ListActiveTasksOfType :many
 SELECT id, user_id, type, state, title, payload_json, result_json, error_code, error_message, progress_done, progress_total, progress_unit, eta_seconds, speed_bps, cancel_requested, locks_json, hidden, retry_of, created_at, started_at, finished_at, updated_at FROM tasks WHERE type = ?1 AND state IN ('queued', 'running') ORDER BY created_at, id
 `
@@ -446,6 +489,63 @@ SELECT id, user_id, type, state, title, payload_json, result_json, error_code, e
 
 func (q *Queries) ListTasksByState(ctx context.Context, state string) ([]Task, error) {
 	rows, err := q.db.QueryContext(ctx, listTasksByState, state)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Task{}
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Type,
+			&i.State,
+			&i.Title,
+			&i.PayloadJson,
+			&i.ResultJson,
+			&i.ErrorCode,
+			&i.ErrorMessage,
+			&i.ProgressDone,
+			&i.ProgressTotal,
+			&i.ProgressUnit,
+			&i.EtaSeconds,
+			&i.SpeedBps,
+			&i.CancelRequested,
+			&i.LocksJson,
+			&i.Hidden,
+			&i.RetryOf,
+			&i.CreatedAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserActiveTasksOfType = `-- name: ListUserActiveTasksOfType :many
+SELECT id, user_id, type, state, title, payload_json, result_json, error_code, error_message, progress_done, progress_total, progress_unit, eta_seconds, speed_bps, cancel_requested, locks_json, hidden, retry_of, created_at, started_at, finished_at, updated_at FROM tasks
+WHERE user_id = ?1 AND type = ?2 AND state IN ('queued', 'running')
+ORDER BY created_at, id
+`
+
+type ListUserActiveTasksOfTypeParams struct {
+	UserID *string `json:"user_id"`
+	Type   string  `json:"type"`
+}
+
+func (q *Queries) ListUserActiveTasksOfType(ctx context.Context, arg ListUserActiveTasksOfTypeParams) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, listUserActiveTasksOfType, arg.UserID, arg.Type)
 	if err != nil {
 		return nil, err
 	}

@@ -261,6 +261,9 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		{http.MethodDelete, "/api/v1/me/activity"},
 		{http.MethodGet, "/api/v1/me/storage-analysis"},
 		{http.MethodPost, "/api/v1/me/storage-analysis"},
+		{http.MethodGet, "/api/v1/me/duplicates"},
+		{http.MethodPost, "/api/v1/me/duplicates"},
+		{http.MethodPost, "/api/v1/me/duplicates/symlink"},
 		// Step 11
 		{http.MethodGet, "/api/v1/tasks"},
 		{http.MethodGet, "/api/v1/tasks/x"},
@@ -400,6 +403,7 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		"GET /api/v1/me/recent": true, "POST /api/v1/me/recent": true,
 		"GET /api/v1/me/activity": true, "DELETE /api/v1/me/activity": true,
 		"GET /api/v1/me/storage-analysis": true, "POST /api/v1/me/storage-analysis": true,
+		"GET /api/v1/me/duplicates": true, "POST /api/v1/me/duplicates": true, "POST /api/v1/me/duplicates/symlink": true,
 		// Step 11: tasks, SSE, notifications (all gated above)
 		"GET /api/v1/tasks": true, "GET /api/v1/tasks/{id}": true, "DELETE /api/v1/tasks/{id}": true,
 		"GET /api/v1/tasks/{id}/logs": true, "POST /api/v1/tasks/{id}/cancel": true, "POST /api/v1/tasks/{id}/retry": true,

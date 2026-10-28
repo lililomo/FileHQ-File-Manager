@@ -106,3 +106,14 @@ SELECT * FROM tasks WHERE type = sqlc.arg('type') AND state IN ('queued', 'runni
 
 -- name: LatestTaskOfType :one
 SELECT * FROM tasks WHERE type = sqlc.arg('type') ORDER BY created_at DESC, id DESC LIMIT 1;
+
+-- name: LatestUserTaskOfTypeState :one
+SELECT * FROM tasks
+WHERE user_id = sqlc.arg('user_id') AND type = sqlc.arg('type') AND state = sqlc.arg('state')
+ORDER BY finished_at DESC, created_at DESC, id DESC
+LIMIT 1;
+
+-- name: ListUserActiveTasksOfType :many
+SELECT * FROM tasks
+WHERE user_id = sqlc.arg('user_id') AND type = sqlc.arg('type') AND state IN ('queued', 'running')
+ORDER BY created_at, id;

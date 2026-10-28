@@ -67,6 +67,7 @@ func RegisterTasks(e *tasks.Engine, svc *Service) {
 	e.Register(TaskMove, tasks.Spec{Unit: tasks.UnitBytes, Run: svc.runTransfer(ActMove), Link: transferLink})
 	e.Register(TaskDirSize, tasks.Spec{Unit: tasks.UnitItems, Run: svc.runDirSize})
 	e.Register(TaskChecksum, tasks.Spec{Unit: tasks.UnitBytes, Run: svc.runChecksum})
+	e.Register(TaskDuplicates, tasks.Spec{Unit: tasks.UnitItems, Run: svc.runDuplicates, Link: duplicatesLink})
 }
 
 func transferLink(t tasks.Task) string {
@@ -76,6 +77,8 @@ func transferLink(t tasks.Task) string {
 	}
 	return "/files" + strings.TrimSuffix(p.To, "/")
 }
+
+func duplicatesLink(tasks.Task) string { return "/storage?tab=duplicates" }
 
 func taskCtx(ctx context.Context, rt *tasks.Runtime) context.Context {
 	return WithTask(ctx, &TaskContext{Reporter: rt, ItemDelay: rt.ItemDelay()})

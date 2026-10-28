@@ -935,6 +935,16 @@ func (s *Service) ByPath(ctx context.Context, ownerID string, p fsjail.VPath) ([
 	return out, nil
 }
 
+// SharedPathsRelated lists the paths of the owner's shares (any status) on
+// root, above it or below it, in one query (duplicate finder, Step 23c).
+func (s *Service) SharedPathsRelated(ctx context.Context, ownerID string, root fsjail.VPath) ([]string, error) {
+	paths, err := s.repo.ListSharePathsRelated(ctx, ownerID, string(root))
+	if err != nil {
+		return nil, fmt.Errorf("share: related paths: %w", err)
+	}
+	return paths, nil
+}
+
 // AccessLogEntry is one access-log row for the owner.
 type AccessLogEntry struct {
 	ID      int64   `json:"id"`

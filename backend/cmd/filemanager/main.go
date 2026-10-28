@@ -408,6 +408,7 @@ func runServe(envFile string, noMigrate bool) int {
 	})
 	files.RegisterTasks(engine, filesSvc)
 	filesSvc.TrashHook = shareSvc
+	filesSvc.Shares = shareSvc
 
 	// Resumable uploads (Step 12a, SPEC §6.5): tusd handler + hooks share the
 	// quota, locks, listing cache and thumbnail invalidation of the file ops.

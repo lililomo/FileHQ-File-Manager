@@ -137,6 +137,7 @@ type Querier interface {
 	InsertUploadSession(ctx context.Context, arg InsertUploadSessionParams) error
 	LatestFileVersion(ctx context.Context, arg LatestFileVersionParams) (FileVersion, error)
 	LatestTaskOfType(ctx context.Context, type_ string) (Task, error)
+	LatestUserTaskOfTypeState(ctx context.Context, arg LatestUserTaskOfTypeStateParams) (Task, error)
 	ListActiveTasksOfType(ctx context.Context, type_ string) ([]Task, error)
 	ListActiveUploadIDs(ctx context.Context) ([]string, error)
 	ListActivity(ctx context.Context, arg ListActivityParams) ([]ActivityLog, error)
@@ -175,6 +176,12 @@ type Querier interface {
 	ListSearchHistory(ctx context.Context, arg ListSearchHistoryParams) ([]SearchHistory, error)
 	ListSettings(ctx context.Context) ([]Setting, error)
 	ListShareAccessLogs(ctx context.Context, arg ListShareAccessLogsParams) ([]ShareAccessLog, error)
+	// Shares on the scan root, any of its ancestors (ancestors = root and every
+	// parent folder) or anything below it (prefix = root || '/', or '/' for the
+	// user root). Used by the duplicate finder to flag shared files (Step 23c).
+	// The slice stays last: sqlc numbers the args, and an expanded slice before
+	// ?N would shift them.
+	ListSharePathsRelated(ctx context.Context, arg ListSharePathsRelatedParams) ([]string, error)
 	ListShareRecipients(ctx context.Context, shareID string) ([]ListShareRecipientsRow, error)
 	ListShareRecipientsForShares(ctx context.Context, ids []string) ([]ListShareRecipientsForSharesRow, error)
 	ListSharesByOwner(ctx context.Context, arg ListSharesByOwnerParams) ([]Share, error)
@@ -189,6 +196,7 @@ type Querier interface {
 	ListTrashItems(ctx context.Context, userID string) ([]TrashItem, error)
 	ListTrashItemsByIDs(ctx context.Context, arg ListTrashItemsByIDsParams) ([]TrashItem, error)
 	ListUnusedTOTPRecoveryCodes(ctx context.Context, userID string) ([]TotpRecoveryCode, error)
+	ListUserActiveTasksOfType(ctx context.Context, arg ListUserActiveTasksOfTypeParams) ([]Task, error)
 	ListUserSessions(ctx context.Context, arg ListUserSessionsParams) ([]Session, error)
 	ListUserTasks(ctx context.Context, arg ListUserTasksParams) ([]Task, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)

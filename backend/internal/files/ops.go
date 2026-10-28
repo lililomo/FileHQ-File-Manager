@@ -619,6 +619,19 @@ func (s *Service) delete(ctx context.Context, j *fsjail.Jail, userID string, pat
 	}
 	defer release()
 	s.hook("delete")
+	res, undoItems, err := s.trashLocked(ctx, j, userID, paths, recordUndo, deletedBy)
+	if err != nil {
+		return res, err
+	}
+	if recordUndo && len(undoItems) > 0 {
+		s.withUndo(ctx, j, res, userID, UndoInfo{Kind: "restore", BatchID: res.BatchID, Trash: undoItems})
+	}
+	return res, nil
+}
+
+// trashLocked moves paths (already validated, deduplicated and locked by the
+// caller) to the Recycle Bin as one batch.
+func (s *Service) trashLocked(ctx context.Context, j *fsjail.Jail, userID string, paths []fsjail.VPath, recordUndo bool, deletedBy string) (*Result, []UndoTrashItem, error) {
 	batchID := db.NewID()
 	action := ActDelete
 	if !recordUndo {
@@ -629,11 +642,11 @@ func (s *Service) delete(ctx context.Context, j *fsjail.Jail, userID string, pat
 	for _, p := range paths {
 		info, err := j.Lstat(p)
 		if err != nil {
-			return res, err
+			return res, undoItems, err
 		}
 		row, err := s.trash.MoveToTrashBy(ctx, j, userID, p, TrashKind(p.Base(), info.IsDir), batchID, deletedBy)
 		if err != nil {
-			return res, err
+			return res, undoItems, err
 		}
 		if s.TrashHook != nil {
 			s.TrashHook.Trashed(ctx, userID, string(j.Abs(p)))
@@ -643,10 +656,7 @@ func (s *Service) delete(ctx context.Context, j *fsjail.Jail, userID string, pat
 		res.Results = append(res.Results, ItemResult{Path: string(p), Status: "ok", IsDir: info.IsDir, TrashID: row.ID})
 		undoItems = append(undoItems, UndoTrashItem{ID: row.ID, Path: string(p)})
 	}
-	if recordUndo && len(undoItems) > 0 {
-		s.withUndo(ctx, j, res, userID, UndoInfo{Kind: "restore", BatchID: batchID, Trash: undoItems})
-	}
-	return res, nil
+	return res, undoItems, nil
 }
 
 // dropDescendants removes paths that are inside another selected path.
@@ -717,6 +727,11 @@ func (s *Service) Undo(ctx context.Context, j *fsjail.Jail, userID, token string
 			release, lerr := s.lock(ctx, j, userID, "restore", fsjail.Write, p)
 			if lerr != nil {
 				return res, lerr
+			}
+			if serr := s.dropReplacementLink(j, info, p); serr != nil {
+				release()
+				err = serr
+				break
 			}
 			_, rerr := s.trash.Restore(ctx, j, userID, trash.RestoreRequest{ID: t.ID, Dest: p})
 			release()

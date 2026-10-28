@@ -32,6 +32,11 @@ func (s *Server) mountMeActivity(api chi.Router) {
 		g.Delete("/me/activity", s.handleMeActivityClear)
 		g.Get("/me/storage-analysis", s.handleStorageAnalysis)
 		g.Post("/me/storage-analysis", s.handleStorageAnalysis)
+		if s.tasks != nil {
+			g.Get("/me/duplicates", s.handleDuplicatesLatest)
+			g.Post("/me/duplicates", s.handleDuplicatesStart)
+			g.Post("/me/duplicates/symlink", s.handleDuplicatesSymlink)
+		}
 	})
 }
 

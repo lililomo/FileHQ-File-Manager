@@ -1782,6 +1782,90 @@ paths:
                   - { $ref: "#/components/schemas/StorageAnalysis" }
                   - { $ref: "#/components/schemas/TaskAccepted" }
         "401": { $ref: "#/components/responses/Error" }
+  /api/v1/me/duplicates:
+    get:
+      summary: Latest duplicate scan of the last 24 hours (Step 23c)
+      description: Newest `duplicate_finder` task of the user in state `done` whose `finishedAt` is within 24 h, read from the task's `result`. Copies that are gone or changed since the scan (deleted, replaced by a symlink, resized) are dropped and the totals recomputed, so a reload never offers a removed path. Owner scope only (`?share=`/`?as_user=` → 400).
+      tags: [me]
+      operationId: meDuplicates
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DuplicatesResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { description: "`NOT_FOUND reason=no_result` — no finished scan in the last 24 h", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    post:
+      summary: Start a duplicate scan (task `duplicate_finder`)
+      description: "Walks `path` (default `/`): regular non-empty files grouped by size, then SHA-256 of the first + last 64 KiB (files ≤ 128 KiB hashed fully), then full SHA-256 of the remaining candidates. Symlinks, empty files and staging names (`.fm-*`) are skipped; hard links of one inode count once. Deadline 1 h (task `failed`, `error.code=TIMEOUT`); cancel through `POST /tasks/{id}/cancel`. Owner scope only."
+      tags: [me]
+      operationId: meDuplicatesStart
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                path: { type: string, default: "/", description: Folder to scan }
+      responses:
+        "202":
+          description: Queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskAccepted" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { description: "`CONFLICT reason=already_running details.taskId` — a scan of this user is queued or running", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/me/duplicates/symlink:
+    post:
+      summary: Replace duplicate copies with relative symlinks to the kept file
+      description: "Every `paths[i]` must be a regular file, another inode than `keep`, with the same size and full SHA-256 as `keep` — re-hashed by the server (`VALIDATION_FAILED reason=hash_mismatch|size_mismatch|same_file|not_a_file|contains_keep`, nothing changes). The copies move to the Recycle Bin as one batch (quota-accounted), then a relative symlink to `keep` is written at each path. Undo (`POST /files/undo`) removes the links and restores the originals. Limits: 200 paths in total; Σ `size × (paths + 1)` ≤ 2 GiB (`413 FILE_TOO_LARGE reason=too_large`). Owner scope only."
+      tags: [me]
+      operationId: meDuplicatesSymlink
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              description: "One group as `{keep, paths}` or several as `{groups:[{keep, paths}]}` (one Recycle Bin batch, one undo token); a path in two groups → `reason=duplicate_path`."
+              properties:
+                keep: { type: string }
+                paths: { type: array, items: { type: string }, minItems: 1, maxItems: 200 }
+                groups:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [keep, paths]
+                    properties:
+                      keep: { type: string }
+                      paths: { type: array, items: { type: string }, minItems: 1 }
+      responses:
+        "200":
+          description: Done (`results[].status` `skipped` + warning `symlink_failed` when a link could not be written; the original stays restorable)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OpResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
   /api/v1/tasks:
     get:
       tags: [tasks]
@@ -4456,6 +4540,7 @@ components:
         trash: { type: array, items: { type: object, properties: { id: { type: string }, path: { type: string } } } }
         batchId: { type: string }
         created: { type: array, items: { type: string } }
+        symlinks: { type: object, additionalProperties: { type: string }, description: "restore after `POST /me/duplicates/symlink`: path → link target removed before the original comes back (Step 23c)" }
     OpResponse:
       type: object
       required: [results, undo]
@@ -5259,6 +5344,47 @@ components:
         filename: { type: string }
         acceptsRanges: { type: boolean }
         contentType: { type: string }
+    DuplicateFile:
+      type: object
+      required: [path, name, size, mtime, shared]
+      properties:
+        path: { type: string }
+        name: { type: string }
+        size: { type: integer, format: int64 }
+        mtime: { type: string, format: date-time }
+        shared: { type: boolean, description: The file or one of its folders has a share (any status) }
+    DuplicateGroup:
+      type: object
+      required: [size, hash, reclaimable, paths]
+      properties:
+        size: { type: integer, format: int64 }
+        hash: { type: string, description: Hex SHA-256 of the content }
+        reclaimable: { type: integer, format: int64, description: "size × (copies − 1)" }
+        paths:
+          type: array
+          minItems: 2
+          description: Distinct inodes sorted by mtime asc, path length asc, path asc — `paths[0]` is the default copy to keep
+          items: { $ref: "#/components/schemas/DuplicateFile" }
+    DuplicateReport:
+      type: object
+      description: Result of a `duplicate_finder` task (SPEC §7.1)
+      required: [path, groups, reclaimable, scanned, candidates, generatedAt, truncated, totalGroups]
+      properties:
+        path: { type: string }
+        groups: { type: array, items: { $ref: "#/components/schemas/DuplicateGroup" }, maxItems: 5000, description: Sorted by reclaimable desc }
+        reclaimable: { type: integer, format: int64 }
+        scanned: { type: integer, format: int64, description: Regular non-empty files walked }
+        candidates: { type: integer, format: int64, description: Files hashed (size shared with another inode) }
+        generatedAt: { type: string, format: date-time }
+        truncated: { type: boolean, description: More than 5000 groups were found }
+        totalGroups: { type: integer }
+    DuplicatesResponse:
+      allOf:
+        - { $ref: "#/components/schemas/DuplicateReport" }
+        - type: object
+          required: [taskId]
+          properties:
+            taskId: { type: string }
     TaskAccepted:
       type: object
       description: "`202` answer of an operation converted into a task"
