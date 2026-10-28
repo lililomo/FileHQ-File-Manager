@@ -55,9 +55,23 @@ type UserRepo interface {
 	RecordLoginSuccess(ctx context.Context, p sqlc.RecordLoginSuccessParams) error
 	RecordLoginFailure(ctx context.Context, p sqlc.RecordLoginFailureParams) error
 	SetHomeProvisioned(ctx context.Context, p sqlc.SetHomeProvisionedParams) error
-	SetUserTOTP(ctx context.Context, p sqlc.SetUserTOTPParams) error
+	// TOTP (Step 23a): pending secret from setup, enable after the first
+	// verified code, clear on disable/admin reset, atomic anti-replay step.
+	SetUserTOTPPending(ctx context.Context, p sqlc.SetUserTOTPPendingParams) error
+	EnableUserTOTP(ctx context.Context, p sqlc.EnableUserTOTPParams) error
+	ClearUserTOTP(ctx context.Context, p sqlc.ClearUserTOTPParams) error
+	AdvanceUserTOTPStep(ctx context.Context, p sqlc.AdvanceUserTOTPStepParams) (int64, error)
 	SoftDeleteUser(ctx context.Context, p sqlc.SoftDeleteUserParams) error
 	HardDeleteUser(ctx context.Context, id string) error
+}
+
+// TOTPRecoveryRepo stores single-use 2FA recovery codes (Step 23a).
+type TOTPRecoveryRepo interface {
+	InsertTOTPRecoveryCode(ctx context.Context, p sqlc.InsertTOTPRecoveryCodeParams) error
+	ListUnusedTOTPRecoveryCodes(ctx context.Context, userID string) ([]sqlc.TotpRecoveryCode, error)
+	CountUnusedTOTPRecoveryCodes(ctx context.Context, userID string) (int64, error)
+	UseTOTPRecoveryCode(ctx context.Context, p sqlc.UseTOTPRecoveryCodeParams) (int64, error)
+	DeleteTOTPRecoveryCodes(ctx context.Context, userID string) (int64, error)
 }
 
 // SessionRepo manages server-side sessions.
@@ -126,6 +140,7 @@ type LoginAttemptRepo interface {
 // Repository aggregates every domain and offers transactions.
 type Repository interface {
 	UserRepo
+	TOTPRecoveryRepo
 	SessionRepo
 	SettingsRepo
 	PrefRepo
@@ -250,8 +265,35 @@ func (s *Store) RecordLoginFailure(ctx context.Context, p sqlc.RecordLoginFailur
 func (s *Store) SetHomeProvisioned(ctx context.Context, p sqlc.SetHomeProvisionedParams) error {
 	return s.w.SetHomeProvisioned(ctx, p)
 }
-func (s *Store) SetUserTOTP(ctx context.Context, p sqlc.SetUserTOTPParams) error {
-	return s.w.SetUserTOTP(ctx, p)
+func (s *Store) SetUserTOTPPending(ctx context.Context, p sqlc.SetUserTOTPPendingParams) error {
+	return s.w.SetUserTOTPPending(ctx, p)
+}
+func (s *Store) EnableUserTOTP(ctx context.Context, p sqlc.EnableUserTOTPParams) error {
+	return s.w.EnableUserTOTP(ctx, p)
+}
+func (s *Store) ClearUserTOTP(ctx context.Context, p sqlc.ClearUserTOTPParams) error {
+	return s.w.ClearUserTOTP(ctx, p)
+}
+func (s *Store) AdvanceUserTOTPStep(ctx context.Context, p sqlc.AdvanceUserTOTPStepParams) (int64, error) {
+	return s.w.AdvanceUserTOTPStep(ctx, p)
+}
+
+// --- totp recovery codes (Step 23a) ---
+
+func (s *Store) InsertTOTPRecoveryCode(ctx context.Context, p sqlc.InsertTOTPRecoveryCodeParams) error {
+	return s.w.InsertTOTPRecoveryCode(ctx, p)
+}
+func (s *Store) ListUnusedTOTPRecoveryCodes(ctx context.Context, userID string) ([]sqlc.TotpRecoveryCode, error) {
+	return s.r.ListUnusedTOTPRecoveryCodes(ctx, userID)
+}
+func (s *Store) CountUnusedTOTPRecoveryCodes(ctx context.Context, userID string) (int64, error) {
+	return s.r.CountUnusedTOTPRecoveryCodes(ctx, userID)
+}
+func (s *Store) UseTOTPRecoveryCode(ctx context.Context, p sqlc.UseTOTPRecoveryCodeParams) (int64, error) {
+	return s.w.UseTOTPRecoveryCode(ctx, p)
+}
+func (s *Store) DeleteTOTPRecoveryCodes(ctx context.Context, userID string) (int64, error) {
+	return s.w.DeleteTOTPRecoveryCodes(ctx, userID)
 }
 func (s *Store) SoftDeleteUser(ctx context.Context, p sqlc.SoftDeleteUserParams) error {
 	return s.w.SoftDeleteUser(ctx, p)

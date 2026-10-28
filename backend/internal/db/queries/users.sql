@@ -63,8 +63,30 @@ WHERE id = ?;
 -- name: SetHomeProvisioned :exec
 UPDATE users SET home_provisioned_at = ?, home_warning = ?, updated_at = ? WHERE id = ?;
 
--- name: SetUserTOTP :exec
-UPDATE users SET totp_secret_enc = ?, totp_enabled = ?, updated_at = ? WHERE id = ?;
+-- name: SetUserTOTPPending :exec
+-- Step 23a: POST /me/totp/setup stores the encrypted secret unverified.
+UPDATE users
+SET totp_secret_enc = ?, totp_enabled = 0, totp_enabled_at = NULL, totp_last_step = NULL, updated_at = ?
+WHERE id = ?;
+
+-- name: EnableUserTOTP :exec
+-- Step 23a: POST /me/totp/enable after the first code verified (step = anti-replay floor).
+UPDATE users
+SET totp_enabled = 1, totp_enabled_at = ?, totp_last_step = ?, updated_at = ?
+WHERE id = ?;
+
+-- name: ClearUserTOTP :exec
+-- Step 23a: disable (user) or reset (admin).
+UPDATE users
+SET totp_secret_enc = NULL, totp_enabled = 0, totp_enabled_at = NULL, totp_last_step = NULL, updated_at = ?
+WHERE id = ?;
+
+-- name: AdvanceUserTOTPStep :execrows
+-- Step 23a anti-replay: accept a code only when its time step is newer than
+-- the last accepted one (0 rows = replay or concurrent use of the same code).
+UPDATE users
+SET totp_last_step = sqlc.arg('step')
+WHERE id = sqlc.arg('id') AND (totp_last_step IS NULL OR totp_last_step < sqlc.arg('step'));
 
 -- name: SoftDeleteUser :exec
 UPDATE users SET deleted_at = ?, status = 'disabled', updated_at = ? WHERE id = ?;

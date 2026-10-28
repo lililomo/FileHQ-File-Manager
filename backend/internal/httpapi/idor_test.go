@@ -71,7 +71,9 @@ var idorRoutes = map[string]idorKind{
 	"PUT /api/v1/me/media-position": idorSelf, "GET /api/v1/me/preferences": idorSelf, "PUT /api/v1/me/preferences": idorSelf,
 	"GET /api/v1/me/quota": idorSelf, "GET /api/v1/me/recent": idorSelf, "POST /api/v1/me/recent": idorSelf,
 	"GET /api/v1/me/sessions": idorSelf, "POST /api/v1/me/sessions/revoke-others": idorSelf,
-	"GET /api/v1/me/storage-analysis": idorSelf, "POST /api/v1/me/storage-analysis": idorSelf,
+	"POST /api/v1/me/totp/setup": idorSelf, "POST /api/v1/me/totp/enable": idorSelf, "POST /api/v1/me/totp/disable": idorSelf,
+	"POST /api/v1/me/totp/recovery-codes": idorSelf,
+	"GET /api/v1/me/storage-analysis":     idorSelf, "POST /api/v1/me/storage-analysis": idorSelf,
 	"GET /api/v1/meta/favorites": idorSelf, "PUT /api/v1/meta/favorites": idorSelf, "DELETE /api/v1/meta/favorites": idorSelf,
 	"PUT /api/v1/meta/notes": idorSelf, "DELETE /api/v1/meta/notes": idorSelf, "GET /api/v1/meta/pins": idorSelf,
 	"PUT /api/v1/meta/pins": idorSelf, "DELETE /api/v1/meta/pins": idorSelf, "GET /api/v1/meta/tagged": idorSelf,
@@ -113,7 +115,8 @@ var idorRoutes = map[string]idorKind{
 	"GET /api/v1/admin/users/{id}": idorAdmin, "PATCH /api/v1/admin/users/{id}": idorAdmin, "DELETE /api/v1/admin/users/{id}": idorAdmin,
 	"POST /api/v1/admin/users/{id}/disable": idorAdmin, "POST /api/v1/admin/users/{id}/enable": idorAdmin,
 	"POST /api/v1/admin/users/{id}/reset-password": idorAdmin, "POST /api/v1/admin/users/{id}/revoke-sessions": idorAdmin,
-	"POST /api/v1/admin/branding/logo": idorAdmin, "DELETE /api/v1/admin/branding/logo": idorAdmin,
+	"POST /api/v1/admin/users/{id}/reset-totp": idorAdmin,
+	"POST /api/v1/admin/branding/logo":         idorAdmin, "DELETE /api/v1/admin/branding/logo": idorAdmin,
 }
 
 var idorParamRe = regexp.MustCompile(`\{[a-zA-Z]+\}`)

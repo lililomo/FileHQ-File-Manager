@@ -48,6 +48,12 @@ const (
 	ActionSystemStart       = "system.start"
 	ActionAdminTaskCancel   = "admin.task_cancel"
 	ActionShareAdminRevoked = "share.admin_revoked"
+	// Step 23a (TOTP 2FA)
+	ActionTOTPEnabled             = "auth.totp_enabled"
+	ActionTOTPDisabled            = "auth.totp_disabled"
+	ActionTOTPRecoveryUsed        = "auth.totp_recovery_used"
+	ActionTOTPRecoveryRegenerated = "auth.totp_recovery_regenerated"
+	ActionUserResetTOTP           = "user.reset_totp"
 	// ActionMaintenancePrefix + job name (maintenance.backup_db, ...).
 	ActionMaintenancePrefix = "maintenance."
 )

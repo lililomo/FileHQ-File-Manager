@@ -9,6 +9,44 @@ import (
 	"context"
 )
 
+const advanceUserTOTPStep = `-- name: AdvanceUserTOTPStep :execrows
+UPDATE users
+SET totp_last_step = ?1
+WHERE id = ?2 AND (totp_last_step IS NULL OR totp_last_step < ?1)
+`
+
+type AdvanceUserTOTPStepParams struct {
+	Step *int64 `json:"step"`
+	ID   string `json:"id"`
+}
+
+// Step 23a anti-replay: accept a code only when its time step is newer than
+// the last accepted one (0 rows = replay or concurrent use of the same code).
+func (q *Queries) AdvanceUserTOTPStep(ctx context.Context, arg AdvanceUserTOTPStepParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, advanceUserTOTPStep, arg.Step, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const clearUserTOTP = `-- name: ClearUserTOTP :exec
+UPDATE users
+SET totp_secret_enc = NULL, totp_enabled = 0, totp_enabled_at = NULL, totp_last_step = NULL, updated_at = ?
+WHERE id = ?
+`
+
+type ClearUserTOTPParams struct {
+	UpdatedAt string `json:"updated_at"`
+	ID        string `json:"id"`
+}
+
+// Step 23a: disable (user) or reset (admin).
+func (q *Queries) ClearUserTOTP(ctx context.Context, arg ClearUserTOTPParams) error {
+	_, err := q.db.ExecContext(ctx, clearUserTOTP, arg.UpdatedAt, arg.ID)
+	return err
+}
+
 const countActiveAdmins = `-- name: CountActiveAdmins :one
 SELECT COUNT(*) FROM users WHERE role = 'admin' AND status = 'active' AND deleted_at IS NULL
 `
@@ -57,7 +95,7 @@ INSERT INTO users (
   id, username, display_name, role, status, password_hash, must_change_password,
   quota_bytes, created_by, created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, username, display_name, role, status, password_hash, must_change_password, password_changed_at, quota_bytes, home_provisioned_at, home_warning, last_login_at, failed_login_count, locked_until, totp_secret_enc, totp_enabled, created_by, created_at, updated_at, deleted_at
+RETURNING id, username, display_name, role, status, password_hash, must_change_password, password_changed_at, quota_bytes, home_provisioned_at, home_warning, last_login_at, failed_login_count, locked_until, totp_secret_enc, totp_enabled, created_by, created_at, updated_at, deleted_at, totp_enabled_at, totp_last_step
 `
 
 type CreateUserParams struct {
@@ -110,12 +148,38 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.TotpEnabledAt,
+		&i.TotpLastStep,
 	)
 	return i, err
 }
 
+const enableUserTOTP = `-- name: EnableUserTOTP :exec
+UPDATE users
+SET totp_enabled = 1, totp_enabled_at = ?, totp_last_step = ?, updated_at = ?
+WHERE id = ?
+`
+
+type EnableUserTOTPParams struct {
+	TotpEnabledAt *string `json:"totp_enabled_at"`
+	TotpLastStep  *int64  `json:"totp_last_step"`
+	UpdatedAt     string  `json:"updated_at"`
+	ID            string  `json:"id"`
+}
+
+// Step 23a: POST /me/totp/enable after the first code verified (step = anti-replay floor).
+func (q *Queries) EnableUserTOTP(ctx context.Context, arg EnableUserTOTPParams) error {
+	_, err := q.db.ExecContext(ctx, enableUserTOTP,
+		arg.TotpEnabledAt,
+		arg.TotpLastStep,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, username, display_name, role, status, password_hash, must_change_password, password_changed_at, quota_bytes, home_provisioned_at, home_warning, last_login_at, failed_login_count, locked_until, totp_secret_enc, totp_enabled, created_by, created_at, updated_at, deleted_at FROM users WHERE id = ?
+SELECT id, username, display_name, role, status, password_hash, must_change_password, password_changed_at, quota_bytes, home_provisioned_at, home_warning, last_login_at, failed_login_count, locked_until, totp_secret_enc, totp_enabled, created_by, created_at, updated_at, deleted_at, totp_enabled_at, totp_last_step FROM users WHERE id = ?
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
@@ -142,12 +206,14 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.TotpEnabledAt,
+		&i.TotpLastStep,
 	)
 	return i, err
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT id, username, display_name, role, status, password_hash, must_change_password, password_changed_at, quota_bytes, home_provisioned_at, home_warning, last_login_at, failed_login_count, locked_until, totp_secret_enc, totp_enabled, created_by, created_at, updated_at, deleted_at FROM users WHERE username = ?
+SELECT id, username, display_name, role, status, password_hash, must_change_password, password_changed_at, quota_bytes, home_provisioned_at, home_warning, last_login_at, failed_login_count, locked_until, totp_secret_enc, totp_enabled, created_by, created_at, updated_at, deleted_at, totp_enabled_at, totp_last_step FROM users WHERE username = ?
 `
 
 func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
@@ -174,6 +240,8 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.TotpEnabledAt,
+		&i.TotpLastStep,
 	)
 	return i, err
 }
@@ -188,7 +256,7 @@ func (q *Queries) HardDeleteUser(ctx context.Context, id string) error {
 }
 
 const listDeletedUsersBefore = `-- name: ListDeletedUsersBefore :many
-SELECT id, username, display_name, role, status, password_hash, must_change_password, password_changed_at, quota_bytes, home_provisioned_at, home_warning, last_login_at, failed_login_count, locked_until, totp_secret_enc, totp_enabled, created_by, created_at, updated_at, deleted_at FROM users WHERE deleted_at IS NOT NULL AND deleted_at < ?1
+SELECT id, username, display_name, role, status, password_hash, must_change_password, password_changed_at, quota_bytes, home_provisioned_at, home_warning, last_login_at, failed_login_count, locked_until, totp_secret_enc, totp_enabled, created_by, created_at, updated_at, deleted_at, totp_enabled_at, totp_last_step FROM users WHERE deleted_at IS NOT NULL AND deleted_at < ?1
 `
 
 // Step 19a: purged accounts kept 30 days for the audit trail (SPEC 8.17).
@@ -222,6 +290,8 @@ func (q *Queries) ListDeletedUsersBefore(ctx context.Context, before *string) ([
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.TotpEnabledAt,
+			&i.TotpLastStep,
 		); err != nil {
 			return nil, err
 		}
@@ -237,7 +307,7 @@ func (q *Queries) ListDeletedUsersBefore(ctx context.Context, before *string) ([
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, username, display_name, role, status, password_hash, must_change_password, password_changed_at, quota_bytes, home_provisioned_at, home_warning, last_login_at, failed_login_count, locked_until, totp_secret_enc, totp_enabled, created_by, created_at, updated_at, deleted_at FROM users
+SELECT id, username, display_name, role, status, password_hash, must_change_password, password_changed_at, quota_bytes, home_provisioned_at, home_warning, last_login_at, failed_login_count, locked_until, totp_secret_enc, totp_enabled, created_by, created_at, updated_at, deleted_at, totp_enabled_at, totp_last_step FROM users
 WHERE deleted_at IS NULL
   AND (?1 IS NULL OR status = ?1)
   AND (?2 IS NULL OR role = ?2)
@@ -290,6 +360,8 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.TotpEnabledAt,
+			&i.TotpLastStep,
 		); err != nil {
 			return nil, err
 		}
@@ -305,7 +377,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 }
 
 const listUsersPage = `-- name: ListUsersPage :many
-SELECT id, username, display_name, role, status, password_hash, must_change_password, password_changed_at, quota_bytes, home_provisioned_at, home_warning, last_login_at, failed_login_count, locked_until, totp_secret_enc, totp_enabled, created_by, created_at, updated_at, deleted_at FROM users
+SELECT id, username, display_name, role, status, password_hash, must_change_password, password_changed_at, quota_bytes, home_provisioned_at, home_warning, last_login_at, failed_login_count, locked_until, totp_secret_enc, totp_enabled, created_by, created_at, updated_at, deleted_at, totp_enabled_at, totp_last_step FROM users
 WHERE deleted_at IS NULL
   AND username > ?1
   AND (?2 IS NULL OR status = ?2)
@@ -361,6 +433,8 @@ func (q *Queries) ListUsersPage(ctx context.Context, arg ListUsersPageParams) ([
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.TotpEnabledAt,
+			&i.TotpLastStep,
 		); err != nil {
 			return nil, err
 		}
@@ -445,24 +519,21 @@ func (q *Queries) SetMustChangePassword(ctx context.Context, arg SetMustChangePa
 	return err
 }
 
-const setUserTOTP = `-- name: SetUserTOTP :exec
-UPDATE users SET totp_secret_enc = ?, totp_enabled = ?, updated_at = ? WHERE id = ?
+const setUserTOTPPending = `-- name: SetUserTOTPPending :exec
+UPDATE users
+SET totp_secret_enc = ?, totp_enabled = 0, totp_enabled_at = NULL, totp_last_step = NULL, updated_at = ?
+WHERE id = ?
 `
 
-type SetUserTOTPParams struct {
+type SetUserTOTPPendingParams struct {
 	TotpSecretEnc []byte `json:"totp_secret_enc"`
-	TotpEnabled   int64  `json:"totp_enabled"`
 	UpdatedAt     string `json:"updated_at"`
 	ID            string `json:"id"`
 }
 
-func (q *Queries) SetUserTOTP(ctx context.Context, arg SetUserTOTPParams) error {
-	_, err := q.db.ExecContext(ctx, setUserTOTP,
-		arg.TotpSecretEnc,
-		arg.TotpEnabled,
-		arg.UpdatedAt,
-		arg.ID,
-	)
+// Step 23a: POST /me/totp/setup stores the encrypted secret unverified.
+func (q *Queries) SetUserTOTPPending(ctx context.Context, arg SetUserTOTPPendingParams) error {
+	_, err := q.db.ExecContext(ctx, setUserTOTPPending, arg.TotpSecretEnc, arg.UpdatedAt, arg.ID)
 	return err
 }
 

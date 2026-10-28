@@ -33,6 +33,7 @@ func (s *Server) mountAuth(api chi.Router) {
 				p.Get("/me/preferences", s.handleGetPreferences)
 				p.Put("/me/preferences", s.handlePutPreferences)
 				s.mountMeSessions(p)
+				s.mountMeTOTP(p)
 				s.mountFolderPrefs(p)
 			})
 		})
@@ -40,9 +41,10 @@ func (s *Server) mountAuth(api chi.Router) {
 }
 
 type loginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	TOTP     string `json:"totp,omitempty"`
+	Username     string `json:"username"`
+	Password     string `json:"password"`
+	TOTP         string `json:"totp,omitempty"`         // Step 23a second factor
+	RecoveryCode string `json:"recoveryCode,omitempty"` // Step 23a single-use alternative
 }
 
 func setRetryAfter(w http.ResponseWriter, secs int) {
@@ -70,12 +72,19 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if len(req.Password) > 1024 {
 		fields["password"] = "too_long"
 	}
+	if len(req.TOTP) > 16 {
+		fields["totp"] = "too_long"
+	}
+	if len(req.RecoveryCode) > 32 {
+		fields["recoveryCode"] = "too_long"
+	}
 	if len(fields) > 0 {
 		WriteError(w, r, CodeValidationFailed, 0, "username and password are required", map[string]any{"fields": fields})
 		return
 	}
 	res, err := s.auth.Login(r.Context(), auth.LoginInput{
-		Username: req.Username, Password: req.Password, IP: ClientIP(r), UserAgent: r.UserAgent(),
+		Username: req.Username, Password: req.Password, TOTP: req.TOTP, RecoveryCode: req.RecoveryCode,
+		IP: ClientIP(r), UserAgent: r.UserAgent(),
 	})
 	if err != nil {
 		var locked *auth.LockedError
@@ -85,6 +94,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			secs := int(limited.RetryAfter.Seconds())
 			setRetryAfter(w, secs)
 			WriteError(w, r, CodeRateLimited, 0, "too many login attempts, try again later", map[string]any{"retryAfter": secs})
+		case errors.Is(err, auth.ErrTOTPRequired):
+			// password verified, second factor missing: the client shows the code step
+			WriteError(w, r, CodeValidationFailed, 0, "verification code required",
+				map[string]any{"fields": map[string]any{"totp": "totp_required"}})
+		case errors.Is(err, auth.ErrTOTPInvalid):
+			WriteError(w, r, CodeValidationFailed, 0, "verification code is invalid",
+				map[string]any{"fields": map[string]any{"totp": "totp_invalid"}})
 		case errors.As(err, &locked):
 			secs := int(locked.RetryAfter.Seconds())
 			setRetryAfter(w, secs)
@@ -100,11 +116,15 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, s.auth.Sessions.Cookie(res.Token, s.secureCookies()))
-	WriteJSON(w, http.StatusOK, map[string]any{
+	body := map[string]any{
 		"user":               userView(res.User),
 		"mustChangePassword": res.User.MustChangePassword != 0,
 		"csrfToken":          res.CSRFToken,
-	})
+	}
+	if res.RecoveryCodesRemaining != nil {
+		body["recoveryCodesRemaining"] = *res.RecoveryCodesRemaining
+	}
+	WriteJSON(w, http.StatusOK, body)
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -257,6 +277,10 @@ func userView(u sqlc.User) map[string]any {
 		"homeProvisioned":    u.HomeProvisionedAt != nil,
 		"quotaBytes":         u.QuotaBytes,
 		"createdAt":          u.CreatedAt,
+		"totpEnabled":        u.TotpEnabled != 0,
+	}
+	if u.TotpEnabled != 0 && u.TotpEnabledAt != nil {
+		v["totpEnabledAt"] = *u.TotpEnabledAt
 	}
 	if u.HomeWarning != nil {
 		v["homeWarning"] = *u.HomeWarning

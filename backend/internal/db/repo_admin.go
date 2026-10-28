@@ -66,7 +66,7 @@ func (s *Store) ListDeletedUsersBefore(ctx context.Context, before string) ([]sq
 }
 
 // userTables lists every table with a per-user foreign key (migrations
-// 0001–0013) and its column. Tables that hang off these through their own
+// 0001–0016) and its column. Tables that hang off these through their own
 // cascade (task_logs, share_access_logs, share_recipients of the user's
 // shares) follow automatically.
 var userTables = []struct{ table, column string }{
@@ -90,6 +90,7 @@ var userTables = []struct{ table, column string }{
 	{"media_positions", "user_id"},
 	{"shares", "owner_user_id"},
 	{"share_recipients", "recipient_user_id"},
+	{"totp_recovery_codes", "user_id"}, // Step 23a
 }
 
 func (s *Store) PurgeUserData(ctx context.Context, userID, username string) (map[string]int64, error) {

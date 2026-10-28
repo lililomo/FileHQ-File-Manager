@@ -381,7 +381,7 @@ func TestLoginFlowFirstAdmin(t *testing.T) {
 	if user["username"] != "admin" || user["role"] != "admin" || user["homeProvisioned"] != true {
 		t.Fatalf("user view: %v", user)
 	}
-	for _, k := range []string{"password_hash", "passwordHash", "totp"} {
+	for _, k := range []string{"password_hash", "passwordHash", "totp", "totpSecret", "totpSecretEnc", "secret", "recoveryCode", "recoveryCodes"} {
 		if _, ok := user[k]; ok {
 			t.Fatalf("user view leaks %s", k)
 		}

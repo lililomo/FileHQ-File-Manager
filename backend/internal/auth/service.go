@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -61,8 +62,12 @@ type Service struct {
 	logger   *slog.Logger
 	now      func() time.Time
 
-	loginIP  *WindowLimiter // 20 attempts per sliding 60 s per IP
-	pwChange *WindowLimiter // 5 verified attempts per 15 min per session
+	loginIP   *WindowLimiter // 20 attempts per sliding 60 s per IP
+	pwChange  *WindowLimiter // 5 verified attempts per 15 min per session
+	totpLimit *WindowLimiter // 5 TOTP / recovery verifications per minute per user (Step 23a)
+
+	totpCipher *TOTPCipher     // AES-GCM for totp_secret_enc (HKDF "totp-enc")
+	recovery   *RecoveryHasher // HMAC for totp_recovery_codes (HKDF "totp-recovery")
 
 	cacheMu   sync.Mutex
 	userCache map[string]cachedUser
@@ -88,16 +93,20 @@ func NewService(cfg *config.Config, repo db.Repository, rec *audit.Recorder, log
 	}
 	loginN, loginW := SpecOr(cfg.RateLimits.LoginIP, LoginPerIP, LoginWindow)
 	pwN, pwW := SpecOr(cfg.RateLimits.PasswordChange, PasswordChangePerSess, PasswordChangeWindow)
+	totpN, totpW := SpecOr(cfg.RateLimits.TOTP, TOTPPerUser, TOTPWindow)
 	return &Service{
-		cfg:       cfg,
-		repo:      repo,
-		Sessions:  sessions,
-		audit:     rec,
-		logger:    logger,
-		now:       now,
-		loginIP:   NewWindowLimiter(loginN, loginW, now),
-		pwChange:  NewWindowLimiter(pwN, pwW, now),
-		userCache: map[string]cachedUser{},
+		cfg:        cfg,
+		repo:       repo,
+		Sessions:   sessions,
+		audit:      rec,
+		logger:     logger,
+		now:        now,
+		loginIP:    NewWindowLimiter(loginN, loginW, now),
+		pwChange:   NewWindowLimiter(pwN, pwW, now),
+		totpLimit:  NewWindowLimiter(totpN, totpW, now),
+		totpCipher: NewTOTPCipher(cfg.AppSecret),
+		recovery:   NewRecoveryHasher(cfg.AppSecret),
+		userCache:  map[string]cachedUser{},
 	}
 }
 
@@ -162,10 +171,12 @@ func (s *Service) Seed(ctx context.Context) error {
 
 // LoginInput is what the login handler collects from the request.
 type LoginInput struct {
-	Username  string
-	Password  string
-	IP        string
-	UserAgent string
+	Username     string
+	Password     string
+	TOTP         string // second factor (Step 23a); empty = not supplied
+	RecoveryCode string // alternative second factor (single use)
+	IP           string
+	UserAgent    string
 }
 
 // LoginResult is returned on success.
@@ -175,9 +186,12 @@ type LoginResult struct {
 	Session   sqlc.Session
 	CSRFToken string
 	Home      HomeResult
+	// RecoveryCodesRemaining is set when a recovery code was the second
+	// factor so the client can warn when none are left.
+	RecoveryCodesRemaining *int
 }
 
-// Login implements SPEC §8.1 "Login" steps 1–7 (TOTP excluded until Step 23a).
+// Login implements SPEC §8.1 "Login" steps 1–7.
 func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error) {
 	if !s.loginIP.Known(in.IP) {
 		// survive a restart: count the attempts this IP already made in the
@@ -254,6 +268,29 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 		return LoginResult{}, ErrAccountDisabled
 	}
 
+	// Step 5 (23a): second factor. A missing code is a prompt, not a
+	// failure; a wrong one is a failed attempt for the audit trail and the
+	// per-user TOTP limiter but never feeds the password lockout.
+	var recoveryLeft *int
+	if u.TotpEnabled != 0 {
+		if strings.TrimSpace(in.TOTP) == "" && strings.TrimSpace(in.RecoveryCode) == "" {
+			return LoginResult{}, ErrTOTPRequired
+		}
+		if ok, wait := s.totpLimit.Allow(u.ID); !ok {
+			return LoginResult{}, &RateLimitedError{RetryAfter: wait}
+		}
+		res, err := s.verifySecondFactor(ctx, u, in.TOTP, in.RecoveryCode, Actor{IP: in.IP, UserAgent: in.UserAgent})
+		if err != nil {
+			if errors.Is(err, ErrTOTPInvalid) {
+				fail("totp_invalid")
+			}
+			return LoginResult{}, err
+		}
+		if res.Recovery {
+			recoveryLeft = &res.Remaining
+		}
+	}
+
 	if rehash {
 		if h, herr := HashPassword(in.Password); herr == nil {
 			_ = s.repo.UpdateUserPassword(ctx, sqlc.UpdateUserPasswordParams{
@@ -261,15 +298,16 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 			})
 		}
 	}
-	if err := s.repo.RecordLoginSuccess(ctx, sqlc.RecordLoginSuccessParams{LastLoginAt: db.Ptr(nowStr), UpdatedAt: nowStr, ID: u.ID}); err != nil {
-		return LoginResult{}, err
-	}
-	_ = s.repo.InsertLoginAttempt(ctx, sqlc.InsertLoginAttemptParams{Username: username, Ip: in.IP, Success: 1, At: nowStr})
-
+	// Provision the home before recording the success (review A m-08): if
+	// it fails the failure counters and last_login_at must stay untouched.
 	home, err := s.provision(ctx, &u, in.IP, in.UserAgent)
 	if err != nil {
 		return LoginResult{}, err
 	}
+	if err := s.repo.RecordLoginSuccess(ctx, sqlc.RecordLoginSuccessParams{LastLoginAt: db.Ptr(nowStr), UpdatedAt: nowStr, ID: u.ID}); err != nil {
+		return LoginResult{}, err
+	}
+	_ = s.repo.InsertLoginAttempt(ctx, sqlc.InsertLoginAttemptParams{Username: username, Ip: in.IP, Success: 1, At: nowStr})
 
 	token, sess, err := s.Sessions.Create(ctx, u.ID, in.IP, in.UserAgent)
 	if err != nil {
@@ -279,7 +317,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	s.audit.Record(ctx, audit.Entry{ActorID: u.ID, ActorUsername: u.Username, Action: audit.ActionLogin,
 		TargetType: "session", TargetID: sess.ID[:8], IP: in.IP, UserAgent: in.UserAgent})
 	u, _ = s.repo.GetUserByID(ctx, u.ID)
-	return LoginResult{User: u, Token: token, Session: sess, CSRFToken: CSRFToken(sess.CsrfSecret, sess.ID), Home: home}, nil
+	return LoginResult{User: u, Token: token, Session: sess, CSRFToken: CSRFToken(sess.CsrfSecret, sess.ID), Home: home, RecoveryCodesRemaining: recoveryLeft}, nil
 }
 
 // provision runs ProvisionHome and records the outcome (SPEC §8.2).

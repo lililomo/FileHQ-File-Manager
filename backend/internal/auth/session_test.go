@@ -166,6 +166,41 @@ func TestMaxSessionsPerUser(t *testing.T) {
 	}
 }
 
+// TestMaxSessionsEvictsOldestCreated (review A m-09, SPEC §10.4 "tertua"):
+// the cap removes the session created first even when it was the most
+// recently used one.
+func TestMaxSessionsEvictsOldestCreated(t *testing.T) {
+	ctx := context.Background()
+	store := testStore(t)
+	u := createUser(t, store, "tono")
+	clock := newFakeClock()
+	s := NewSessions(store, 2*time.Hour, 168*time.Hour, clock.Now)
+	tokens := make([]string, 0, MaxSessionsPerUser+1)
+	for i := 0; i < MaxSessionsPerUser; i++ {
+		clock.Advance(time.Minute)
+		tk, _, err := s.Create(ctx, u.ID, "10.0.0.1", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		tokens = append(tokens, tk)
+	}
+	// the first session is used again (last_seen_at refreshed) ...
+	clock.Advance(10 * time.Minute)
+	if _, err := s.Lookup(ctx, tokens[0]); err != nil {
+		t.Fatal(err)
+	}
+	// ... yet the 21st session evicts it, not the least recently seen one
+	if _, _, err := s.Create(ctx, u.ID, "10.0.0.1", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Lookup(ctx, tokens[0]); !errors.Is(err, ErrSessionInvalid) {
+		t.Fatalf("oldest-created session must be revoked: %v", err)
+	}
+	if _, err := s.Lookup(ctx, tokens[1]); err != nil {
+		t.Fatalf("second session must survive: %v", err)
+	}
+}
+
 func TestCookieFlags(t *testing.T) {
 	s := NewSessions(nil, 2*time.Hour, 168*time.Hour, nil)
 	c := s.Cookie("tok", true)

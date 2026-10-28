@@ -333,6 +333,12 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		{http.MethodGet, "/api/v1/me/sessions"},
 		{http.MethodDelete, "/api/v1/me/sessions/abcdef01"},
 		{http.MethodPost, "/api/v1/me/sessions/revoke-others"},
+		// Step 23a: 2FA enrolment needs a settled password; admin reset is admin-gated
+		{http.MethodPost, "/api/v1/me/totp/setup"},
+		{http.MethodPost, "/api/v1/me/totp/enable"},
+		{http.MethodPost, "/api/v1/me/totp/disable"},
+		{http.MethodPost, "/api/v1/me/totp/recovery-codes"},
+		{http.MethodPost, "/api/v1/admin/users/x/reset-totp"},
 		{http.MethodGet, "/api/v1/admin/audit"},
 		{http.MethodGet, "/api/v1/admin/audit/export.csv"},
 		{http.MethodGet, "/api/v1/admin/tasks"},
@@ -473,6 +479,9 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		"GET /api/v1/admin/shares": true, "POST /api/v1/admin/shares/{id}/revoke": true,
 		"GET /api/v1/admin/maintenance": true, "POST /api/v1/admin/maintenance/{job}": true,
 		"GET /api/v1/admin/maintenance/backups": true, "GET /api/v1/admin/maintenance/backups/{name}": true,
+		// Step 23a: TOTP (gated above)
+		"POST /api/v1/me/totp/setup": true, "POST /api/v1/me/totp/enable": true, "POST /api/v1/me/totp/disable": true,
+		"POST /api/v1/me/totp/recovery-codes": true, "POST /api/v1/admin/users/{id}/reset-totp": true,
 	}
 	// the signed endpoints reject cookie-only access: no signature → 403
 	for _, p := range []string{"/api/v1/files/thumb?path=/x&size=128", "/api/v1/files/download?path=/x", "/api/v1/files/raw?path=/x&purpose=media", "/api/v1/files/zip?token=x", "/api/v1/archives/entry-content?path=/x&inner=a", "/api/v1/files/subtitle?path=/x.srt&purpose=media"} {

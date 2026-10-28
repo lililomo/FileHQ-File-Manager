@@ -9,7 +9,12 @@ import (
 )
 
 type Querier interface {
+	// Step 23a anti-replay: accept a code only when its time step is newer than
+	// the last accepted one (0 rows = replay or concurrent use of the same code).
+	AdvanceUserTOTPStep(ctx context.Context, arg AdvanceUserTOTPStepParams) (int64, error)
 	ApplyQuotaDelta(ctx context.Context, arg ApplyQuotaDeltaParams) error
+	// Step 23a: disable (user) or reset (admin).
+	ClearUserTOTP(ctx context.Context, arg ClearUserTOTPParams) error
 	CountActiveAdmins(ctx context.Context) (int64, error)
 	// Step 19a dashboard: live public links (not disabled, not broken, not expired).
 	CountActivePublicShares(ctx context.Context, now *string) (int64, error)
@@ -30,6 +35,7 @@ type Querier interface {
 	CountTasksByState(ctx context.Context) ([]CountTasksByStateRow, error)
 	CountTrashActive(ctx context.Context, userID string) (int64, error)
 	CountUnreadNotifications(ctx context.Context, userID string) (int64, error)
+	CountUnusedTOTPRecoveryCodes(ctx context.Context, userID string) (int64, error)
 	CountUserTasksByState(ctx context.Context, arg CountUserTasksByStateParams) (int64, error)
 	CountUsers(ctx context.Context, arg CountUsersParams) (int64, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
@@ -66,9 +72,12 @@ type Querier interface {
 	DeleteShareRecipient(ctx context.Context, arg DeleteShareRecipientParams) (int64, error)
 	DeleteShareRecipients(ctx context.Context, shareID string) (int64, error)
 	DeleteSharesPrefix(ctx context.Context, arg DeleteSharesPrefixParams) (int64, error)
+	DeleteTOTPRecoveryCodes(ctx context.Context, userID string) (int64, error)
 	DeleteTrashItemRow(ctx context.Context, arg DeleteTrashItemRowParams) error
 	DeleteUploadSessionsBefore(ctx context.Context, before string) (int64, error)
 	DeleteUserTask(ctx context.Context, arg DeleteUserTaskParams) (int64, error)
+	// Step 23a: POST /me/totp/enable after the first code verified (step = anti-replay floor).
+	EnableUserTOTP(ctx context.Context, arg EnableUserTOTPParams) error
 	GetEditorSession(ctx context.Context, userID string) (EditorSession, error)
 	GetFavorite(ctx context.Context, arg GetFavoriteParams) (Favorite, error)
 	GetFileNote(ctx context.Context, arg GetFileNoteParams) (FileNote, error)
@@ -114,6 +123,8 @@ type Querier interface {
 	InsertShareAccessLog(ctx context.Context, arg InsertShareAccessLogParams) error
 	// Step 18b: recipients of mode=users shares.
 	InsertShareRecipient(ctx context.Context, arg InsertShareRecipientParams) error
+	// Step 23a: single-use TOTP recovery codes (SPEC 4.2 totp_recovery_codes; keep this file ASCII: sqlc star expansion miscounts multi-byte runes).
+	InsertTOTPRecoveryCode(ctx context.Context, arg InsertTOTPRecoveryCodeParams) error
 	// Task engine persistence (SPEC 4.2 tasks / task_logs, 7.3). Comments are
 	// ASCII only (sqlc 1.31 offset bug). Every per-user query filters on user_id
 	// so another user's id answers "not found".
@@ -177,6 +188,7 @@ type Querier interface {
 	ListTrashByBatch(ctx context.Context, arg ListTrashByBatchParams) ([]TrashItem, error)
 	ListTrashItems(ctx context.Context, userID string) ([]TrashItem, error)
 	ListTrashItemsByIDs(ctx context.Context, arg ListTrashItemsByIDsParams) ([]TrashItem, error)
+	ListUnusedTOTPRecoveryCodes(ctx context.Context, userID string) ([]TotpRecoveryCode, error)
 	ListUserSessions(ctx context.Context, arg ListUserSessionsParams) ([]Session, error)
 	ListUserTasks(ctx context.Context, arg ListUserTasksParams) ([]Task, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
@@ -216,7 +228,8 @@ type Querier interface {
 	SetTrashPurged(ctx context.Context, arg SetTrashPurgedParams) (int64, error)
 	SetTrashRestored(ctx context.Context, arg SetTrashRestoredParams) (int64, error)
 	SetUploadSessionState(ctx context.Context, arg SetUploadSessionStateParams) (int64, error)
-	SetUserTOTP(ctx context.Context, arg SetUserTOTPParams) error
+	// Step 23a: POST /me/totp/setup stores the encrypted secret unverified.
+	SetUserTOTPPending(ctx context.Context, arg SetUserTOTPPendingParams) error
 	SoftDeleteUser(ctx context.Context, arg SoftDeleteUserParams) error
 	// Step 18b: username autocomplete for sharing (active users only, never the
 	// caller). Username prefix or display-name substring; the parser has no
@@ -253,6 +266,7 @@ type Querier interface {
 	UpsertPin(ctx context.Context, arg UpsertPinParams) error
 	UpsertPreferences(ctx context.Context, arg UpsertPreferencesParams) error
 	UpsertSetting(ctx context.Context, arg UpsertSettingParams) error
+	UseTOTPRecoveryCode(ctx context.Context, arg UseTOTPRecoveryCodeParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

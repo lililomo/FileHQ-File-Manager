@@ -546,6 +546,36 @@ func (s *Service) RevokeSessions(ctx context.Context, a Actor, id string) (int64
 	return n, nil
 }
 
+// ResetTOTP removes the user's TOTP secret and recovery codes and revokes
+// every session (Step 23a, SPEC §8.17): the next login needs no code and
+// the user can enrol again from the profile page.
+func (s *Service) ResetTOTP(ctx context.Context, a Actor, id string) error {
+	u, err := s.GetUser(ctx, id)
+	if err != nil {
+		return err
+	}
+	now := db.FormatTime(s.now())
+	err = s.repo.WithTx(ctx, func(tx db.Repository) error {
+		if err := tx.ClearUserTOTP(ctx, sqlc.ClearUserTOTPParams{UpdatedAt: now, ID: u.ID}); err != nil {
+			return err
+		}
+		if _, err := tx.DeleteTOTPRecoveryCodes(ctx, u.ID); err != nil {
+			return err
+		}
+		revoked, err := tx.RevokeUserSessions(ctx, u.ID, "", now)
+		if err != nil {
+			return err
+		}
+		s.record(ctx, tx, a, audit.ActionUserResetTOTP, "user", u.ID, map[string]any{"username": u.Username, "wasEnabled": u.TotpEnabled != 0, "sessionsRevoked": revoked})
+		return nil
+	})
+	if err != nil {
+		return internalErr(err)
+	}
+	s.userChanged(u.ID)
+	return nil
+}
+
 // DeleteInput is DELETE /admin/users/{id}.
 type DeleteInput struct {
 	ConfirmUsername string `json:"confirmUsername"`

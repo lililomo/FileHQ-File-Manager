@@ -33,6 +33,7 @@ func (s *Server) mountAdmin(api chi.Router) {
 		g.Delete("/admin/users/{id}", s.handleAdminUserDelete)
 		g.Post("/admin/users/{id}/reset-password", s.handleAdminUserResetPassword)
 		g.Post("/admin/users/{id}/revoke-sessions", s.handleAdminUserRevokeSessions)
+		g.Post("/admin/users/{id}/reset-totp", s.handleAdminUserResetTOTP) // Step 23a
 		g.Post("/admin/users/{id}/disable", s.handleAdminUserStatus("disabled"))
 		g.Post("/admin/users/{id}/enable", s.handleAdminUserStatus("active"))
 		g.Get("/admin/settings", s.handleAdminSettingsList)
@@ -172,6 +173,18 @@ func (s *Server) handleAdminUserRevokeSessions(w http.ResponseWriter, r *http.Re
 		s.writeAdminError(w, r, err)
 		return
 	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleAdminUserResetTOTP clears the user's second factor and revokes
+// their sessions (SPEC §8.17, Step 23a).
+func (s *Server) handleAdminUserResetTOTP(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if err := s.admin.ResetTOTP(r.Context(), s.actor(r), id); err != nil {
+		s.writeAdminError(w, r, err)
+		return
+	}
+	s.evictUser(id)
 	w.WriteHeader(http.StatusNoContent)
 }
 

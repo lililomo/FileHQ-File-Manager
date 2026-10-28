@@ -61,8 +61,8 @@ func TestParseRateLimit(t *testing.T) {
 	if def.LoginIP.Limit != 20 || def.API.Burst != 120 || def.RemoteDownload.Window != time.Hour || def.BackupDownload.Limit != 5 {
 		t.Fatalf("defaults do not match SPEC §10.5: %+v", def)
 	}
-	if len(config.RateLimitKeys()) != 19 {
-		t.Fatalf("expected 19 RATE_LIMIT_* keys, got %d", len(config.RateLimitKeys()))
+	if len(config.RateLimitKeys()) != 20 {
+		t.Fatalf("expected 20 RATE_LIMIT_* keys, got %d", len(config.RateLimitKeys()))
 	}
 }
 

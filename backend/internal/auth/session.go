@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -69,7 +70,8 @@ func HashToken(token string) string {
 }
 
 // Create issues a new session for userID and returns the cookie token. If the
-// user already has MaxSessionsPerUser active sessions the oldest are revoked.
+// user already has MaxSessionsPerUser active sessions the oldest-created
+// are revoked (SPEC §10.4).
 func (s *Sessions) Create(ctx context.Context, userID, ip, userAgent string) (string, sqlc.Session, error) {
 	raw := make([]byte, tokenBytes)
 	if _, err := rand.Read(raw); err != nil {
@@ -87,8 +89,11 @@ func (s *Sessions) Create(ctx context.Context, userID, ip, userAgent string) (st
 	if err != nil {
 		return "", sqlc.Session{}, err
 	}
-	if len(active) >= MaxSessionsPerUser { // newest first → revoke the tail
-		for _, old := range active[MaxSessionsPerUser-1:] {
+	if len(active) >= MaxSessionsPerUser {
+		// SPEC §10.4 "yang tertua dicabut": oldest by creation, not least
+		// recently seen (review A m-09). The list arrives newest-seen first.
+		slices.SortStableFunc(active, func(a, b sqlc.Session) int { return strings.Compare(a.CreatedAt, b.CreatedAt) })
+		for _, old := range active[:len(active)-MaxSessionsPerUser+1] {
 			if _, err := s.repo.RevokeSession(ctx, old.ID, nowStr); err != nil {
 				return "", sqlc.Session{}, err
 			}

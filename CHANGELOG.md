@@ -2,6 +2,17 @@
 
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/id/1.1.0/); versi mengikuti SemVer. Nomor step merujuk ke `PROMPT.md`; hash = commit di branch `main`.
 
+## [Unreleased]
+
+### Added (Step 23a — TOTP 2FA)
+- Verifikasi dua langkah TOTP opsional per user (RFC 6238, SHA-1, 6 digit, 30 s, window ±1, anti-replay `totp_last_step`): `POST /me/totp/setup|enable|disable|recovery-codes`, langkah kedua inline pada `POST /auth/login` (`totp`/`recoveryCode`; `VALIDATION_FAILED totp_required|totp_invalid`), 10 kode pemulihan sekali pakai (HMAC-SHA256 kunci HKDF `totp-recovery`), secret at rest AES-256-GCM (kunci HKDF `totp-enc`, AAD id user), limiter `RATE_LIMIT_TOTP` 5/menit per user, audit `auth.totp_enabled|disabled|recovery_used|recovery_regenerated`, `user.reset_totp`.
+- UI: kartu 2FA di Profil (QR `otpauth://` + secret manual, verifikasi kode, kode pemulihan dengan salin/unduh dan kotak centang wajib, nonaktifkan dengan password + kode, buat kode pemulihan baru); langkah kode pada halaman login (tautan kode pemulihan, peringatan kode terakhir); admin: badge 2FA + aksi "Reset 2FA" (sesi user dicabut).
+- Migrasi `0016_totp` (`users.totp_enabled_at`, `users.totp_last_step`, tabel `totp_recovery_codes`), env opsional `RATE_LIMIT_TOTP`, `GET /auth/me` + login mengembalikan `user.totpEnabled`/`totpEnabledAt`, daftar admin sudah memuat `totpEnabled`.
+
+### Fixed
+- Login mencatat sukses (`last_login_at`, reset counter) hanya setelah provisioning folder home berhasil (review A m-08).
+- Batas 20 sesi per user mencabut sesi yang paling lama **dibuat** (`created_at`, SPEC §10.4), bukan yang paling lama tidak dipakai (review A m-09).
+
 ## [1.0.0] — 2026-10-28
 
 Rilis MVP (PRD §9: M1–M5). Tag `v1.0.0` dibuat setelah persetujuan pemilik (lihat `docs/reviews/review-F.md`).

@@ -255,6 +255,14 @@ type TaskLog struct {
 	Message string `json:"message"`
 }
 
+type TotpRecoveryCode struct {
+	ID        int64   `json:"id"`
+	UserID    string  `json:"user_id"`
+	CodeHash  []byte  `json:"code_hash"`
+	UsedAt    *string `json:"used_at"`
+	CreatedAt string  `json:"created_at"`
+}
+
 type TrashItem struct {
 	ID           string  `json:"id"`
 	UserID       string  `json:"user_id"`
@@ -310,6 +318,8 @@ type User struct {
 	CreatedAt          string  `json:"created_at"`
 	UpdatedAt          string  `json:"updated_at"`
 	DeletedAt          *string `json:"deleted_at"`
+	TotpEnabledAt      *string `json:"totp_enabled_at"`
+	TotpLastStep       *int64  `json:"totp_last_step"`
 }
 
 type UserPreference struct {

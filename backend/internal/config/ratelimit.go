@@ -54,6 +54,7 @@ type RateLimits struct {
 	TusCreate       RateLimit // RATE_LIMIT_TUS_CREATE: tus uploads created per session
 	Healthz         RateLimit // RATE_LIMIT_HEALTHZ: GET /healthz per IP
 	BackupDownload  RateLimit // RATE_LIMIT_BACKUP_DOWNLOAD: SQLite backup downloads per admin session
+	TOTP            RateLimit // RATE_LIMIT_TOTP: TOTP / recovery-code verifications per user (Step 23a)
 }
 
 // rateLimitSpec maps an env key to the RateLimits field and its default.
@@ -83,6 +84,7 @@ var rateLimitSpecs = []rateLimitSpec{
 	{"RATE_LIMIT_TUS_CREATE", "60/1m", func(r *RateLimits, l RateLimit) { r.TusCreate = l }},
 	{"RATE_LIMIT_HEALTHZ", "60/1m", func(r *RateLimits, l RateLimit) { r.Healthz = l }},
 	{"RATE_LIMIT_BACKUP_DOWNLOAD", "5/10m", func(r *RateLimits, l RateLimit) { r.BackupDownload = l }},
+	{"RATE_LIMIT_TOTP", "5/1m", func(r *RateLimits, l RateLimit) { r.TOTP = l }},
 }
 
 // RateLimitKeys lists the RATE_LIMIT_* env variables in SPEC order.

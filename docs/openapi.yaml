@@ -104,12 +104,18 @@ paths:
   /api/v1/auth/login:
     post:
       tags: [auth]
-      summary: Login dengan username dan password
+      summary: Login dengan username dan password (+ kode TOTP bila 2FA aktif)
       description: |
         Rate limit 20 request/menit per IP (`429 RATE_LIMITED`). Lima kegagalan dalam 15 menit mengunci akun
         secara bertahap 1/5/15/60 menit (`423 ACCOUNT_LOCKED`). Kegagalan selalu dijawab `401 UNAUTHENTICATED`
         dengan pesan generik. Sukses mengirim cookie `fm_session` (HttpOnly, Secure, SameSite=Lax) dan token CSRF.
         Request lintas situs (`Sec-Fetch-Site: cross-site` atau `Origin` asing) ditolak `403 CSRF_INVALID`.
+
+        **2FA (Step 23a, alur inline):** bila password benar dan 2FA aktif tetapi `totp`/`recoveryCode` tidak dikirim,
+        server menjawab `400 VALIDATION_FAILED details.fields.totp=totp_required` tanpa membuat sesi; klien
+        menampilkan langkah kedua lalu mengirim ulang username + password + kode. Kode salah/kedaluwarsa/sudah dipakai →
+        `400 … totp=totp_invalid` (tidak menambah counter lockout). Verifikasi kode dibatasi `RATE_LIMIT_TOTP`
+        (5/menit per user) → `429`. Kode pemulihan sekali pakai; respons memuat `recoveryCodesRemaining`.
       operationId: authLogin
       requestBody:
         required: true
@@ -121,7 +127,8 @@ paths:
               properties:
                 username: { type: string, maxLength: 64 }
                 password: { type: string, maxLength: 1024, format: password }
-                totp: { type: string, description: "Kode TOTP 6 digit (fase akhir, Step 23a)" }
+                totp: { type: string, maxLength: 16, description: "Kode TOTP 6 digit (Step 23a); kode pemulihan juga diterima di field ini" }
+                recoveryCode: { type: string, maxLength: 32, description: "Kode pemulihan xxxxx-xxxxx (sekali pakai, Step 23a)" }
       responses:
         "200":
           description: Login berhasil
@@ -138,7 +145,10 @@ paths:
                   user: { $ref: "#/components/schemas/User" }
                   mustChangePassword: { type: boolean }
                   csrfToken: { type: string }
-        "400": { $ref: "#/components/responses/Error" }
+                  recoveryCodesRemaining: { type: integer, description: "Hanya bila login memakai kode pemulihan (Step 23a)" }
+        "400":
+          description: "VALIDATION_FAILED — field wajib, atau `details.fields.totp` ∈ totp_required|totp_invalid (Step 23a)"
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "401": { description: "UNAUTHENTICATED — username atau password salah", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "403": { description: "ACCOUNT_DISABLED atau CSRF_INVALID", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "423":
@@ -291,6 +301,108 @@ paths:
       responses:
         "204": { description: Sesi lain dicabut }
         "401": { $ref: "#/components/responses/Error" }
+  /api/v1/me/totp/setup:
+    post:
+      tags: [me]
+      summary: Mulai pendaftaran TOTP — secret pending terenkripsi + otpauth URI (Step 23a)
+      description: Setup baru menimpa setup pending sebelumnya. QR dirender oleh klien. Respons `Cache-Control no-store`.
+      operationId: meTotpSetup
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      responses:
+        "200":
+          description: Secret untuk aplikasi authenticator
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [secret, otpauthUri]
+                properties:
+                  secret: { type: string, description: base32 tanpa padding (32 karakter) }
+                  otpauthUri: { type: string, example: "otpauth://totp/FileManager:budi?secret=…&issuer=FileManager&algorithm=SHA1&digits=6&period=30" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { description: "CONFLICT reason=totp_enabled — nonaktifkan dulu", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/me/totp/enable:
+    post:
+      tags: [me]
+      summary: Verifikasi kode pertama → 2FA aktif, 10 kode pemulihan tampil sekali (audit auth.totp_enabled)
+      operationId: meTotpEnable
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, maxLength: 16, description: Kode TOTP 6 digit dari aplikasi }
+      responses:
+        "200":
+          description: 2FA aktif
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recoveryCodes, enabledAt]
+                properties:
+                  recoveryCodes: { type: array, minItems: 10, maxItems: 10, items: { type: string, pattern: "^[a-z2-9]{5}-[a-z2-9]{5}$" } }
+                  enabledAt: { type: string, format: date-time }
+        "400": { description: "VALIDATION_FAILED — `details.fields.code` ∈ required|totp_invalid", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "409": { description: "CONFLICT reason ∈ totp_enabled|totp_not_setup", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /api/v1/me/totp/disable:
+    post:
+      tags: [me]
+      summary: Nonaktifkan 2FA dengan password + kode (TOTP atau kode pemulihan); audit auth.totp_disabled
+      operationId: meTotpDisable
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, code]
+              properties:
+                password: { type: string, format: password }
+                code: { type: string, maxLength: 32 }
+      responses:
+        "204": { description: 2FA nonaktif; secret, kode pemulihan dan langkah terakhir dihapus }
+        "400": { description: "VALIDATION_FAILED — `details.fields.password=incorrect` atau `details.fields.code` ∈ required|totp_invalid", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "409": { description: "CONFLICT reason=totp_disabled", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /api/v1/me/totp/recovery-codes:
+    post:
+      tags: [me]
+      summary: Buat 10 kode pemulihan baru (kode lama batal); audit auth.totp_recovery_regenerated
+      operationId: meTotpRecoveryCodes
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, format: password }
+      responses:
+        "200":
+          description: Kode baru (tampil sekali)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recoveryCodes]
+                properties:
+                  recoveryCodes: { type: array, items: { type: string } }
+        "400": { description: "VALIDATION_FAILED — `details.fields.password` ∈ required|incorrect", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "409": { description: "CONFLICT reason=totp_disabled", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/v1/me/preferences:
     get:
       tags: [me]
@@ -3459,6 +3571,19 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+  /api/v1/admin/users/{id}/reset-totp:
+    post:
+      tags: [admin]
+      summary: Reset 2FA user — secret + kode pemulihan dihapus, semua sesi dicabut (audit user.reset_totp; Step 23a)
+      operationId: adminUserResetTotp
+      security: [{ cookieAuth: [], csrfToken: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: 2FA direset (idempoten) }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
   /api/v1/admin/users/{id}/disable:
     post:
       tags: [admin]
@@ -4365,6 +4490,8 @@ components:
         quotaBytes: { type: integer, format: int64 }
         lastLoginAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
+        totpEnabled: { type: boolean, description: "2FA TOTP aktif (Step 23a)" }
+        totpEnabledAt: { type: string, format: date-time, description: "Hanya bila totpEnabled" }
     ClientConfig:
       type: object
       properties:
