@@ -10,6 +10,7 @@ import { EditorModal } from '@/features/editor/EditorModal'
 import { isEditableByName } from '@/features/editor/languages'
 import { FolderOpen, FolderPlus, Upload, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { EmptyState } from '@/components/EmptyState'
@@ -24,7 +25,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { listTemplates } from '@/features/file-ops/api'
 import {
   setDropHandlers,
-  dropTargetProps,
   setFavoriteDropHandler,
   type DragPayload,
   parentOf,
@@ -59,6 +59,7 @@ import { useOverlaysStore } from '@/stores/overlays'
 import { getPref, usePref, usePrefsStore } from '@/stores/prefs'
 import { useSelectionStore } from '@/stores/selection'
 import { MAX_TABS, useTabsStore } from '@/stores/tabs'
+import { usePanesStore, useRightTabsStore, type PaneId } from '@/stores/panes'
 import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { AddressBar } from './AddressBar'
@@ -77,6 +78,9 @@ import { ColumnContextMenuItems, ColumnMenu } from './ColumnMenu'
 import { MOBILE_COLUMNS, normalizeColumns, orderedVisible, type ColumnsPref } from './columns'
 import { BrowserContextMenu } from './ContextMenu'
 import { DetailsView } from './DetailsView'
+import { PaneDropBadge } from './DualPaneDrop'
+import { usePaneDrop } from './usePaneDrop'
+import { transferablePaths } from './paneDrop'
 import { InlineRename } from './InlineRename'
 import { PropertiesDialog, type PropertiesTarget } from '@/features/properties/PropertiesDialog'
 import { PreviewPanel } from './PreviewPanel'
@@ -121,6 +125,26 @@ const SORT_FIELDS: SortField[] = [
   'duration',
 ]
 
+/** `?select/archive/view` of the left pane; the right pane keeps the same
+ *  values in component state (it never touches the URL, Step 23b). */
+interface PaneSearch {
+  select?: string
+  archive?: string
+  view?: string
+}
+
+/** Dual-pane host wiring for one pane (SPEC §9.3 varian dual-pane). */
+export interface DualPaneProps {
+  pane: PaneId
+  /** the focused pane owns the shortcuts, palette context and shared chrome */
+  focused: boolean
+  /** shared toolbar / preview containers of the host (portal targets) */
+  toolbarSlot: HTMLElement | null
+  previewSlot: HTMLElement | null
+  /** the other pane's current folder ("… ke panel lain") */
+  otherPath: string
+}
+
 /** Pushes the "dialog" shortcut scope while an overlay is open. */
 function useDialogScope(open: boolean): void {
   useEffect(() => {
@@ -131,9 +155,11 @@ function useDialogScope(open: boolean): void {
 
 export function BrowserLayout({
   path,
-  selectName,
-  archivePath,
-  viewPath,
+  selectName: urlSelect,
+  archivePath: urlArchive,
+  viewPath: urlView,
+  dual,
+  dualToggle,
 }: {
   path: string
   selectName?: string | undefined
@@ -141,10 +167,40 @@ export function BrowserLayout({
   archivePath?: string | undefined
   /** `?view=<path>`: the viewer overlay (Step 17a) is open on this file. */
   viewPath?: string | undefined
+  /** Step 23b: set while dual-pane is shown (≥ 1280 px). */
+  dual?: DualPaneProps | undefined
+  /** Step 23b: View ▾ "Dual-pane" toggle; undefined below 1280 px. */
+  dualToggle?: { enabled: boolean; onChange: (v: boolean) => void } | undefined
 }) {
+  const isRight = dual?.pane === 'right'
+  const focused = dual ? dual.focused : true
+  // left pane: the URL-driven tabs; right pane: its own tab model (stores/panes.ts)
+  const tabsStore = isRight ? useRightTabsStore : useTabsStore
+  const [localSearch, setLocalSearch] = useState<PaneSearch>({})
+  const selectName = isRight ? localSearch.select : urlSelect
+  const archivePath = isRight ? localSearch.archive : urlArchive
+  const viewPath = isRight ? localSearch.view : urlView
   const { t, i18n } = useTranslation(['files', 'fileops', 'errors', 'common', 'meta'])
   const navigate = useNavigate()
   const qc = useQueryClient()
+  // `?select/archive/view` (+ optionally another folder): the router for the
+  // left pane, component state for the right one
+  const setSearch = useCallback(
+    (search: PaneSearch, opts: { replace?: boolean; path?: string } = {}) => {
+      if (isRight) {
+        if (opts.path !== undefined) tabsStore.getState().visit(opts.path)
+        setLocalSearch(search)
+        return
+      }
+      void navigate({
+        to: '/files/$',
+        params: { _splat: pathToSplat(opts.path ?? path) },
+        search,
+        ...(opts.replace ? { replace: true } : {}),
+      })
+    },
+    [isRight, tabsStore, navigate, path],
+  )
   const isMobile = useIsMobile()
   const previewOverlay = useMediaQuery('(max-width: 1279px)')
   const [editing, setEditing] = useState(false)
@@ -184,10 +240,10 @@ export function BrowserLayout({
   })
 
   // --- tabs: URL is the source of truth; the store records history per tab ---
-  const tabs = useTabsStore()
+  const tabs = tabsStore()
   useEffect(() => {
-    useTabsStore.getState().visit(path)
-  }, [path])
+    tabsStore.getState().visit(path)
+  }, [path, tabsStore])
   const tab = tabs.active()
   const tabId = tab.id
 
@@ -211,10 +267,13 @@ export function BrowserLayout({
     enabled: prefsLoaded && rememberPerFolder,
     staleTime: 60_000,
   })
-  const sort: SortPref = useMemo(
+  const prefSort: SortPref = useMemo(
     () => (folderPref.data ? normalizeSort(folderPref.data.sort) : globalSort),
     [folderPref.data, globalSort],
   )
+  // the right pane may override the sort for the session (not persisted)
+  const rightSort = usePanesStore((s) => s.rightSort)
+  const sort = isRight && rightSort ? rightSort : prefSort
   const columns: ColumnsPref = useMemo(
     () => (folderPref.data?.columns ? normalizeColumns(folderPref.data.columns) : globalColumns),
     [folderPref.data, globalColumns],
@@ -256,26 +315,30 @@ export function BrowserLayout({
   const changeSort = useCallback(
     (next: SortPref) => {
       if (sameSort(next, sort)) return
+      if (isRight) {
+        usePanesStore.getState().setRightSort(next)
+        return
+      }
       setPref('view.sort', next)
       persistFolder(next, columns, view)
     },
-    [sort, columns, view, setPref, persistFolder],
+    [sort, columns, view, setPref, persistFolder, isRight],
   )
   const changeColumns = useCallback(
     (next: ColumnsPref) => {
       setPref('view.columns', next)
-      persistFolder(sort, next, view)
+      persistFolder(prefSort, next, view)
     },
-    [sort, view, setPref, persistFolder],
+    [prefSort, view, setPref, persistFolder],
   )
   const changeView = useCallback(
     (next: ViewMode) => {
       if (next === view) return
       setPref('view.mode', next)
-      persistFolder(sort, columns, next)
+      persistFolder(prefSort, columns, next)
       announce(t(`files:view.${next}`))
     },
-    [view, sort, columns, setPref, persistFolder, t],
+    [view, prefSort, columns, setPref, persistFolder, t],
   )
   const onHeaderSort = useCallback(
     (field: SortField, secondary: boolean) => changeSort(cycleSort(sort, field, secondary)),
@@ -285,7 +348,8 @@ export function BrowserLayout({
   // --- restore / persist open tabs ---
   const restored = useRef(false)
   useEffect(() => {
-    if (!prefsLoaded || restored.current) return
+    // the right pane restores `dualpane.right` in the host (DualPane.tsx)
+    if (isRight || !prefsLoaded || restored.current) return
     restored.current = true
     const saved = getPref<{ path: string }[] | undefined>('tabs.open', undefined)
     if (tabsRestore && Array.isArray(saved) && saved.length > 0) {
@@ -294,14 +358,14 @@ export function BrowserLayout({
         path,
       )
     }
-  }, [prefsLoaded, tabsRestore, path])
+  }, [prefsLoaded, tabsRestore, path, isRight])
   const tabPaths = tabs.tabs.map((x) => x.path).join('\n')
   useEffect(() => {
-    if (!restored.current) return
+    if (isRight || !restored.current) return
     // read the live store: in the hydration commit the rendered `tabPaths` is stale
     const live = useTabsStore.getState().tabs.map((x) => ({ path: x.path }))
     setPref('tabs.open', live)
-  }, [tabPaths, setPref])
+  }, [tabPaths, setPref, isRight])
 
   // --- listing ---
   // Dimensi/Durasi columns ask the server to probe media metadata (SPEC §8.4).
@@ -335,8 +399,8 @@ export function BrowserLayout({
     if (!p) return
     window.clearTimeout(p.timer)
     pendingScroll.current = null
-    useTabsStore.getState().setScroll(p.path, p.offset)
-  }, [])
+    tabsStore.getState().setScroll(p.path, p.offset)
+  }, [tabsStore])
   const rememberScroll = useCallback(
     (offset: number) => {
       const prev = pendingScroll.current
@@ -384,13 +448,10 @@ export function BrowserLayout({
       useSelectionStore.getState().set(tabId, selectOnly(target.path))
       announce(t('files:announce.selected', { count: 1, n: '1' }))
     }
-    void navigate({
-      to: '/files/$',
-      params: { _splat: pathToSplat(path) },
-      search: {},
-      replace: true,
-    })
-  }, [revealKey, selectName, items, path, tabId, navigate, t])
+    // left: drop ?select= from the URL; right: clear the pane's local copy
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot clean-up after the reveal
+    setSearch({}, { replace: true })
+  }, [revealKey, selectName, items, path, tabId, setSearch, t])
   const selCount = selectedCount(selection, items.length, total)
   const selItems = useMemo(() => selectedItems(selection, items), [selection, items])
   const selPaths = useMemo(() => selItems.map((it) => it.path), [selItems])
@@ -404,18 +465,25 @@ export function BrowserLayout({
 
   // --- navigation ---
   const go = useCallback(
-    (to: string) => void navigate({ to: '/files/$', params: { _splat: pathToSplat(to) } }),
-    [navigate],
+    (to: string) => {
+      if (isRight) {
+        tabsStore.getState().visit(to)
+        setLocalSearch({})
+        return
+      }
+      void navigate({ to: '/files/$', params: { _splat: pathToSplat(to) } })
+    },
+    [navigate, isRight, tabsStore],
   )
   const parent = parentPath(path)
   const handlers = useMemo(
     () => ({
       back: () => {
-        const p = useTabsStore.getState().back()
+        const p = tabsStore.getState().back()
         if (p !== null) go(p)
       },
       forward: () => {
-        const p = useTabsStore.getState().forward()
+        const p = tabsStore.getState().forward()
         if (p !== null) go(p)
       },
       up: () => {
@@ -426,34 +494,34 @@ export function BrowserLayout({
       },
       editPath: () => setEditing(true),
     }),
-    [go, parent, refetch, t],
+    [go, parent, refetch, t, tabsStore],
   )
 
   const openTab = useCallback(
     (p: string) => {
-      const created = useTabsStore.getState().openTab(p)
+      const created = tabsStore.getState().openTab(p)
       if (!created) {
         toast.error(t('files:tabs.limit', { max: MAX_TABS }))
         return
       }
       go(p)
     },
-    [go, t],
+    [go, t, tabsStore],
   )
   const closeTab = useCallback(
     (id: string) => {
-      const next = useTabsStore.getState().closeTab(id)
+      const next = tabsStore.getState().closeTab(id)
       useSelectionStore.getState().clear(id)
       if (next !== path) go(next)
     },
-    [go, path],
+    [go, path, tabsStore],
   )
   const activateTab = useCallback(
     (id: string) => {
-      const next = useTabsStore.getState().activate(id)
+      const next = tabsStore.getState().activate(id)
       if (next !== path) go(next)
     },
-    [go, path],
+    [go, path, tabsStore],
   )
 
   const togglePreview = useCallback(
@@ -461,41 +529,20 @@ export function BrowserLayout({
     [setPref],
   )
 
-  const openArchive = useCallback(
-    (archive: string) =>
-      void navigate({
-        to: '/files/$',
-        params: { _splat: pathToSplat(path) },
-        search: { archive },
-      }),
-    [navigate, path],
-  )
-  const closeArchive = useCallback(
-    () => void navigate({ to: '/files/$', params: { _splat: pathToSplat(path) }, search: {} }),
-    [navigate, path],
-  )
+  const openArchive = useCallback((archive: string) => setSearch({ archive }), [setSearch])
+  const closeArchive = useCallback(() => setSearch({}), [setSearch])
   // --- viewer overlay (Step 17a): `?view=<path>` is a history entry so Back closes it ---
   const viewerPushed = useRef(false)
   const openViewer = useCallback(
     (file: string) => {
-      viewerPushed.current = true
-      void navigate({
-        to: '/files/$',
-        params: { _splat: pathToSplat(path) },
-        search: { view: file },
-      })
+      viewerPushed.current = !isRight
+      setSearch({ view: file })
     },
-    [navigate, path],
+    [setSearch, isRight],
   )
   const viewerNavigate = useCallback(
-    (item: Item) =>
-      void navigate({
-        to: '/files/$',
-        params: { _splat: pathToSplat(path) },
-        search: { view: item.path },
-        replace: true,
-      }),
-    [navigate, path],
+    (item: Item) => setSearch({ view: item.path }, { replace: true }),
+    [setSearch],
   )
   const closeViewer = useCallback(() => {
     if (viewerPushed.current) {
@@ -503,19 +550,15 @@ export function BrowserLayout({
       window.history.back()
       return
     }
-    // deep link: nothing to go back to inside the app
-    void navigate({ to: '/files/$', params: { _splat: pathToSplat(path) }, search: {} })
-  }, [navigate, path])
+    // deep link (or the right pane): nothing to go back to inside the app
+    setSearch({})
+  }, [setSearch])
   const viewerOpenLocation = useCallback(
     (item: Item) => {
       viewerPushed.current = false
-      void navigate({
-        to: '/files/$',
-        params: { _splat: pathToSplat(parentPath(item.path) ?? ROOT) },
-        search: { select: item.name },
-      })
+      setSearch({ select: item.name }, { path: parentPath(item.path) ?? ROOT })
     },
-    [navigate],
+    [setSearch],
   )
   const viewerEdit = useCallback(
     (item: Item) => {
@@ -743,30 +786,33 @@ export function BrowserLayout({
     [siblingNames, commitRename, cancelRename],
   )
   // Ctrl+V with OS files/images on the clipboard uploads into the open folder (SPEC §8.8)
-  useEffect(
-    () =>
-      installPasteUpload(
-        () => path,
-        (dt, dest) => void uploadFromClipboard(dt, dest),
-      ),
-    [path],
-  )
+  useEffect(() => {
+    if (!focused) return
+    return installPasteUpload(
+      () => path,
+      (dt, dest) => void uploadFromClipboard(dt, dest),
+    )
+  }, [path, focused])
   // drop targets outside this screen (sidebar, breadcrumb) call the published handler
   useEffect(() => {
+    if (!focused) return
     setDropHandlers({
       items: (payload: DragPayload, targetDir, op) => {
-        const paths = payload.paths.filter((p) => parentOf(p) !== targetDir)
+        // dropping into the folder the items are already in is a no-op
+        const paths = transferablePaths(payload.paths, targetDir)
         if (paths.length === 0) return
         void ops.transfer(op, paths, targetDir)
       },
       os: ops.osDrop,
     })
     return () => setDropHandlers(null)
-  }, [ops])
+  }, [ops, focused])
 
   // --- shortcuts (browser scope) ---
   useEffect(() => pushScope('browser'), [])
   useEffect(() => {
+    // dual-pane: only the focused pane answers the keyboard (SPEC §9.3)
+    if (!focused) return
     const offs = [
       registerShortcut('back', handlers.back),
       registerShortcut('forward', handlers.forward),
@@ -801,18 +847,18 @@ export function BrowserLayout({
       registerShortcut('newTab', () => openTab(path)),
       registerShortcut('closeTab', () => closeTab(tabId)),
       registerShortcut('nextTab', () => {
-        const s = useTabsStore.getState()
+        const s = tabsStore.getState()
         const i = s.tabs.findIndex((x) => x.id === s.activeId)
         activateTab(s.tabs[(i + 1) % s.tabs.length]!.id)
       }),
       registerShortcut('prevTab', () => {
-        const s = useTabsStore.getState()
+        const s = tabsStore.getState()
         const i = s.tabs.findIndex((x) => x.id === s.activeId)
         activateTab(s.tabs[(i - 1 + s.tabs.length) % s.tabs.length]!.id)
       }),
       registerShortcut('selectTab', (_e, keys) => {
         const n = Number(keys.replace('Alt+', ''))
-        const target = useTabsStore.getState().tabs[n - 1]
+        const target = tabsStore.getState().tabs[n - 1]
         if (target) activateTab(target.id)
       }),
       registerShortcut('copy', fileOps.copy),
@@ -844,6 +890,8 @@ export function BrowserLayout({
     openNew,
     fileOps,
     selItems,
+    focused,
+    tabsStore,
   ])
   useDialogScope(!!properties || !!archivePath || !!editorPath)
   // the viewer and Quick Look push their own modal scope (`viewer`)
@@ -910,6 +958,14 @@ export function BrowserLayout({
         if (focusItem?.isDir) openTab(focusItem.path)
       },
       ...fileOps,
+      ...(dual
+        ? {
+            otherPanePath: dual.otherPath,
+            copyToOtherPane: () => void ops.transfer('copy', selPaths, dual.otherPath),
+            moveToOtherPane: () => void ops.transfer('move', selPaths, dual.otherPath),
+          }
+        : {}),
+      ...(dualToggle ? { toggleDualPane: () => dualToggle.onChange(!dualToggle.enabled) } : {}),
     }),
     [
       path,
@@ -935,17 +991,29 @@ export function BrowserLayout({
       fileOps,
       meta,
       selPaths,
+      dual,
+      dualToggle,
+      ops,
     ],
   )
   useEffect(() => {
+    if (!focused) return
     setActionContext(actionCtx)
     return () => setActionContext(null)
-  }, [actionCtx])
+  }, [actionCtx, focused])
   // sidebar "Favorit" is a drop target for items
   useEffect(() => {
+    if (!focused) return
     setFavoriteDropHandler((paths) => void meta.addFavorites(paths))
     return () => setFavoriteDropHandler(null)
-  }, [meta])
+  }, [meta, focused])
+  // the whole listing area takes drops into this folder (dual-pane: from the other pane)
+  const dirPaths = useMemo(
+    () => new Set(items.filter((it) => it.isDir).map((it) => it.path)),
+    [items],
+  )
+  const isFolderPath = useCallback((p: string) => dirPaths.has(p), [dirPaths])
+  const paneDrop = usePaneDrop(path, isFolderPath)
   const saveNote = useCallback((p: string, note: string) => meta.setNote(p, note), [meta])
 
   const longPress = useMemo(() => createLongPress(), [])
@@ -1153,6 +1221,7 @@ export function BrowserLayout({
               )
             }
             compact={isMobile}
+            minNameWidth={dual ? 180 : undefined}
           />
         )
     }
@@ -1197,10 +1266,67 @@ export function BrowserLayout({
       </ContextMenuCheckboxItem>
     </>
   )
+  const heading = path === ROOT ? t('fileops:picker.root') : baseName(path)
+  const toolbar = (
+    <Toolbar
+      onNew={openNew}
+      onUpload={(kind) => (kind === 'folder' ? fileOps.uploadFolder() : fileOps.uploadFile())}
+      onRemote={remoteDownloadEnabled ? fileOps.remoteDownload : undefined}
+      templates={templates.data ?? []}
+      actions={<ToolbarActions ctx={actionCtx} compact={isMobile} />}
+      compact={isMobile}
+      previewOpen={previewOpen}
+      onTogglePreview={togglePreview}
+      viewSwitcher={
+        <ViewSwitcher
+          mode={view}
+          onModeChange={changeView}
+          rememberPerFolder={rememberPerFolder}
+          onRememberPerFolderChange={(v) => setPref('view.remember_per_folder', v)}
+          dualPane={dualToggle}
+        />
+      }
+      columnsMenu={
+        <ColumnMenu
+          columns={columns}
+          onChange={changeColumns}
+          open={columnsOpen}
+          onOpenChange={setColumnsOpen}
+        />
+      }
+      sortMenu={
+        <SortMenu
+          sort={sort}
+          onSortChange={changeSort}
+          foldersFirst={foldersFirst}
+          onFoldersFirstChange={(v) => setPref('view.folders_first', v)}
+        />
+      }
+    />
+  )
+  const preview =
+    previewOpen && !isMobile ? (
+      <PreviewPanel
+        items={selItems}
+        count={selCount}
+        onClose={togglePreview}
+        overlay={previewOverlay}
+        onDownload={selItems.length ? () => void dl.download(selItems) : undefined}
+        onOpen={onOpen}
+      />
+    ) : null
+  // dual-pane: the focused pane renders the shared toolbar / preview into the host's slots
+  const inSlot = (node: React.ReactNode, slot: HTMLElement | null | undefined) =>
+    !dual ? node : focused && slot ? createPortal(node, slot) : null
   return (
-    <div className="relative flex h-full min-h-0 flex-col" data-testid="browser" data-view={view}>
+    <div
+      className="relative flex h-full min-h-0 flex-col"
+      data-testid="browser"
+      data-view={view}
+      data-pane={dual?.pane}
+    >
       {/* page heading for screen readers (the breadcrumb is the visible one) */}
-      <h1 className="sr-only">{path === ROOT ? t('fileops:picker.root') : baseName(path)}</h1>
+      {isRight ? <h2 className="sr-only">{heading}</h2> : <h1 className="sr-only">{heading}</h1>}
       <AddressBar
         path={path}
         canBack={tabs.canBack()}
@@ -1215,6 +1341,10 @@ export function BrowserLayout({
         onEditingChange={setEditing}
         compact={isMobile}
         refreshing={isFetching && !isPending}
+        dropDir={dual ? path : undefined}
+        navLabel={
+          dual ? `${t('files:nav.breadcrumb')} · ${t(`files:dualPane.${dual.pane}`)}` : undefined
+        }
       >
         {!isMobile ? (
           <>
@@ -1224,8 +1354,9 @@ export function BrowserLayout({
               onChange={setFilter}
               incomplete={listing.hasNextPage}
               onServerSearch={() => toast(t('files:filter.serverSearchSoon'))}
+              compact={!!dual}
             />
-            <TagFilter value={tagFilter} onChange={setTagFilter} />
+            <TagFilter value={tagFilter} onChange={setTagFilter} compact={!!dual} />
           </>
         ) : null}
       </AddressBar>
@@ -1234,45 +1365,12 @@ export function BrowserLayout({
         activeId={tabs.activeId}
         onActivate={activateTab}
         onClose={closeTab}
-        onCloseOthers={(id) => useTabsStore.getState().closeOthers(id)}
-        onCloseRight={(id) => useTabsStore.getState().closeRight(id)}
+        onCloseOthers={(id) => tabsStore.getState().closeOthers(id)}
+        onCloseRight={(id) => tabsStore.getState().closeRight(id)}
         onNew={() => openTab(path)}
-        onReorder={(id, to) => useTabsStore.getState().reorder(id, to)}
+        onReorder={(id, to) => tabsStore.getState().reorder(id, to)}
       />
-      <Toolbar
-        onNew={openNew}
-        onUpload={(kind) => (kind === 'folder' ? fileOps.uploadFolder() : fileOps.uploadFile())}
-        onRemote={remoteDownloadEnabled ? fileOps.remoteDownload : undefined}
-        templates={templates.data ?? []}
-        actions={<ToolbarActions ctx={actionCtx} compact={isMobile} />}
-        compact={isMobile}
-        previewOpen={previewOpen}
-        onTogglePreview={togglePreview}
-        viewSwitcher={
-          <ViewSwitcher
-            mode={view}
-            onModeChange={changeView}
-            rememberPerFolder={rememberPerFolder}
-            onRememberPerFolderChange={(v) => setPref('view.remember_per_folder', v)}
-          />
-        }
-        columnsMenu={
-          <ColumnMenu
-            columns={columns}
-            onChange={changeColumns}
-            open={columnsOpen}
-            onOpenChange={setColumnsOpen}
-          />
-        }
-        sortMenu={
-          <SortMenu
-            sort={sort}
-            onSortChange={changeSort}
-            foldersFirst={foldersFirst}
-            onFoldersFirstChange={(v) => setPref('view.folders_first', v)}
-          />
-        }
-      />
+      {inSlot(toolbar, dual?.toolbarSlot)}
       <div className="relative flex min-h-0 flex-1" ref={contentRef}>
         <DropZone container={contentRef} path={path} />
         <BrowserContextMenu
@@ -1290,29 +1388,25 @@ export function BrowserLayout({
             onContextMenuCapture={onContextMenuCapture}
             // touch: 500 ms long-press = context menu (SPEC §9.9)
             {...longPress}
-            // OS drops on an empty folder (no grid underneath) still upload here
-            {...(!isMobile ? dropTargetProps({ dir: path }) : {})}
+            // OS drops on an empty folder (no grid underneath) still upload here;
+            // item drops from another folder (the other pane) land here too
+            {...(!isMobile ? paneDrop.props : {})}
           >
             {body}
           </div>
         </BrowserContextMenu>
-        {previewOpen && !isMobile ? (
-          <PreviewPanel
-            items={selItems}
-            count={selCount}
-            onClose={togglePreview}
-            overlay={previewOverlay}
-            onDownload={selItems.length ? () => void dl.download(selItems) : undefined}
-            onOpen={onOpen}
-          />
-        ) : null}
+        {paneDrop.op ? <PaneDropBadge op={paneDrop.op} dir={path} /> : null}
+        {inSlot(preview, dual?.previewSlot)}
       </div>
-      {/* the persistent mini-player (AppShell) renders here, above the status bar (SPEC §8.14) */}
-      <div
-        ref={setMiniPlayerSlot}
-        className="shrink-0 empty:hidden"
-        data-testid="mini-player-slot"
-      />
+      {/* the persistent mini-player (AppShell) renders here, above the status bar (SPEC §8.14);
+          dual-pane: below both panes (host) */}
+      {!dual ? (
+        <div
+          ref={setMiniPlayerSlot}
+          className="shrink-0 empty:hidden"
+          data-testid="mini-player-slot"
+        />
+      ) : null}
       {isMobile && selCount > 0 ? (
         // phones: the actions for the selection sit in a bottom bar (SPEC §9.9)
         <div
@@ -1346,7 +1440,8 @@ export function BrowserLayout({
         selectedCount={selCount}
         selectedBytes={selBytes}
       />
-      <FileOpsDialogs ops={ops} />
+      {/* one set of file-operation dialogs (global store); useFileOps is stateless */}
+      {!isRight ? <FileOpsDialogs ops={ops} /> : null}
       <UploadInputs
         ref={uploadInputs}
         onFiles={(files) => void uploadFromFileList(files, uploadDest.current)}

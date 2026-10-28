@@ -445,7 +445,8 @@
     "videoForward10": "Maju 10 detik",
     "videoFullscreen": "Layar penuh video",
     "videoVolumeUp": "Volume naik",
-    "videoVolumeDown": "Volume turun"
+    "videoVolumeDown": "Volume turun",
+    "dualPane": "Dual-pane (dua panel) aktif/nonaktif"
   },
   "palette": {
     "title": "Command palette",
@@ -530,7 +531,10 @@
     "openInNewWindow": "Buka di jendela baru",
     "tagNone": "Tanpa tag",
     "contentSearch": "Cari isi file",
-    "openInEditor": "Buka di editor"
+    "openInEditor": "Buka di editor",
+    "copyToOtherPane": "Salin ke panel lain",
+    "moveToOtherPane": "Pindahkan ke panel lain",
+    "dualPane": "Dual-pane (dua panel)"
   },
   "view": {
     "label": "Mode tampilan",
@@ -539,7 +543,8 @@
     "tiles": "Tiles",
     "large": "Ikon besar",
     "xlarge": "Ikon ekstra besar",
-    "rememberPerFolder": "Ingat view per folder"
+    "rememberPerFolder": "Ingat view per folder",
+    "dualPane": "Dual-pane"
   },
   "download": {
     "started": "Mengunduh {{name}}",
@@ -549,5 +554,14 @@
   "playlist": {
     "added_one": "{{count}} lagu ditambahkan ke playlist",
     "added_other": "{{count}} lagu ditambahkan ke playlist"
+  },
+  "dualPane": {
+    "left": "Panel kiri",
+    "right": "Panel kanan",
+    "on": "Dual-pane aktif",
+    "off": "Dual-pane nonaktif",
+    "focused": "{{pane}} aktif",
+    "dropMove": "Pindahkan ke {{name}}",
+    "dropCopy": "Salin ke {{name}}"
   }
 }

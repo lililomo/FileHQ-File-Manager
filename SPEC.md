@@ -1703,6 +1703,8 @@ dijalankan dengan `Dir` = host path folder (via `HostPath`), `nice`, timeout 30 
 | `shortcuts.overrides` | `{action: keys}` (fase akhir) | |
 | `tabs.restore` | bool (pulihkan tab folder saat login) | true |
 | `tabs.open` | `[{path}]` ≤ 10 | |
+| `dualpane.enabled` | bool (mode dual-pane, Step 23b; berlaku hanya ≥ 1280 px) | false |
+| `dualpane.right` | `{tabs:[{path}] 1–10, active?: indeks 0…len−1}` — tab panel kanan; field lain/bentuk lain → `invalid_value` | |
 
 `PUT /me/preferences` adalah merge patch (JSON Merge Patch RFC 7386) dengan validasi key terdaftar (`httpapi/prefs.go`: enum/bool/angka/objek per key; `editor.*` bebas ≤ 4 KB); key tak dikenal ditolak `VALIDATION_FAILED details.fields.<key>=unknown_key`, nilai salah bentuk `invalid_value`. Client (`stores/prefs.ts`) menerapkan perubahan lokal seketika dan mengirim patch ter-debounce 500 ms (pending dikirim `keepalive` saat `pagehide`). `view.columns` = `{visible, order, widths}` (id kolom §8.4, `name` wajib); `view.sort` = `{field, dir, field2?, dir2?}`; `tabs.open` dipulihkan saat login: URL yang dibuka dicari di daftar tab, bila tidak ada → tab pertama melanjutkan ke URL itu (path lamanya tetap di riwayat Back); path duplikat diizinkan.
 
@@ -1777,6 +1779,30 @@ Warna ikon tipe (`--icon-folder` amber #F59E0B, `--icon-image` violet #8B5CF6, `
                                                         ┌ TransferPanel (kanan bawah) ┐
                                                         │ ⬆ 3 file · 45 % · 12 MB/s  ▾ │
 ```
+
+**File browser — varian dual-pane** (Step 23b; hanya desktop ≥ 1280 px, `(min-width: 1280px)`):
+
+```text
+┌ TopBar 48 ──────────────────────────────────────────────────────────────────────────────┐
+├ Sidebar 232 ┬ Toolbar 40 (bersama; bertindak pada panel yang fokus) ─────────────────────┤
+│ File Saya   │ [+ Baru ▾] [⬆ Upload ▾] [🌐] │ Copy Cut Paste Rename Del ⋯ │ View▾ Urut▾ Kolom▾ │
+│ …           ├ region "Panel kiri" (fokus: outline 2 px --focus) ┬ region "Panel kanan" ──┤
+│             │ ← → ↑ ⟳ │ 📁 Proyek › web     [Filter…]        │ ← → ↑ ⟳ │ 📁 Arsip  [Filter…] │ PreviewPanel 320
+│             │ [web ×] [+]                                    │ [Arsip ×] [Foto ×] [+]      │ (milik panel
+│             │ [ ] Nama ▲          Ukuran   Diubah            │ [ ] Nama ▲    Ukuran  Diubah│  yang fokus)
+│             │ …                                              │ …   ┌ Pindahkan ke Arsip ┐  │
+│             │ 124 item · 3 dipilih                    kuota  │ 8 item                kuota │
+│             ├ MiniPlayer (jika aktif) ─────────────────────────────────────────────────┤
+```
+
+- **Toggle:** View ▾ → kotak centang "Dual-pane" (dengan pintasan `F6`, §9.6) dan aksi palette "Dual-pane"; tersimpan di `dualpane.enabled` (§8.18). Di bawah 1280 px (tablet/ponsel) toggle disembunyikan dan UI diam-diam kembali ke satu panel; preferensinya tetap tersimpan dan aktif lagi saat layar cukup lebar.
+- **Panel kiri** = perilaku single-pane apa adanya: path dari URL `/files/*` (+ `?select=`, `?view=`, `?archive=`), riwayat per tab dan `tabs.open` (`stores/tabs.ts`). "Buka lokasi file" (`openLocation.ts`) dan deep link selalu menuju panel kiri.
+- **Panel kanan** tidak pernah tercermin di URL. State-nya di `web/src/stores/panes.ts`: `useRightTabsStore` (model tab yang sama dengan panel kiri lewat `createTabsStore('rtab')`: ≤ 10 tab, riwayat Back/Forward per tab, offset scroll per folder), seleksi per tab di `stores/selection.ts` (id `rtab-*`, tidak bertabrakan dengan `tab-*`), override urutan sesi `rightSort` (mengubah urutan di panel kanan **tidak** menulis `view.sort`/`folder_view_prefs`); filter cepat/tag, rename inline, type-ahead, Quick Look, viewer dan browser arsip adalah state lokal komponen panel. Tab + tab aktif panel kanan disimpan di `dualpane.right`. Mode view dan kolom tetap preferensi biasa (`view.mode`/`view.columns`/`folder_view_prefs`, §8.4) untuk kedua panel.
+- **Satu panel fokus** (`usePanesStore.focused`): pointerdown atau fokus keyboard yang masuk ke panel memindahkan fokus. Toolbar (dirender panel fokus ke slot bersama), shortcut scope `browser` (`Ctrl+A`, `Delete`, `F2`, `F5`, `Alt+D`, `Ctrl+C/X/V`, `Alt+P`, tab `Alt+T/W/1…9`, …), konteks aksi palette, drop handler sidebar/breadcrumb, paste-upload dan panel preview mengikuti panel fokus; status bar ada per panel. Dialog operasi file tetap satu (`FileOpsDialogs` milik panel kiri; `useFileOps` tanpa state per panel); `focusGrid()` mengembalikan fokus ke grid panel yang fokus.
+- **Aksi antar panel** (hanya saat dual-pane aktif): "Salin ke panel lain" dan "Pindahkan ke panel lain" di menu konteks (1 file, 1 folder, banyak item), toolbar ⋯ dan palette → `POST /files/copy|move` dengan `dest` = folder aktif panel lain melalui `useFileOps.transfer` (dialog konflik §8.5, task untuk batch besar, toast "Urungkan" — persis seperti Paste). Tampil `disabled` bila seleksi kosong, tujuan = folder sumber, atau tujuan berada di dalam item terpilih.
+- **Drag & drop:** mekanisme §8.5 (drop ke baris folder/breadcrumb/sidebar; tanpa modifier = pindah, `Ctrl`/`⌘` = salin). Tambahan: area listing panel (termasuk area kosong/empty state) dan address bar panel menerima drop ke folder aktif panel itu; selama item dari folder lain melayang di atas area listing tampil badge "Pindahkan ke <folder>"/"Salin ke <folder>" (mengikuti `Ctrl`). Drop ke folder yang sama = no-op (tanpa request, tanpa dialog konflik). Pemilihan target = helper murni `features/browser/paneDrop.ts`.
+- **Tata letak panel:** address bar ringkas (filter cepat lebih sempit tanpa petunjuk `Ctrl+F`, filter tag ikon saja), tab, listing, status bar per panel; kolom Nama di Details minimal 180 px — panel sempit menggulir horizontal di dalam grid, bukan memotong nama.
+- **Aksesibilitas:** setiap panel `role="region"` dengan `aria-label` "Panel kiri"/"Panel kanan"; panel fokus diberi outline 2 px `--focus`; `Tab` pada grid memindahkan fokus ke grid panel lain (gaya Commander; model `aria-activedescendant` di dalam grid tidak berubah), `Shift+Tab` mengikuti urutan DOM biasa sehingga address bar & tab panel tetap terjangkau; toggle dan perpindahan fokus panel diumumkan lewat live region (`announce`). Ponsel/tablet tidak berubah.
 
 **Editor** (`/editor`): sesuai wireframe prompt bagian 7 (toolbar · explorer 240 · tabs · Monaco · status bar). Mode modal dari file manager: dialog 90 % viewport dengan tombol maximize → route.
 
@@ -1853,6 +1879,8 @@ Aksi yang tidak berlaku **disembunyikan** di context menu dan palette; lima tomb
 | `Alt+P` | Toggle panel preview | |
 | `Alt+D` | Fokus address bar (edit path) | `Ctrl+L` tidak bisa |
 | `F5` | Refresh listing | `preventDefault`; `Ctrl+F5` dibiarkan ke browser |
+| `F6` | Toggle dual-pane (Step 23b, hanya ≥ 1280 px) | `preventDefault`. Diverifikasi di Chromium (Playwright 1.64): `keydown` F6 sampai ke halaman dan fokus tidak berpindah; F6 bukan accelerator *reserved* Chrome (halaman boleh mencegatnya). Perilaku jendela Chrome/Firefox/Safari bertampilan penuh (siklus fokus ke address bar browser) **perlu verifikasi**; alternatif selalu ada: View ▾ → Dual-pane. Copy/move ala Commander (`F5`/`F6`) **tidak** dipakai karena `F5` = refresh; diganti aksi "Salin/Pindahkan ke panel lain" |
+| `Tab` (dual-pane) | Pindah ke grid panel lain | hanya saat fokus di grid; `Shift+Tab` = urutan normal |
 | `Esc` | Batalkan seleksi / tutup overlay, dialog, menu | |
 | `?` | Daftar shortcut | di luar input |
 | `↑ ↓ ← → Home End PageUp PageDown` | Navigasi grid (roving tabindex) | `Shift` = rentang |
@@ -1891,8 +1919,8 @@ Semua toast: sukses 3 detik, error sampai ditutup (atau 8 detik), undo 10 detik 
 
 | Lebar | Perilaku |
 | --- | --- |
-| ≥ 1280 | layout penuh; panel preview inline |
-| 768–1279 | sidebar ikon 48 px (tooltip, expand saat hover/klik), panel preview menjadi Sheet kanan, toolbar menampilkan 6 aksi utama + "⋯" |
+| ≥ 1280 | layout penuh; panel preview inline; mode dual-pane opsional (§9.3, Step 23b) |
+| 768–1279 | (dual-pane nonaktif, kembali ke satu panel) sidebar ikon 48 px (tooltip, expand saat hover/klik), panel preview menjadi Sheet kanan, toolbar menampilkan 6 aksi utama + "⋯" |
 | < 768 | sidebar Drawer (tombol ☰), address bar hanya breadcrumb terakhir + up, toolbar hanya [+] [Upload] [⋯], Details hanya Nama + Ukuran/Diubah (dua baris), view default List/Large, long-press 500 ms = context menu (Sheet bawah), mode seleksi (tap checkbox) dengan bottom bar aksi, viewer swipe prev/next, editor tetap bisa dibuka (read-only disarankan) |
 
 Aksesibilitas (WCAG 2.2 AA): `FileGrid` = `role="grid"` dengan `row`/`gridcell`; model keyboard: satu tabstop pada kontainer grid dengan `aria-activedescendant` menunjuk baris aktif (bukan roving tabindex per baris, karena baris tervirtualisasi/di-recycle sehingga fokus per elemen bisa hilang — keputusan Step 7a); panah ↑/↓/Home/End/PageUp/PageDown + Enter; `aria-selected`, `aria-sort` pada header, `aria-rowcount`; semua `IconButton` punya `aria-label`; fokus ring selalu terlihat (`:focus-visible` 2 px accent); dialog memakai Radix (focus trap, `aria-modal`); `aria-live="polite"` region global untuk hasil operasi ("3 file dipindahkan", "Upload selesai"), `assertive` untuk error; kontras diverifikasi script; target sentuh ≥ 24×24 (mobile 44); tidak ada informasi hanya lewat warna (tag punya nama di tooltip, status share punya ikon + teks); `prefers-reduced-motion`; audit `axe` di Playwright untuk 8 layar utama (Step 21).

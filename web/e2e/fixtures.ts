@@ -83,6 +83,8 @@ export async function apiResetPrefs(request: APIRequestContext): Promise<void> {
         'view.sort': null,
         'tabs.open': null,
         'ui.preview_panel': null,
+        'dualpane.enabled': null,
+        'dualpane.right': null,
       },
     },
     headers: { 'X-CSRF-Token': token, Origin: 'http://127.0.0.1:18090' },

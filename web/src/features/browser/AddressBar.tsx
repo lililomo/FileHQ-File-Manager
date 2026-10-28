@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
+import { dropTargetProps } from '@/features/file-ops/dnd'
 import { cn } from '@/lib/utils'
 import { Breadcrumb } from './Breadcrumb'
 import { normalizeTypedPath } from './path'
@@ -24,6 +25,10 @@ export interface AddressBarProps {
   refreshing?: boolean
   /** Right-hand slot (quick filter). */
   children?: ReactNode
+  /** Dual-pane (Step 23b): items dropped on the bar go to this folder. */
+  dropDir?: string | undefined
+  /** Dual-pane: accessible name of the breadcrumb `<nav>` ("Lokasi · Panel kanan"). */
+  navLabel?: string | undefined
 }
 
 export function AddressBar({
@@ -41,6 +46,8 @@ export function AddressBar({
   compact = false,
   refreshing = false,
   children,
+  dropDir,
+  navLabel,
 }: AddressBarProps) {
   const { t } = useTranslation('files')
 
@@ -48,6 +55,7 @@ export function AddressBar({
     <div
       className="flex h-10 shrink-0 items-center gap-1 border-b border-border bg-surface px-2"
       data-testid="address-bar"
+      {...(dropDir !== undefined ? dropTargetProps({ dir: dropDir }) : {})}
     >
       {!compact ? (
         <>
@@ -101,7 +109,12 @@ export function AddressBar({
           }}
         />
       ) : (
-        <Breadcrumb path={path} compact={compact} onEditRequest={() => onEditingChange(true)} />
+        <Breadcrumb
+          path={path}
+          compact={compact}
+          onEditRequest={() => onEditingChange(true)}
+          label={navLabel}
+        />
       )}
       {children ? <div className="ml-auto flex shrink-0 items-center pl-2">{children}</div> : null}
     </div>

@@ -13,11 +13,13 @@ export interface QuickFilterProps {
   incomplete?: boolean
   onServerSearch?: () => void
   className?: string
+  /** Dual-pane (Step 23b): narrower field without the Ctrl+F hint. */
+  compact?: boolean
 }
 
 /** Client-side filter of the loaded items (PROMPT 7b task 6). Ctrl+F focuses it. */
 export const QuickFilter = forwardRef<HTMLInputElement, QuickFilterProps>(function QuickFilter(
-  { value, onChange, incomplete = false, onServerSearch, className },
+  { value, onChange, incomplete = false, onServerSearch, className, compact = false },
   ref,
 ) {
   const { t } = useTranslation('files')
@@ -40,7 +42,7 @@ export const QuickFilter = forwardRef<HTMLInputElement, QuickFilterProps>(functi
         }}
         placeholder={t('filter.placeholder')}
         aria-label={t('filter.label')}
-        className="h-7 w-44 pr-7 pl-7 text-sm"
+        className={cn('h-7 pr-7 pl-7 text-sm', compact ? 'w-32' : 'w-44')}
         spellCheck={false}
         autoComplete="off"
         data-testid="quick-filter"
@@ -55,7 +57,7 @@ export const QuickFilter = forwardRef<HTMLInputElement, QuickFilterProps>(functi
         >
           <X aria-hidden="true" />
         </Button>
-      ) : (
+      ) : compact ? null : (
         <Kbd className="pointer-events-none absolute right-1.5 hidden md:inline-flex">
           {t('filter.kbd')}
         </Kbd>

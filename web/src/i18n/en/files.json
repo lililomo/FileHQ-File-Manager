@@ -445,7 +445,8 @@
     "videoForward10": "Forward 10 s",
     "videoFullscreen": "Video fullscreen",
     "videoVolumeUp": "Volume up",
-    "videoVolumeDown": "Volume down"
+    "videoVolumeDown": "Volume down",
+    "dualPane": "Toggle dual-pane (two panes)"
   },
   "palette": {
     "title": "Command palette",
@@ -530,7 +531,10 @@
     "openInNewWindow": "Open in new window",
     "tagNone": "No tag",
     "contentSearch": "Search file contents",
-    "openInEditor": "Open in editor"
+    "openInEditor": "Open in editor",
+    "copyToOtherPane": "Copy to other pane",
+    "moveToOtherPane": "Move to other pane",
+    "dualPane": "Dual-pane (two panes)"
   },
   "view": {
     "label": "View mode",
@@ -539,7 +543,8 @@
     "tiles": "Tiles",
     "large": "Large icons",
     "xlarge": "Extra large icons",
-    "rememberPerFolder": "Remember view per folder"
+    "rememberPerFolder": "Remember view per folder",
+    "dualPane": "Dual-pane"
   },
   "download": {
     "started": "Downloading {{name}}",
@@ -549,5 +554,14 @@
   "playlist": {
     "added_one": "{{count}} track added to the playlist",
     "added_other": "{{count}} tracks added to the playlist"
+  },
+  "dualPane": {
+    "left": "Left pane",
+    "right": "Right pane",
+    "on": "Dual-pane on",
+    "off": "Dual-pane off",
+    "focused": "{{pane}} active",
+    "dropMove": "Move to {{name}}",
+    "dropCopy": "Copy to {{name}}"
   }
 }

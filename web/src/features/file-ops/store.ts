@@ -119,7 +119,10 @@ export function canUndoNow(entry: UndoEntry | null, now = Date.now()): boolean {
 /** Move keyboard focus back to the file grid after a dialog closes (PROMPT 9b AC). */
 export function focusGrid(): void {
   if (typeof document === 'undefined') return
-  const grid = document.querySelector<HTMLElement>('[data-testid="browser"] [role="grid"]')
+  // dual-pane (Step 23b): the grid of the focused pane
+  const grid =
+    document.querySelector<HTMLElement>('[data-pane-focused="true"] [role="grid"]') ??
+    document.querySelector<HTMLElement>('[data-testid="browser"] [role="grid"]')
   grid?.focus()
 }
 

@@ -3,7 +3,10 @@ import {
   Archive,
   ArchiveRestore,
   ArrowDownUp,
+  ArrowRightLeft,
+  ArrowRightToLine,
   ClipboardPaste,
+  Columns2,
   Columns3,
   Copy,
   CopyMinus,
@@ -162,6 +165,12 @@ export interface ActionContext {
   downloadEntry?: () => void
   removeEntries?: (() => void) | undefined
   archiveCanModify?: boolean
+  /** Step 23b dual-pane: the other pane's folder (only set while dual-pane is
+   *  shown) and the transfers into it; toggle for the palette. */
+  otherPanePath?: string
+  copyToOtherPane?: () => void
+  moveToOtherPane?: () => void
+  toggleDualPane?: () => void
 }
 
 export interface ActionDef {
@@ -178,6 +187,8 @@ export interface ActionDef {
   submenu?: boolean
   /** Hidden when false (SPEC §9.5: inapplicable actions are hidden, not disabled). */
   isApplicable: (ctx: ActionContext) => boolean
+  /** Shown but `disabled` when false (default: enabled). */
+  isEnabled?: (ctx: ActionContext) => boolean
   run: (ctx: ActionContext) => void
 }
 
@@ -188,6 +199,18 @@ const oneFile = (c: ActionContext) => one(c) && !c.selection[0]!.isDir
 const oneFolder = (c: ActionContext) => one(c) && c.selection[0]!.isDir
 const some = (c: ActionContext) => c.selectionCount > 0
 const many = (c: ActionContext) => c.selectionCount > 1
+/** "… ke panel lain" needs a selection and a destination that is neither the
+ *  source folder nor inside a selected folder. */
+const otherPaneTarget = (c: ActionContext) => {
+  const to = c.otherPanePath
+  if (!to || !some(c) || to === c.path) return false
+  return !c.selection.some((it) => to === it.path || to.startsWith(`${it.path}/`))
+}
+
+/** The action is applicable and not disabled. */
+export function isEnabled(a: ActionDef, ctx: ActionContext): boolean {
+  return a.isApplicable(ctx) && (a.isEnabled ? a.isEnabled(ctx) : true)
+}
 
 export const ACTIONS: ActionDef[] = [
   // --- open ---
@@ -390,6 +413,24 @@ export const ACTIONS: ActionDef[] = [
     icon: FolderSymlink,
     isApplicable: some,
     run: (c) => c.copyTo(),
+  },
+  {
+    id: 'copyToOtherPane',
+    labelKey: 'copyToOtherPane',
+    group: 'fileops',
+    icon: ArrowRightLeft,
+    isApplicable: (c) => !!c.otherPanePath && !!c.copyToOtherPane,
+    isEnabled: otherPaneTarget,
+    run: (c) => c.copyToOtherPane?.(),
+  },
+  {
+    id: 'moveToOtherPane',
+    labelKey: 'moveToOtherPane',
+    group: 'fileops',
+    icon: ArrowRightToLine,
+    isApplicable: (c) => !!c.otherPanePath && !!c.moveToOtherPane,
+    isEnabled: otherPaneTarget,
+    run: (c) => c.moveToOtherPane?.(),
   },
   {
     id: 'batchRename',
@@ -787,6 +828,15 @@ export const ACTIONS: ActionDef[] = [
     run: (c) => c.togglePreview(),
   },
   {
+    id: 'dualPane',
+    labelKey: 'dualPane',
+    group: 'view',
+    icon: Columns2,
+    shortcut: 'dualPane',
+    isApplicable: (c) => !!c.toggleDualPane,
+    run: (c) => c.toggleDualPane?.(),
+  },
+  {
     id: 'theme',
     labelKey: 'theme',
     group: 'app',
@@ -826,7 +876,7 @@ export function isAvailable(a: ActionDef): boolean {
 
 /** Actions a flat surface (palette, toolbar "more") can run right now. */
 export function applicableActions(ctx: ActionContext): ActionDef[] {
-  return ACTIONS.filter((a) => isAvailable(a) && !a.submenu && a.isApplicable(ctx))
+  return ACTIONS.filter((a) => isAvailable(a) && !a.submenu && isEnabled(a, ctx))
 }
 
 /** Context-menu matrix (SPEC §9.5), `|` = separator. Unavailable or inapplicable
@@ -858,6 +908,8 @@ export const MENU_MATRIX: Record<MenuContext, string[]> = {
     'rename',
     'moveTo',
     'copyTo',
+    'copyToOtherPane',
+    'moveToOtherPane',
     '|',
     'compress',
     'extract',
@@ -894,6 +946,8 @@ export const MENU_MATRIX: Record<MenuContext, string[]> = {
     'rename',
     'moveTo',
     'copyTo',
+    'copyToOtherPane',
+    'moveToOtherPane',
     '|',
     'compress',
     'folderSize',
@@ -914,6 +968,8 @@ export const MENU_MATRIX: Record<MenuContext, string[]> = {
     'cut',
     'moveTo',
     'copyTo',
+    'copyToOtherPane',
+    'moveToOtherPane',
     '|',
     'compress',
     'batchRename',
@@ -980,6 +1036,8 @@ export const TOOLBAR_PRIMARY = ['copy', 'cut', 'paste', 'rename', 'delete']
 export const TOOLBAR_MORE = [
   'moveTo',
   'copyTo',
+  'copyToOtherPane',
+  'moveToOtherPane',
   'duplicate',
   'batchRename',
   'favorite',

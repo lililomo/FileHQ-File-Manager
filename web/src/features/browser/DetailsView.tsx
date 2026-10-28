@@ -66,6 +66,9 @@ export interface DetailsViewProps extends ViewOpsProps {
   onScrollChange?: (offset: number) => void
   /** Hide the checkbox column (mobile). */
   compact?: boolean
+  /** Dual-pane (Step 23b): the Name column never shrinks below this; a narrow
+   *  pane scrolls horizontally instead of collapsing the names. */
+  minNameWidth?: number | undefined
 }
 
 const HEADER_HEIGHT = 32
@@ -98,6 +101,7 @@ export function DetailsView({
   initialScroll = 0,
   onScrollChange,
   compact = false,
+  minNameWidth,
   renamingPath = null,
   renderRename,
   cutPaths,
@@ -258,13 +262,18 @@ export function DetailsView({
       return {
         width: w,
         flex: meta?.grow ? `1 1 ${w}px` : `0 0 ${w}px`,
-        minWidth: MIN_WIDTH,
+        minWidth: id === 'name' && minNameWidth ? minNameWidth : MIN_WIDTH,
         textAlign: meta?.align ?? 'left',
         justifyContent: meta?.align === 'right' ? 'flex-end' : 'flex-start',
       }
     },
-    [columns, dragWidth],
+    [columns, dragWidth, minNameWidth],
   )
+  // header and body are at least as wide as all columns (row backgrounds span the scroll width)
+  const minRowWidth = minNameWidth
+    ? (compact ? 0 : CHECK_WIDTH) +
+      visible.reduce((n, c) => n + (c.id === 'name' ? minNameWidth : widthOf(c.id)), 0)
+    : undefined
 
   const checkLabel = useCallback((name: string) => t('selection.row', { name }), [t])
 
@@ -388,7 +397,7 @@ export function DetailsView({
       role="row"
       aria-rowindex={1}
       className="sticky top-0 z-10 flex border-b border-border bg-surface-2 text-xs font-medium text-text-muted"
-      style={{ height: HEADER_HEIGHT }}
+      style={{ height: HEADER_HEIGHT, minWidth: minRowWidth }}
       data-testid="details-header"
     >
       {!compact ? (
@@ -501,7 +510,7 @@ export function DetailsView({
         headerRow
       )}
       <div
-        style={{ height: virtualizer.getTotalSize(), position: 'relative' }}
+        style={{ height: virtualizer.getTotalSize(), position: 'relative', minWidth: minRowWidth }}
         data-testid="details-body"
       >
         {virtualItems.map((v) => {

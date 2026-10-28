@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -192,4 +193,85 @@ func itoa(i int) string {
 		i /= 10
 	}
 	return string(b)
+}
+
+// Step 23b: dual-pane preferences (SPEC §8.18).
+func TestDualPanePrefValidator(t *testing.T) {
+	ok := []string{
+		`{"tabs":[{"path":"/"}]}`,
+		`{"tabs":[{"path":"/"},{"path":"/Proyek/web"}],"active":1}`,
+		`{"tabs":[{"path":"/a"},{"path":"/a"}],"active":0}`, // duplicates allowed like tabs.open
+	}
+	for _, v := range ok {
+		if r := validatePref("dualpane.right", []byte(v)); r != "" {
+			t.Errorf("%s: %q, want valid", v, r)
+		}
+	}
+	tooMany := `{"tabs":[` + strings.Repeat(`{"path":"/"},`, 10) + `{"path":"/"}]}`
+	bad := []string{
+		`{}`,                                    // no tabs
+		`{"tabs":[]}`,                           // empty
+		tooMany,                                 // > 10
+		`{"tabs":[{"path":"relative"}]}`,        // not absolute
+		`{"tabs":[{"path":"/"}],"active":1}`,    // index out of range
+		`{"tabs":[{"path":"/"}],"active":-1}`,   // negative
+		`{"tabs":[{"path":"/"}],"active":"0"}`,  // wrong type
+		`{"tabs":[{"path":"/"}],"sort":"name"}`, // unknown field
+		`{"tabs":[{"path":"/","x":1}]}`,         // unknown nested field
+		`{"tabs":[{"path":"/` + strings.Repeat("a", 4100) + `"}]}`,
+		`[{"path":"/"}]`, // tabs.open shape is not accepted here
+		`true`,
+	}
+	for _, v := range bad {
+		if r := validatePref("dualpane.right", []byte(v)); r != "invalid_value" {
+			t.Errorf("%.60s: %q, want invalid_value", v, r)
+		}
+	}
+	if r := validatePref("dualpane.enabled", []byte(`true`)); r != "" {
+		t.Errorf("dualpane.enabled true: %q", r)
+	}
+	if r := validatePref("dualpane.enabled", []byte(`"yes"`)); r != "invalid_value" {
+		t.Errorf("dualpane.enabled string: %q", r)
+	}
+	if r := validatePref("dualpane.left", []byte(`true`)); r != "unknown_key" {
+		t.Errorf("dualpane.left: %q", r)
+	}
+
+	// end to end through PUT /me/preferences (merge patch, null removes)
+	env := newAuthEnv(t)
+	ck, hdr := readyAdmin(t, env)
+	put := func(prefs map[string]any) resp {
+		return env.call(http.MethodPut, "/api/v1/me/preferences", "203.0.113.5:1", map[string]any{"prefs": prefs}, hdr, ck)
+	}
+	r := put(map[string]any{
+		"dualpane.enabled": true,
+		"dualpane.right":   map[string]any{"tabs": []map[string]string{{"path": "/"}, {"path": "/b"}}, "active": 1},
+	})
+	if r.rec.Code != 200 {
+		t.Fatalf("valid dual-pane prefs: %d %s", r.rec.Code, r.rec.Body.String())
+	}
+	prefs := r.body["prefs"].(map[string]any)
+	if prefs["dualpane.enabled"] != true {
+		t.Fatalf("dualpane.enabled not stored: %v", prefs)
+	}
+	right := prefs["dualpane.right"].(map[string]any)
+	if right["active"] != float64(1) || len(right["tabs"].([]any)) != 2 {
+		t.Fatalf("dualpane.right = %v", right)
+	}
+	r = put(map[string]any{"dualpane.right": map[string]any{"tabs": []map[string]string{{"path": "x"}}}})
+	if r.rec.Code != 400 {
+		t.Fatalf("invalid dualpane.right: %d", r.rec.Code)
+	}
+	fields := r.body["error"].(map[string]any)["details"].(map[string]any)["fields"].(map[string]any)
+	if fields["dualpane.right"] != "invalid_value" {
+		t.Fatalf("fields = %v", fields)
+	}
+	r = put(map[string]any{"dualpane.enabled": nil, "dualpane.right": nil})
+	if r.rec.Code != 200 {
+		t.Fatalf("null removes: %d", r.rec.Code)
+	}
+	prefs = r.body["prefs"].(map[string]any)
+	if _, has := prefs["dualpane.enabled"]; has {
+		t.Fatalf("dualpane.enabled not removed: %v", prefs)
+	}
 }

@@ -69,6 +69,8 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'previewPanel', keys: 'Alt+P', scope: 'browser', labelKey: 'previewPanel' },
   { id: 'addressBar', keys: 'Alt+D', scope: 'browser', labelKey: 'addressBar' },
   { id: 'refresh', keys: 'F5', scope: 'browser', labelKey: 'refresh' },
+  // Step 23b: F6 reaches the page in Chromium (not a reserved accelerator); SPEC §9.6
+  { id: 'dualPane', keys: 'F6', scope: 'browser', labelKey: 'dualPane' },
   { id: 'escape', keys: 'Escape', scope: 'browser', labelKey: 'escape', allowInInput: true },
   { id: 'help', keys: '?', scope: 'global', labelKey: 'help' },
   {

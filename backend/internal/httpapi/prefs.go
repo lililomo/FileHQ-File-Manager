@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"slices"
@@ -132,6 +133,36 @@ func tabsOpenPref(raw json.RawMessage) bool {
 	return true
 }
 
+// DualPaneRightPref is the shape of dualpane.right (SPEC §8.18, Step 23b):
+// the right pane's tabs (1–10 absolute virtual paths) and the active index.
+type DualPaneRightPref struct {
+	Tabs []struct {
+		Path string `json:"path"`
+	} `json:"tabs"`
+	Active *int `json:"active,omitempty"`
+}
+
+func dualPaneRightPref(raw json.RawMessage) bool {
+	if len(raw) > maxPrefValueBytes*16 {
+		return false
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var v DualPaneRightPref
+	if dec.Decode(&v) != nil || dec.More() {
+		return false
+	}
+	if len(v.Tabs) == 0 || len(v.Tabs) > 10 {
+		return false
+	}
+	for _, t := range v.Tabs {
+		if !strings.HasPrefix(t.Path, "/") || len(t.Path) > 4096 {
+			return false
+		}
+	}
+	return v.Active == nil || (*v.Active >= 0 && *v.Active < len(v.Tabs))
+}
+
 func videoPositionsPref(raw json.RawMessage) bool {
 	var m map[string]float64
 	if json.Unmarshal(raw, &m) != nil || len(m) > 100 {
@@ -184,6 +215,8 @@ var prefRegistry = map[string]prefValidator{
 	"shortcuts.overrides":      objectPref,
 	"tabs.restore":             boolPref,
 	"tabs.open":                tabsOpenPref,
+	"dualpane.enabled":         boolPref,
+	"dualpane.right":           dualPaneRightPref,
 }
 
 // validatePref returns "" when key/value are acceptable, otherwise the field

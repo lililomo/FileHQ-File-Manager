@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { BrowserLayout } from '@/features/browser/BrowserLayout'
+import { FilesBrowser } from '@/features/browser/DualPane'
 import { splatToPath } from '@/features/browser/path'
 
 export interface FilesSearch {
@@ -29,7 +29,7 @@ function FilesRoute() {
   const { _splat } = Route.useParams()
   const { select, archive, view } = Route.useSearch()
   return (
-    <BrowserLayout
+    <FilesBrowser
       path={splatToPath(_splat)}
       selectName={select}
       archivePath={archive}

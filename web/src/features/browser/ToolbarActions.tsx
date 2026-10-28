@@ -11,6 +11,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import {
   actionById,
   isAvailable,
+  isEnabled,
   TOOLBAR_MORE,
   TOOLBAR_PRIMARY,
   type ActionContext,
@@ -51,7 +52,7 @@ export function ToolbarActions({
         const a = actionById(id)
         if (!a || !isAvailable(a)) return null
         const Icon = a.icon
-        const enabled = !!ctx && a.isApplicable(ctx)
+        const enabled = !!ctx && isEnabled(a, ctx)
         const keys = actionShortcut(a)
         return (
           <IconButton
@@ -90,6 +91,7 @@ export function ToolbarActions({
                 key={a.id}
                 variant={a.destructive ? 'destructive' : 'default'}
                 onSelect={() => ctx && a.run(ctx)}
+                disabled={!!ctx && !isEnabled(a, ctx)}
                 data-testid={`${testIdPrefix}-more-${a.id}`}
               >
                 <Icon aria-hidden="true" />

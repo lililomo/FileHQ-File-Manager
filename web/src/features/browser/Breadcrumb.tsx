@@ -108,16 +108,27 @@ export interface BreadcrumbProps {
   /** Click on the empty area switches the address bar into typing mode. */
   onEditRequest?: () => void
   compact?: boolean
+  /** Dual-pane (Step 23b): accessible name of the `<nav>` (unique per pane). */
+  label?: string | undefined
   className?: string
 }
 
-export function Breadcrumb({ path, onEditRequest, compact = false, className }: BreadcrumbProps) {
+export function Breadcrumb({
+  path,
+  onEditRequest,
+  compact = false,
+  className,
+  label: navLabel,
+}: BreadcrumbProps) {
   const { t } = useTranslation('files')
   const segments = segmentsOf(path)
   const last = segments[segments.length - 1]!
   if (compact) {
     return (
-      <nav aria-label={t('nav.breadcrumb')} className={cn('flex min-w-0 items-center', className)}>
+      <nav
+        aria-label={navLabel ?? t('nav.breadcrumb')}
+        className={cn('flex min-w-0 items-center', className)}
+      >
         <span aria-current="page" className="truncate px-1.5 text-sm font-medium text-text">
           {last.path === ROOT ? t('nav.root') : last.name}
         </span>
@@ -181,7 +192,7 @@ export function Breadcrumb({ path, onEditRequest, compact = false, className }: 
   }
   return (
     <nav
-      aria-label={t('nav.breadcrumb')}
+      aria-label={navLabel ?? t('nav.breadcrumb')}
       className={cn('flex min-w-0 flex-1 items-center', className)}
       onClick={(e) => {
         if (e.target === e.currentTarget) onEditRequest?.()

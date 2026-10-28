@@ -4,6 +4,12 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id/1.1.0/); versi
 
 ## [Unreleased]
 
+### Added (Step 23b — Dual-pane)
+- Mode dual-pane di file browser (≥ 1280 px): dua panel berdampingan; panel kiri tetap mengikuti URL, panel kanan punya tab (≤ 10), riwayat, urutan, filter dan seleksi sendiri; satu panel fokus menerima toolbar, shortcut, palette dan panel preview. Toggle lewat View ▾ → "Dual-pane", palette, atau `F6`; di bawah 1280 px otomatis kembali ke satu panel.
+- Aksi "Salin ke panel lain" / "Pindahkan ke panel lain" (menu konteks, toolbar ⋯, palette) memakai copy/move biasa: dialog konflik, task untuk batch besar, toast "Urungkan".
+- Drag & drop antar panel: area listing (termasuk folder kosong) dan address bar panel menerima drop ke folder aktifnya, dengan badge "Pindahkan/Salin ke …" (`Ctrl` = salin); drop ke folder yang sama tidak melakukan apa-apa.
+- Preferensi baru `dualpane.enabled` dan `dualpane.right` (divalidasi server); `Tab` berpindah antar grid, setiap panel adalah region berlabel.
+
 ### Added (Step 23a — TOTP 2FA)
 - Verifikasi dua langkah TOTP opsional per user (RFC 6238, SHA-1, 6 digit, 30 s, window ±1, anti-replay `totp_last_step`): `POST /me/totp/setup|enable|disable|recovery-codes`, langkah kedua inline pada `POST /auth/login` (`totp`/`recoveryCode`; `VALIDATION_FAILED totp_required|totp_invalid`), 10 kode pemulihan sekali pakai (HMAC-SHA256 kunci HKDF `totp-recovery`), secret at rest AES-256-GCM (kunci HKDF `totp-enc`, AAD id user), limiter `RATE_LIMIT_TOTP` 5/menit per user, audit `auth.totp_enabled|disabled|recovery_used|recovery_regenerated`, `user.reset_totp`.
 - UI: kartu 2FA di Profil (QR `otpauth://` + secret manual, verifikasi kode, kode pemulihan dengan salin/unduh dan kotak centang wajib, nonaktifkan dengan password + kode, buat kode pemulihan baru); langkah kode pada halaman login (tautan kode pemulihan, peringatan kode terakhir); admin: badge 2FA + aksi "Reset 2FA" (sesi user dicabut).

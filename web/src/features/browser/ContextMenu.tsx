@@ -13,7 +13,13 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { TAG_COLORS } from '@/features/meta/api'
-import { menuItems, type ActionContext, type ActionDef, type MenuContext } from '@/lib/actions'
+import {
+  isEnabled,
+  menuItems,
+  type ActionContext,
+  type ActionDef,
+  type MenuContext,
+} from '@/lib/actions'
 import { actionLabel, actionShortcut, type LooseT } from './actionLabel'
 import { TagDot } from './Badges'
 
@@ -170,6 +176,7 @@ export function BrowserContextMenu({
                   key={a.id}
                   variant={a.destructive ? 'destructive' : 'default'}
                   onSelect={() => ctx && a.run(ctx)}
+                  disabled={!!ctx && !isEnabled(a, ctx)}
                   data-testid={`cm-${a.id}`}
                   data-action={a.id}
                 >

@@ -1,4 +1,4 @@
-import { Grid2x2, Image, LayoutGrid, List, Rows3, type LucideIcon } from 'lucide-react'
+import { Columns2, Grid2x2, Image, LayoutGrid, List, Rows3, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
@@ -29,6 +29,8 @@ export interface ViewSwitcherProps {
   onModeChange: (mode: ViewMode) => void
   rememberPerFolder: boolean
   onRememberPerFolderChange: (v: boolean) => void
+  /** Step 23b: "Dual-pane" toggle (only passed on screens ≥ 1280 px). */
+  dualPane?: { enabled: boolean; onChange: (v: boolean) => void } | undefined
 }
 
 /** "View" dropdown (SPEC §8.4): Details / List / Tiles / Large icons / Extra
@@ -38,6 +40,7 @@ export function ViewSwitcher({
   onModeChange,
   rememberPerFolder,
   onRememberPerFolderChange,
+  dualPane,
 }: ViewSwitcherProps) {
   const { t } = useTranslation('files')
   const Icon = VIEW_ICONS[mode]
@@ -85,6 +88,17 @@ export function ViewSwitcher({
         >
           {t('view.rememberPerFolder')}
         </DropdownMenuCheckboxItem>
+        {dualPane ? (
+          <DropdownMenuCheckboxItem
+            checked={dualPane.enabled}
+            onCheckedChange={(v) => dualPane.onChange(v === true)}
+            data-testid="view-dual-pane"
+          >
+            <Columns2 className="mr-2 size-4 text-text-muted" aria-hidden="true" />
+            {t('view.dualPane')}
+            <DropdownMenuShortcut>{formatKeys('F6')}</DropdownMenuShortcut>
+          </DropdownMenuCheckboxItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   )
