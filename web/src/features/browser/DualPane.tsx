@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { setMiniPlayerSlot } from '@/features/viewer/audio/miniPlayerSlot'
 import { announce } from '@/lib/announce'
@@ -16,6 +16,7 @@ import {
   type PaneId,
 } from '@/stores/panes'
 import { getPref, usePref, usePrefsStore } from '@/stores/prefs'
+import { useSessionStore } from '@/stores/session'
 import { BrowserLayout } from './BrowserLayout'
 
 export interface FilesBrowserProps {
@@ -35,6 +36,7 @@ export function FilesBrowser({ path, selectName, archivePath, viewPath }: FilesB
   const mobile = useIsMobile()
   const enabled = usePref<boolean>('dualpane.enabled', false)
   const prefsLoaded = usePrefsStore((s) => s.loaded)
+  const userId = useSessionStore((s) => s.user?.id ?? null)
   const dual = isDualPaneActive(enabled, wide, mobile)
   const focused = usePanesStore((s) => s.focused)
   const rightPath = useRightTabsStore(
@@ -54,20 +56,24 @@ export function FilesBrowser({ path, selectName, archivePath, viewPath }: FilesB
   )
   // the toggle exists on wide screens only (below 1280 px the pref stays stored)
   const toggleAvailable = wide && !mobile
-  const dualToggle = toggleAvailable ? { enabled, onChange: setEnabled } : undefined
+  // stable object: it is a dependency of each pane's action context
+  const dualToggle = useMemo(
+    () => (toggleAvailable ? { enabled, onChange: setEnabled } : undefined),
+    [toggleAvailable, enabled, setEnabled],
+  )
   useEffect(() => {
     if (!toggleAvailable) return
     return registerShortcut('dualPane', () => setEnabled(!getPref('dualpane.enabled', false)))
   }, [toggleAvailable, setEnabled])
 
-  // right pane: restore `dualpane.right` once, then persist its tabs on change
+  // right pane: restore `dualpane.right` once per user, then persist its tabs on change
   useEffect(() => {
-    if (!prefsLoaded) return
-    hydrateRightPane(getPref<unknown>('dualpane.right', undefined))
+    if (!prefsLoaded || !userId) return
+    hydrateRightPane(getPref<unknown>('dualpane.right', undefined), userId)
     return useRightTabsStore.subscribe((s) =>
       usePrefsStore.getState().set('dualpane.right', rightPrefOf(s)),
     )
-  }, [prefsLoaded])
+  }, [prefsLoaded, userId])
 
   // announce which pane took the focus
   useEffect(() => {

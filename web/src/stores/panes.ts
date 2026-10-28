@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { ROOT } from '@/features/browser/path'
 import type { SortPref } from '@/features/browser/sortCycle'
 import { createTabsStore, MAX_TABS, type TabsState } from './tabs'
 
@@ -76,29 +77,33 @@ export function rightPrefOf(state: Pick<TabsState, 'tabs' | 'activeId'>): DualPa
   return { tabs, active: Math.max(0, Math.min(i, tabs.length - 1)) }
 }
 
-let hydrated = false
+let hydratedFor: string | null = null
 
-/** Restores the right pane from `dualpane.right` once per page load (a later
- *  remount of the browser keeps the live state). Returns true when restored. */
-export function hydrateRightPane(raw: unknown): boolean {
-  if (hydrated) return false
-  hydrated = true
+/** Restores the right pane from `dualpane.right` once per page load and user:
+ *  a later remount of the browser keeps the live state, while another user
+ *  logging in without a reload (logout is an in-app navigation) gets their own
+ *  tabs instead of the previous user's. Returns true when a stored value was
+ *  restored. */
+export function hydrateRightPane(raw: unknown, userId: string): boolean {
+  if (hydratedFor === userId) return false
+  const switched = hydratedFor !== null
+  hydratedFor = userId
   const pref = parseRightPref(raw)
-  if (!pref) return false
-  useRightTabsStore.getState().restore(
-    pref.tabs.map((t) => t.path),
-    pref.active ?? 0,
-  )
-  return true
+  if (!pref && !switched) return false
+  if (switched) usePanesStore.setState({ focused: 'left', rightSort: null })
+  useRightTabsStore
+    .getState()
+    .restore(pref ? pref.tabs.map((t) => t.path) : [ROOT], pref?.active ?? 0)
+  return !!pref
 }
 
 export function isRightPaneHydrated(): boolean {
-  return hydrated
+  return hydratedFor !== null
 }
 
 /** Test helper. */
 export function resetPanes(): void {
-  hydrated = false
+  hydratedFor = null
   usePanesStore.setState({ focused: 'left', rightSort: null })
   useRightTabsStore.getState().restore(['/'], 0)
 }

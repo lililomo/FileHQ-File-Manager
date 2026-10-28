@@ -1369,6 +1369,7 @@ export function BrowserLayout({
         onCloseRight={(id) => tabsStore.getState().closeRight(id)}
         onNew={() => openTab(path)}
         onReorder={(id, to) => tabsStore.getState().reorder(id, to)}
+        label={dual ? `${t('files:tabs.label')} · ${t(`files:dualPane.${dual.pane}`)}` : undefined}
       />
       {inSlot(toolbar, dual?.toolbarSlot)}
       <div className="relative flex min-h-0 flex-1" ref={contentRef}>

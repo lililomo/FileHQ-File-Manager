@@ -22,6 +22,8 @@ export interface TabBarProps {
   onCloseRight: (id: string) => void
   onNew: () => void
   onReorder: (id: string, toIndex: number) => void
+  /** Dual-pane (Step 23b): accessible name of the tablist (unique per pane). */
+  label?: string | undefined
 }
 
 /** Folder tabs below the address bar (SPEC §9.3 / PROMPT 7b task 7). */
@@ -34,6 +36,7 @@ export function TabBar({
   onCloseRight,
   onNew,
   onReorder,
+  label: listLabel,
 }: TabBarProps) {
   const { t } = useTranslation('files')
   const [dragId, setDragId] = useState<string | null>(null)
@@ -44,7 +47,11 @@ export function TabBar({
       className="flex h-9 shrink-0 items-end gap-0.5 border-b border-border bg-surface px-2"
       data-testid="tab-bar"
     >
-      <div className="flex min-w-0 items-end gap-0.5" role="tablist" aria-label={t('tabs.label')}>
+      <div
+        className="flex min-w-0 items-end gap-0.5"
+        role="tablist"
+        aria-label={listLabel ?? t('tabs.label')}
+      >
         {tabs.map((tab, i) => {
           const active = tab.id === activeId
           return (

@@ -84,18 +84,38 @@ describe('pane store (Step 23b)', () => {
 
   it('hydrates the right pane once per page load', () => {
     expect(isRightPaneHydrated()).toBe(false)
-    expect(hydrateRightPane({ tabs: [{ path: '/x' }, { path: '/y' }], active: 1 })).toBe(true)
+    expect(hydrateRightPane({ tabs: [{ path: '/x' }, { path: '/y' }], active: 1 }, 'u1')).toBe(true)
     const s = useRightTabsStore.getState()
     expect(s.tabs.map((x) => x.path)).toEqual(['/x', '/y'])
     expect(s.active().path).toBe('/y')
     // a remount of the browser must not overwrite the live state
     useRightTabsStore.getState().visit('/y/z')
-    expect(hydrateRightPane({ tabs: [{ path: '/x' }] })).toBe(false)
+    expect(hydrateRightPane({ tabs: [{ path: '/x' }] }, 'u1')).toBe(false)
     expect(useRightTabsStore.getState().active().path).toBe('/y/z')
   })
 
   it('starts at the root when nothing (or garbage) is stored', () => {
-    expect(hydrateRightPane({ tabs: 'nope' })).toBe(false)
+    expect(hydrateRightPane({ tabs: 'nope' }, 'u1')).toBe(false)
     expect(useRightTabsStore.getState().active().path).toBe('/')
+  })
+
+  it('does not carry one user’s right pane over to the next login without a reload', () => {
+    expect(
+      hydrateRightPane({ tabs: [{ path: '/rahasia' }, { path: '/y' }], active: 1 }, 'u1'),
+    ).toBe(true)
+    usePanesStore.getState().focus('right')
+    usePanesStore.getState().setRightSort({ field: 'size', dir: 'desc' })
+    // user 2 with a stored value: their tabs replace user 1's, focus and sort reset
+    expect(hydrateRightPane({ tabs: [{ path: '/z' }] }, 'u2')).toBe(true)
+    expect(useRightTabsStore.getState().tabs.map((x) => x.path)).toEqual(['/z'])
+    expect(usePanesStore.getState().focused).toBe('left')
+    expect(usePanesStore.getState().rightSort).toBeNull()
+    // user 3 without a stored value: back to the root, nothing of user 2 remains
+    expect(hydrateRightPane(undefined, 'u3')).toBe(false)
+    expect(useRightTabsStore.getState().tabs.map((x) => x.path)).toEqual(['/'])
+    // the same user again (remount) keeps the live state
+    useRightTabsStore.getState().visit('/live')
+    expect(hydrateRightPane(undefined, 'u3')).toBe(false)
+    expect(useRightTabsStore.getState().active().path).toBe('/live')
   })
 })
