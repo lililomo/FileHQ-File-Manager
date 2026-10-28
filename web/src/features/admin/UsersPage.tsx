@@ -39,6 +39,7 @@ import {
   adminKeys,
   listUsers,
   resetPassword,
+  resetTotp,
   revokeSessions,
   setUserStatus,
   type AdminUser,
@@ -60,7 +61,7 @@ type Pending =
   | { kind: 'edit'; user: AdminUser }
   | { kind: 'password'; username: string; password: string }
   | { kind: 'delete'; user: AdminUser }
-  | { kind: 'disable' | 'revoke' | 'reset'; user: AdminUser }
+  | { kind: 'disable' | 'revoke' | 'reset' | 'resetTotp'; user: AdminUser }
   | null
 
 /** `/admin/users` (SPEC §8.17 "Users"): dense table with filters, quota bar
@@ -101,13 +102,17 @@ export function UsersPage() {
       kind,
       user,
     }: {
-      kind: 'disable' | 'enable' | 'revoke' | 'reset'
+      kind: 'disable' | 'enable' | 'revoke' | 'reset' | 'resetTotp'
       user: AdminUser
     }) => {
       if (kind === 'reset')
         return { kind, user, password: (await resetPassword(user.id)).temporaryPassword }
       if (kind === 'revoke') {
         await revokeSessions(user.id)
+        return { kind, user, password: '' }
+      }
+      if (kind === 'resetTotp') {
+        await resetTotp(user.id)
         return { kind, user, password: '' }
       }
       await setUserStatus(user.id, kind === 'disable' ? 'disabled' : 'active')
@@ -126,7 +131,9 @@ export function UsersPage() {
             ? 'admin:users.toast.disabled'
             : kind === 'enable'
               ? 'admin:users.toast.enabled'
-              : 'admin:users.toast.revoked',
+              : kind === 'resetTotp'
+                ? 'admin:users.toast.totpReset'
+                : 'admin:users.toast.revoked',
           { username: user.username },
         ),
       )
@@ -266,6 +273,15 @@ export function UsersPage() {
                         {u.lockedUntil ? (
                           <Badge variant="outline">{t('admin:users.locked')}</Badge>
                         ) : null}
+                        {u.totpEnabled ? (
+                          <Badge
+                            variant="outline"
+                            className="text-success"
+                            data-testid="user-twofa-badge"
+                          >
+                            {t('admin:users.twofa')}
+                          </Badge>
+                        ) : null}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -336,6 +352,14 @@ export function UsersPage() {
                           >
                             {t('admin:users.actions.revokeSessions')}
                           </DropdownMenuItem>
+                          {u.totpEnabled ? (
+                            <DropdownMenuItem
+                              onSelect={() => setPending({ kind: 'resetTotp', user: u })}
+                              data-testid="user-action-reset-totp"
+                            >
+                              {t('admin:users.actions.resetTotp')}
+                            </DropdownMenuItem>
+                          ) : null}
                           {u.status === 'active' ? (
                             <DropdownMenuItem
                               disabled={isSelf}
@@ -445,7 +469,10 @@ export function UsersPage() {
           }}
         />
       ) : null}
-      {pending?.kind === 'disable' || pending?.kind === 'revoke' || pending?.kind === 'reset' ? (
+      {pending?.kind === 'disable' ||
+      pending?.kind === 'revoke' ||
+      pending?.kind === 'reset' ||
+      pending?.kind === 'resetTotp' ? (
         <ConfirmActionDialog
           testId={`user-confirm-${pending.kind}`}
           title={t(`admin:users.confirm.${pending.kind}Title`, { username: pending.user.username })}

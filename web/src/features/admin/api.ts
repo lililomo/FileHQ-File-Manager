@@ -86,6 +86,13 @@ export const resetPassword = (id: string) =>
     body: {},
   })
 
+/** Clears the user's TOTP secret + recovery codes and revokes their sessions (Step 23a). */
+export const resetTotp = (id: string) =>
+  api<void>(`/admin/users/${encodeURIComponent(id)}/reset-totp`, {
+    method: 'POST',
+    body: {},
+  })
+
 export const revokeSessions = (id: string) =>
   api<void>(`/admin/users/${encodeURIComponent(id)}/revoke-sessions`, {
     method: 'POST',

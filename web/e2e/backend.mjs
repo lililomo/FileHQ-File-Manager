@@ -47,6 +47,10 @@ const env = {
   // Step 13 remote-download.spec: the local test server lives on loopback, which
   // production always blocks (development-only exemption)
   DEV_REMOTE_DOWNLOAD_ALLOW_LOOPBACK: 'true',
+  // Step 23a 2fa.spec: same budget (5 verifications per user) but a 15 s
+  // window so the spec can show the 429 and then recover without a minute of
+  // waiting; the 5/1m default is covered by the Go tests
+  RATE_LIMIT_TOTP: '5/15s',
 }
 
 const child = spawn(bin, ['serve'], { env, stdio: 'inherit' })

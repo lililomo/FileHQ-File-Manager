@@ -5,16 +5,24 @@ export interface LoginResponse {
   user: User
   mustChangePassword: boolean
   csrfToken: string
+  /** Only when the login used a recovery code (Step 23a): unused codes left. */
+  recoveryCodesRemaining?: number
+}
+
+/** Second factor sent with the credentials once the server answered `totp_required`. */
+export interface SecondFactor {
+  totp?: string
+  recoveryCode?: string
 }
 export interface MeResponse {
   user: User
   config: ClientConfig
 }
 
-export const login = (username: string, password: string) =>
+export const login = (username: string, password: string, second?: SecondFactor) =>
   api<LoginResponse>('/auth/login', {
     method: 'POST',
-    body: { username, password },
+    body: { username, password, ...(second ?? {}) },
     skipAuthRedirect: true,
   })
 

@@ -1,5 +1,4 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ChangePasswordForm } from '@/features/auth/ChangePasswordForm'
@@ -7,9 +6,10 @@ import { useSessionStore } from '@/stores/session'
 import { PreferencesForm } from './PreferencesForm'
 import { sessionsKey } from './api'
 import { SessionsList } from './SessionsList'
+import { TwoFactor } from './TwoFactor'
 
 /** `/settings` (SPEC §8.18): password change (other sessions are revoked by
- *  the server), active sessions, preferences and the 2FA placeholder (23a). */
+ *  the server), active sessions, 2FA TOTP (Step 23a) and preferences. */
 export function ProfilePage() {
   const { t } = useTranslation('auth')
   const qc = useQueryClient()
@@ -41,20 +41,9 @@ export function ProfilePage() {
           />
         </div>
       </section>
+      <TwoFactor />
       <SessionsList />
       <PreferencesForm />
-      <section
-        aria-labelledby="twofa-title"
-        className="flex items-start gap-3 rounded-lg border border-dashed border-border p-4"
-      >
-        <ShieldCheck className="mt-0.5 size-5 text-text-muted" aria-hidden="true" />
-        <div>
-          <h2 id="twofa-title" className="text-base font-semibold">
-            {t('profile.twofa')}
-          </h2>
-          <p className="text-sm text-text-muted">{t('profile.twofaSoon')}</p>
-        </div>
-      </section>
     </div>
   )
 }

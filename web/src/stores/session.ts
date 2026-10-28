@@ -22,6 +22,9 @@ export interface User {
   createdAt: string
   lastLoginAt?: string
   homeWarning?: string
+  /** TOTP 2FA (Step 23a). */
+  totpEnabled?: boolean
+  totpEnabledAt?: string
   quota?: Quota
   language?: string
   prefs?: Record<string, unknown>

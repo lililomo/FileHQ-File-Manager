@@ -88,7 +88,8 @@
       "disable": "Disable",
       "enable": "Enable",
       "delete": "Delete",
-      "browse": "Open folder"
+      "browse": "Open folder",
+      "resetTotp": "Reset 2FA"
     },
     "toast": {
       "created": "User {{username}} created.",
@@ -97,7 +98,8 @@
       "enabled": "User {{username}} enabled.",
       "revoked": "All sessions of {{username}} revoked.",
       "deleteQueued": "Deletion of {{username}} runs as a task.",
-      "homeExists": "The folder {{username}} already exists in storage and will be reused at first login."
+      "homeExists": "The folder {{username}} already exists in storage and will be reused at first login.",
+      "totpReset": "2FA of {{username}} reset; sessions revoked."
     },
     "form": {
       "username": "Username",
@@ -154,8 +156,11 @@
       "revokeTitle": "Force logout {{username}}?",
       "revokeBody": "Every session of this user is revoked; they have to log in again.",
       "resetTitle": "Reset password of {{username}}?",
-      "resetBody": "The old password stops working, all sessions are revoked and a new temporary password is shown once."
-    }
+      "resetBody": "The old password stops working, all sessions are revoked and a new temporary password is shown once.",
+      "resetTotpTitle": "Reset 2FA of {{username}}?",
+      "resetTotpBody": "The TOTP secret and recovery codes are deleted and every session is revoked; the user signs in without a code next time and can enrol again from the profile."
+    },
+    "twofa": "2FA"
   },
   "browse": {
     "banner": "You are viewing the folder of {{username}} as admin. Every access is written to the audit log.",

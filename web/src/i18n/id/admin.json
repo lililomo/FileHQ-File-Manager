@@ -88,7 +88,8 @@
       "disable": "Nonaktifkan",
       "enable": "Aktifkan",
       "delete": "Hapus",
-      "browse": "Buka folder"
+      "browse": "Buka folder",
+      "resetTotp": "Reset 2FA"
     },
     "toast": {
       "created": "User {{username}} dibuat.",
@@ -97,7 +98,8 @@
       "enabled": "User {{username}} diaktifkan.",
       "revoked": "Semua sesi {{username}} dicabut.",
       "deleteQueued": "Penghapusan {{username}} dijalankan sebagai task.",
-      "homeExists": "Folder {{username}} sudah ada di storage dan akan dipakai ulang saat login pertama."
+      "homeExists": "Folder {{username}} sudah ada di storage dan akan dipakai ulang saat login pertama.",
+      "totpReset": "2FA {{username}} direset; sesinya dicabut."
     },
     "form": {
       "username": "Username",
@@ -154,8 +156,11 @@
       "revokeTitle": "Paksa logout {{username}}?",
       "revokeBody": "Semua sesi user ini dicabut; user harus login ulang.",
       "resetTitle": "Reset password {{username}}?",
-      "resetBody": "Password lama tidak berlaku, semua sesi dicabut, dan password sementara baru ditampilkan sekali."
-    }
+      "resetBody": "Password lama tidak berlaku, semua sesi dicabut, dan password sementara baru ditampilkan sekali.",
+      "resetTotpTitle": "Reset 2FA {{username}}?",
+      "resetTotpBody": "Secret TOTP dan kode pemulihan dihapus, semua sesi dicabut; user login berikutnya tanpa kode dan bisa mengaktifkan 2FA lagi dari Profil."
+    },
+    "twofa": "2FA"
   },
   "browse": {
     "banner": "Anda sedang melihat folder {{username}} sebagai admin. Setiap akses dicatat di audit log.",

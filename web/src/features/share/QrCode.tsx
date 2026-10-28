@@ -3,7 +3,16 @@ import { useTranslation } from 'react-i18next'
 
 /** QR code of a link, rendered on a canvas with the lazy `qrcode` library
  *  (SPEC §8.15 "QR"; client-side so no Go dependency is needed). */
-export function QrCode({ value, size = 192 }: { value: string; size?: number }) {
+export function QrCode({
+  value,
+  size = 192,
+  label,
+}: {
+  value: string
+  size?: number
+  /** Accessible name; defaults to the share-link label. */
+  label?: string
+}) {
   const { t } = useTranslation('share')
   const ref = useRef<HTMLCanvasElement>(null)
   const [failed, setFailed] = useState(false)
@@ -28,7 +37,7 @@ export function QrCode({ value, size = 192 }: { value: string; size?: number }) 
       width={size}
       height={size}
       role="img"
-      aria-label={t('result.qrLabel')}
+      aria-label={label ?? t('result.qrLabel')}
       className="rounded bg-white"
       data-testid="share-qr"
     />

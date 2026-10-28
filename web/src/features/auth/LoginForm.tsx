@@ -1,8 +1,9 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { AlertCircle, Eye, EyeOff } from 'lucide-react'
-import { useEffect, useState, type KeyboardEvent } from 'react'
+import { AlertCircle, Eye, EyeOff, ShieldCheck } from 'lucide-react'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
@@ -44,12 +45,18 @@ function mapError(e: unknown): ServerError {
   return { kind: 'other', code: 'UNKNOWN' }
 }
 
+/** `details.fields.totp` of a VALIDATION_FAILED answer (Step 23a). */
+function totpReason(e: unknown): string | undefined {
+  return e instanceof ApiError && e.code === 'VALIDATION_FAILED' ? e.fields.totp : undefined
+}
+
 export function LoginForm({ onSuccess }: { onSuccess: (res: LoginResponse) => void }) {
   const { t } = useTranslation('auth')
   const {
     register,
     handleSubmit,
     setFocus,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<Values>({
     resolver: zodResolver(schema),
@@ -58,10 +65,21 @@ export function LoginForm({ onSuccess }: { onSuccess: (res: LoginResponse) => vo
   const [serverError, setServerError] = useState<ServerError | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [capsLock, setCapsLock] = useState(false)
+  // Second step (2FA): shown after the server answered totp_required.
+  const [secondStep, setSecondStep] = useState(false)
+  const [useRecovery, setUseRecovery] = useState(false)
+  const [code, setCode] = useState('')
+  const [codeError, setCodeError] = useState<string | null>(null)
+  const [verifying, setVerifying] = useState(false)
+  const codeRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setFocus('username')
   }, [setFocus])
+
+  useEffect(() => {
+    if (secondStep) codeRef.current?.focus()
+  }, [secondStep, useRecovery])
 
   // Count down lockout / rate-limit waits; clear the message when they end.
   useEffect(() => {
@@ -74,14 +92,62 @@ export function LoginForm({ onSuccess }: { onSuccess: (res: LoginResponse) => vo
     return () => window.clearTimeout(id)
   }, [serverError])
 
+  const finish = (res: LoginResponse) => {
+    if (res.recoveryCodesRemaining === 0) toast.warning(t('login.totp.noCodesLeft'))
+    else if (typeof res.recoveryCodesRemaining === 'number')
+      toast.info(t('login.totp.codesLeft', { count: res.recoveryCodesRemaining }))
+    onSuccess(res)
+  }
+
   const onSubmit = handleSubmit(async (values) => {
     setServerError(null)
     try {
-      onSuccess(await login(values.username, values.password))
+      finish(await login(values.username, values.password))
     } catch (e) {
+      if (totpReason(e) === 'totp_required') {
+        setCode('')
+        setCodeError(null)
+        setUseRecovery(false)
+        setSecondStep(true)
+        return
+      }
       setServerError(mapError(e))
     }
   })
+
+  const onSubmitCode = async (e: FormEvent) => {
+    e.preventDefault()
+    const value = code.trim()
+    if (!value) {
+      setCodeError(t('login.totp.required'))
+      codeRef.current?.focus()
+      return
+    }
+    setCodeError(null)
+    setServerError(null)
+    setVerifying(true)
+    try {
+      const { username, password } = getValues()
+      finish(
+        await login(username, password, useRecovery ? { recoveryCode: value } : { totp: value }),
+      )
+    } catch (err) {
+      const reason = totpReason(err)
+      if (reason === 'totp_invalid') {
+        setCodeError(t(useRecovery ? 'login.totp.invalidRecovery' : 'login.totp.invalid'))
+        setCode('')
+        codeRef.current?.focus()
+      } else if (err instanceof ApiError && err.code === 'RATE_LIMITED') {
+        setServerError(mapError(err))
+      } else {
+        // password changed meanwhile, account disabled, network …: start over
+        setSecondStep(false)
+        setServerError(mapError(err))
+      }
+    } finally {
+      setVerifying(false)
+    }
+  }
 
   const onKey = (e: KeyboardEvent<HTMLInputElement>) =>
     setCapsLock(typeof e.getModifierState === 'function' && e.getModifierState('CapsLock'))
@@ -93,7 +159,9 @@ export function LoginForm({ onSuccess }: { onSuccess: (res: LoginResponse) => vo
         message = t('login.errorLocked', { seconds: serverError.seconds })
         break
       case 'rateLimited':
-        message = t('login.errorRateLimited', { seconds: serverError.seconds })
+        message = t(secondStep ? 'login.totp.rateLimited' : 'login.errorRateLimited', {
+          seconds: serverError.seconds,
+        })
         break
       case 'disabled':
         message = t('login.errorDisabled')
@@ -109,6 +177,93 @@ export function LoginForm({ onSuccess }: { onSuccess: (res: LoginResponse) => vo
     }
   }
   const waiting = serverError !== null && 'seconds' in serverError && serverError.seconds > 0
+
+  const alert = message ? (
+    <p
+      id="login-error"
+      role="alert"
+      className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger"
+    >
+      <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      <span>{message}</span>
+    </p>
+  ) : null
+
+  if (secondStep) {
+    return (
+      <form onSubmit={onSubmitCode} noValidate className="space-y-4" data-testid="login-totp-form">
+        <div className="flex items-start gap-2 text-sm text-text-muted">
+          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
+          <p id="login-totp-hint">
+            {t(useRecovery ? 'login.totp.recoveryHint' : 'login.totp.hint', {
+              username: getValues('username').trim(),
+            })}
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="login-totp">
+            {t(useRecovery ? 'login.totp.recoveryCode' : 'login.totp.code')}
+          </Label>
+          <Input
+            id="login-totp"
+            ref={codeRef}
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            inputMode={useRecovery ? 'text' : 'numeric'}
+            autoComplete="one-time-code"
+            autoCapitalize="none"
+            spellCheck={false}
+            maxLength={useRecovery ? 16 : 6}
+            pattern={useRecovery ? undefined : '[0-9]*'}
+            placeholder={useRecovery ? 'xxxxx-xxxxx' : '123456'}
+            className={useRecovery ? 'font-mono' : 'font-mono text-lg tracking-[0.3em]'}
+            aria-describedby={codeError ? 'login-totp-error' : 'login-totp-hint'}
+            aria-invalid={codeError ? true : undefined}
+            data-testid="login-totp"
+          />
+          {codeError ? (
+            <p id="login-totp-error" role="alert" className="text-xs text-danger">
+              {codeError}
+            </p>
+          ) : null}
+        </div>
+        {alert}
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={verifying || waiting}
+          data-testid="login-totp-submit"
+        >
+          {verifying ? t('login.totp.verifying') : t('login.totp.submit')}
+        </Button>
+        <div className="flex flex-wrap justify-between gap-2 text-sm">
+          <button
+            type="button"
+            className="text-accent underline-offset-4 hover:underline"
+            onClick={() => {
+              setUseRecovery((v) => !v)
+              setCode('')
+              setCodeError(null)
+            }}
+            data-testid="login-totp-toggle"
+          >
+            {t(useRecovery ? 'login.totp.useApp' : 'login.totp.useRecovery')}
+          </button>
+          <button
+            type="button"
+            className="text-text-muted underline-offset-4 hover:underline"
+            onClick={() => {
+              setSecondStep(false)
+              setServerError(null)
+            }}
+            data-testid="login-totp-back"
+          >
+            {t('login.totp.back')}
+          </button>
+        </div>
+      </form>
+    )
+  }
 
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-4" data-testid="login-form">
@@ -167,16 +322,7 @@ export function LoginForm({ onSuccess }: { onSuccess: (res: LoginResponse) => vo
           </p>
         ) : null}
       </div>
-      {message ? (
-        <p
-          id="login-error"
-          role="alert"
-          className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger"
-        >
-          <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          <span>{message}</span>
-        </p>
-      ) : null}
+      {alert}
       <Button type="submit" className="w-full" disabled={isSubmitting || waiting}>
         {isSubmitting ? t('login.submitting') : t('login.submit')}
       </Button>
