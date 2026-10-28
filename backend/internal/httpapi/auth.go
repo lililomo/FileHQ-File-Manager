@@ -314,6 +314,8 @@ func (s *Server) meConfig() map[string]any {
 		"passwordMinLength":      rt.PasswordMinLength,
 		"defaultLanguage":        rt.DefaultLanguage,
 		"adminCanBrowseUsers":    s.cfg.AdminCanBrowseUsers,
+		// Step 23d: the player offers "play with conversion" only when true
+		"transcodeEnabled": s.transcode != nil && s.transcode.Enabled(),
 		"features": map[string]bool{
 			"ffmpeg":   feature("ffmpeg", s.cfg.FFmpegPath),
 			"ffprobe":  feature("ffprobe", s.cfg.FFprobePath),

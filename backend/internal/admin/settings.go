@@ -49,6 +49,12 @@ const (
 	KeyAppName                = "app_name"
 	KeyDefaultLanguage        = "default_language"
 	KeyBrandingLogo           = "branding.logo"
+	// On-the-fly HLS transcoding (Step 23d; settings only, no env).
+	KeyTranscodeEnabled     = "transcode.enabled"
+	KeyTranscodeConcurrent  = "transcode.max_concurrent"
+	KeyTranscodeResolution  = "transcode.max_resolution"
+	KeyTranscodeMaxDuration = "transcode.max_duration_minutes"
+	KeyTranscodeNice        = "transcode.nice"
 )
 
 // Kind is the value type of a key (validation + UI widget).
@@ -76,6 +82,7 @@ const (
 	GroupSecurity   = "security"
 	GroupAppearance = "appearance"
 	GroupTasks      = "tasks"
+	GroupMedia      = "media"
 )
 
 type spec struct {
@@ -144,6 +151,16 @@ var specs = []spec{
 		get: func(rt *config.Runtime) any { return rt.ActivityRetentionDays }, set: func(rt *config.Runtime, v any) { rt.ActivityRetentionDays = v.(int) }},
 	{Key: KeyTaskMaxPerUser, Env: "TASK_MAX_PER_USER", Kind: KindInt, Group: GroupTasks, Min: 1, Max: 10,
 		get: func(rt *config.Runtime) any { return rt.TaskMaxPerUser }, set: func(rt *config.Runtime, v any) { rt.TaskMaxPerUser = v.(int) }},
+	{Key: KeyTranscodeEnabled, Kind: KindBool, Group: GroupMedia,
+		get: func(rt *config.Runtime) any { return rt.TranscodeEnabled }, set: func(rt *config.Runtime, v any) { rt.TranscodeEnabled = v.(bool) }},
+	{Key: KeyTranscodeConcurrent, Kind: KindInt, Group: GroupMedia, Min: 1, Max: 4,
+		get: func(rt *config.Runtime) any { return rt.TranscodeMaxConcurrent }, set: func(rt *config.Runtime, v any) { rt.TranscodeMaxConcurrent = v.(int) }},
+	{Key: KeyTranscodeResolution, Kind: KindEnum, Group: GroupMedia, Options: []string{"480p", "720p", "1080p"},
+		get: func(rt *config.Runtime) any { return rt.TranscodeMaxResolution }, set: func(rt *config.Runtime, v any) { rt.TranscodeMaxResolution = v.(string) }},
+	{Key: KeyTranscodeMaxDuration, Kind: KindInt, Group: GroupMedia, Min: 1, Max: 180,
+		get: func(rt *config.Runtime) any { return rt.TranscodeMaxDurationMinutes }, set: func(rt *config.Runtime, v any) { rt.TranscodeMaxDurationMinutes = v.(int) }},
+	{Key: KeyTranscodeNice, Kind: KindInt, Group: GroupMedia, Min: 0, Max: 19,
+		get: func(rt *config.Runtime) any { return rt.TranscodeNice }, set: func(rt *config.Runtime, v any) { rt.TranscodeNice = v.(int) }},
 	{Key: KeyAppName, Env: "APP_NAME", Kind: KindString, Group: GroupAppearance, MaxLen: 40,
 		get: func(rt *config.Runtime) any { return rt.AppName }, set: func(rt *config.Runtime, v any) { rt.AppName = v.(string) }},
 	{Key: KeyDefaultLanguage, Env: "DEFAULT_LANGUAGE", Kind: KindEnum, Group: GroupAppearance, Options: []string{"id", "en"},

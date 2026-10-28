@@ -29,6 +29,7 @@ import (
 	"kppbwi.app/filemanager/internal/files"
 	"kppbwi.app/filemanager/internal/fsjail"
 	"kppbwi.app/filemanager/internal/listing"
+	"kppbwi.app/filemanager/internal/media"
 	"kppbwi.app/filemanager/internal/meta"
 	"kppbwi.app/filemanager/internal/netguard"
 	"kppbwi.app/filemanager/internal/notify"
@@ -93,6 +94,10 @@ type authEnv struct {
 	versions *versions.Store
 	share    *share.Service
 	admin    *admin.Service
+	// transcode (Step 23d) uses stub ffmpeg/ffprobe scripts in hlsStub when
+	// the test passes TEST_HLS_STUB=1; otherwise the tools are absent.
+	transcode *media.Transcoder
+	hlsStub   string
 }
 
 type notifyFunc func(ctx context.Context, userID, typ, title, body, link string) error
@@ -119,9 +124,11 @@ func newAuthEnv(t testing.TB, extraEnv ...string) *authEnv {
 		"ADMIN_INITIAL_PASSWORD=" + initialAdminPassword,
 	}
 	// TEST_* entries tune the services instead of the configuration.
-	syncMaxEntries, itemDelay, remoteLoopback, searchEngine := 0, time.Duration(0), false, "go"
+	syncMaxEntries, itemDelay, remoteLoopback, searchEngine, hlsStub := 0, time.Duration(0), false, "go", false
 	for _, kv := range extraEnv {
 		switch {
+		case kv == "TEST_HLS_STUB=1":
+			hlsStub = true
 		case strings.HasPrefix(kv, "TEST_SEARCH_ENGINE="):
 			searchEngine = strings.TrimPrefix(kv, "TEST_SEARCH_ENGINE=")
 		case kv == "TEST_REMOTE_ALLOW_LOOPBACK=1":
@@ -209,6 +216,19 @@ func newAuthEnv(t testing.TB, extraEnv ...string) *authEnv {
 			return err
 		}), Quota: env.quota, OpenJail: env.trash.OpenJail, ErrorCode: files.TaskErrorCode, NotifyMinDuration: &zero, ItemDelay: itemDelay})
 	files.RegisterTasks(env.tasks, env.files)
+	hlsRunner := fmexec.New(filepath.Join(cfg.DataDir, "tmp"))
+	hlsOpts := media.TranscoderOptions{Runner: hlsRunner, Prober: &media.Prober{Runner: hlsRunner}, DataDir: cfg.DataDir, Tasks: store, Logger: logger, Threads: 1, MinDiskFree: 1,
+		Settings: func() media.TranscodeSettings {
+			rt := cfg.Runtime()
+			return media.TranscodeSettings{Enabled: rt.TranscodeEnabled, MaxConcurrent: rt.TranscodeMaxConcurrent, MaxHeight: media.ResolutionHeight(rt.TranscodeMaxResolution),
+				MaxDuration: time.Duration(rt.TranscodeMaxDurationMinutes) * time.Minute, Nice: rt.TranscodeNice}
+		}}
+	if hlsStub {
+		env.hlsStub = writeHLSStubs(t)
+		hlsOpts.FFmpeg, hlsOpts.Prober.FFprobe = filepath.Join(env.hlsStub, "ffmpeg"), filepath.Join(env.hlsStub, "ffprobe")
+	}
+	env.transcode = media.NewTranscoder(hlsOpts)
+	env.transcode.Register(env.tasks)
 	env.files.TrashHook = env.share
 	env.files.Shares = env.share
 	// Remote downloads (Step 13): loopback only when a test asks for it
@@ -288,7 +308,8 @@ func newAuthEnv(t testing.TB, extraEnv ...string) *authEnv {
 	}
 	env.handler = New(Options{Cfg: cfg, Logger: logger, Version: "test", Store: store, Auth: svc, Listing: env.listing, Locks: env.locks, Files: env.files, Quota: env.quota, Meta: env.meta,
 		Tasks: env.tasks, Events: env.events, Notify: env.notify, Upload: env.upload, Downloads: env.dl, Remote: env.remote, Archives: env.archive, Search: env.search, Versions: env.versions, Share: env.share, Admin: env.admin,
-		Assets: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("spa")) })})
+		Transcode: env.transcode,
+		Assets:    http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("spa")) })})
 	return env
 }
 

@@ -426,10 +426,13 @@ func TestProgressThrottleAndETA(t *testing.T) {
 	if n := rec.count("user-a:" + EventProgress); n < 1 || n > 3 {
 		t.Fatalf("progress events: %d (%v)", n, rec.events)
 	}
-	row, _ := store.GetTask(ctx, task.ID)
-	if row.ProgressDone != 500 || row.ProgressTotal != 1000 {
-		t.Fatalf("db progress: %d/%d", row.ProgressDone, row.ProgressTotal)
-	}
+	// the throttled DB write runs right after the in-memory update that
+	// waitFor observed (outside the lock): wait for it instead of racing it
+	// (Step 23d: seen once as "db progress: 0/0" under the full -race suite)
+	waitFor(t, func() bool {
+		row, _ := store.GetTask(ctx, task.ID)
+		return row.ProgressDone == 500 && row.ProgressTotal == 1000
+	}, "db progress 500/1000")
 	if c, _ := store.CountTaskLogs(ctx, task.ID); c != MaxLogsPerTask+1 {
 		t.Fatalf("log cap: %d", c)
 	}
@@ -445,4 +448,106 @@ func TestProgressThrottleAndETA(t *testing.T) {
 	} else if _, has := raw["userId"]; has {
 		t.Fatal("userId must not be serialised")
 	}
+}
+
+// TestEngineMaxConcurrentPerType: Spec.MaxConcurrent caps running tasks of
+// one type across users (transcode_hls, Step 23d); the queued one does not
+// take an engine slot (another type still starts) and runs once the first
+// finishes; the cap is read live.
+func TestEngineMaxConcurrentPerType(t *testing.T) {
+	store := newStore(t, t.TempDir())
+	f := newEngine(t, store, 3, 4)
+	var limit atomic.Int32
+	limit.Store(1)
+	g := &gate{started: make(chan string, 10), release: make(chan struct{})}
+	other := &gate{started: make(chan string, 10), release: make(chan struct{})}
+	f.e.Register("capped", Spec{Unit: UnitItems, Run: g.run, MaxConcurrent: func() int { return int(limit.Load()) }})
+	f.e.Register("free", Spec{Run: other.run})
+	f.start(t)
+	ctx := context.Background()
+	a, err := f.e.Enqueue(ctx, EnqueueRequest{UserID: "user-a", Type: "capped"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := f.e.Enqueue(ctx, EnqueueRequest{UserID: "user-b", Type: "capped"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := <-g.started
+	time.Sleep(100 * time.Millisecond)
+	if f.e.Running() != 1 {
+		t.Fatalf("running: %d (want 1, cap of the type)", f.e.Running())
+	}
+	second := b.ID
+	if first == b.ID {
+		second = a.ID
+	}
+	uid := map[string]string{a.ID: "user-a", b.ID: "user-b"}
+	if x, _ := f.e.Get(ctx, uid[second], second); x.State != Queued {
+		t.Fatalf("second: %s", x.State)
+	}
+	// another type is not blocked by the capped queue
+	o, err := f.e.Enqueue(ctx, EnqueueRequest{UserID: "user-b", Type: "free"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-other.started
+	waitFor(t, func() bool { return f.e.Running() == 2 }, "free type running next to the capped one")
+	close(other.release)
+	// releasing the gate lets the first finish and the second start; both done
+	g.release <- struct{}{}
+	if got := <-g.started; got != second {
+		t.Fatalf("started %s, want %s", got, second)
+	}
+	g.release <- struct{}{}
+	for id, u := range uid {
+		waitFor(t, func() bool { x, _ := f.e.Get(ctx, u, id); return x.State == Done }, "done "+id)
+	}
+	waitFor(t, func() bool { x, _ := f.e.Get(ctx, "user-b", o.ID); return x.State == Done }, "free done")
+	// raising the cap at run time lets two run together
+	limit.Store(2)
+	c1, _ := f.e.Enqueue(ctx, EnqueueRequest{UserID: "user-a", Type: "capped"})
+	c2, _ := f.e.Enqueue(ctx, EnqueueRequest{UserID: "user-b", Type: "capped"})
+	<-g.started
+	<-g.started
+	waitFor(t, func() bool { return f.e.Running() == 2 }, "two capped running")
+	close(g.release)
+	waitFor(t, func() bool { x, _ := f.e.Get(ctx, "user-a", c1.ID); return x.State == Done }, "c1 done")
+	waitFor(t, func() bool { x, _ := f.e.Get(ctx, "user-b", c2.ID); return x.State == Done }, "c2 done")
+}
+
+// TestProgressETASlowerThanOneUnit: an ETA is reported for a task slower
+// than one unit per second (0.5 media seconds per second → speed 0, ETA
+// from the fractional rate; Step 23d).
+func TestProgressETASlowerThanOneUnit(t *testing.T) {
+	store := newStore(t, t.TempDir())
+	clock := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	var mu sync.Mutex
+	now := func() time.Time { mu.Lock(); defer mu.Unlock(); return clock }
+	advance := func(d time.Duration) { mu.Lock(); clock = clock.Add(d); mu.Unlock() }
+	e := New(Options{Repo: store, MaxPerUser: 3, MaxGlobal: 2, Events: &recorder{}, Now: now})
+	released := make(chan struct{})
+	e.Register("slow", Spec{Unit: UnitItems, Run: func(ctx context.Context, rt *Runtime) (any, error) {
+		rt.Progress(0, 100)
+		advance(4 * time.Second)
+		rt.Progress(2, 100) // 2 media seconds in 4 s
+		<-released
+		return nil, nil
+	}})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := e.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	task, err := e.Enqueue(ctx, EnqueueRequest{UserID: "user-a", Type: "slow"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { x, _ := e.Get(ctx, "user-a", task.ID); return x.Progress.Done == 2 && x.ETASeconds != nil }, "eta")
+	x, _ := e.Get(ctx, "user-a", task.ID)
+	if *x.ETASeconds != 196 || x.SpeedBps == nil || *x.SpeedBps != 0 {
+		t.Fatalf("eta %v speed %v", *x.ETASeconds, x.SpeedBps)
+	}
+	close(released)
+	waitFor(t, func() bool { x, _ := e.Get(ctx, "user-a", task.ID); return x.State == Done }, "done")
 }

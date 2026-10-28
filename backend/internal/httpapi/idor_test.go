@@ -54,6 +54,7 @@ var idorRoutes = map[string]idorKind{
 	"GET /api/v1/files/raw": idorSigned, "HEAD /api/v1/files/raw": idorSigned, "GET /api/v1/files/zip": idorSigned,
 	"HEAD /api/v1/files/zip": idorSigned, "GET /api/v1/files/subtitle": idorSigned,
 	"GET /api/v1/archives/entry-content": idorSigned, "HEAD /api/v1/archives/entry-content": idorSigned,
+	"GET /api/v1/files/hls/{id}/playlist.m3u8": idorSigned, "GET /api/v1/files/hls/{id}/{segment}": idorSigned, // Step 23d
 
 	"GET /api/v1/auth/csrf": idorSelf, "GET /api/v1/auth/me": idorSelf, "POST /api/v1/auth/logout": idorSelf,
 	"POST /api/v1/auth/change-password": idorSelf, "GET /api/v1/events": idorSelf,
@@ -65,7 +66,7 @@ var idorRoutes = map[string]idorKind{
 	"POST /api/v1/files/delete-permanent": idorSelf, "POST /api/v1/files/dir-size": idorSelf, "POST /api/v1/files/duplicate": idorSelf,
 	"POST /api/v1/files/mkdir": idorSelf, "POST /api/v1/files/move": idorSelf, "POST /api/v1/files/rename": idorSelf,
 	"POST /api/v1/files/sign": idorSelf, "POST /api/v1/files/symlink": idorSelf, "POST /api/v1/files/undo": idorSelf,
-	"POST /api/v1/files/zip": idorSelf, "GET /api/v1/me/activity": idorSelf, "DELETE /api/v1/me/activity": idorSelf,
+	"POST /api/v1/files/zip": idorSelf, "POST /api/v1/files/hls": idorSelf, "GET /api/v1/me/activity": idorSelf, "DELETE /api/v1/me/activity": idorSelf,
 	"GET /api/v1/me/editor-session": idorSelf, "PUT /api/v1/me/editor-session": idorSelf, "GET /api/v1/me/folder-prefs": idorSelf,
 	"PUT /api/v1/me/folder-prefs": idorSelf, "DELETE /api/v1/me/folder-prefs": idorSelf, "GET /api/v1/me/media-position": idorSelf,
 	"PUT /api/v1/me/media-position": idorSelf, "GET /api/v1/me/preferences": idorSelf, "PUT /api/v1/me/preferences": idorSelf,
@@ -219,7 +220,7 @@ func (f idorFixture) target(route string) string {
 	case strings.Contains(route, "/users/"):
 		path = strings.Replace(path, "{id}", f.ids["id:user"], 1)
 	}
-	path = strings.NewReplacer("{shareId}", f.ids["id:ushare"], "{token}", f.ids["token"], "{name}", f.ids["name"], "{job}", f.ids["job"], "{id}", "0123456789abcdef").Replace(path)
+	path = strings.NewReplacer("{shareId}", f.ids["id:ushare"], "{token}", f.ids["token"], "{name}", f.ids["name"], "{job}", f.ids["job"], "{segment}", "seg_00000.ts", "{id}", "0123456789abcdef").Replace(path)
 	return path
 }
 

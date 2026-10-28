@@ -722,6 +722,98 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+  /api/v1/files/hls:
+    post:
+      summary: Convert a video to HLS on the fly (task transcode_hls, Step 23d)
+      description: |
+        Optional, CPU-limited transcoding of a video the browser cannot play (admin setting `transcode.enabled`,
+        default off). Checks: regular file, ffprobe finds a video stream with a known duration ≤
+        `transcode.max_duration_minutes` (≤ 180), `DATA_DIR/tmp/hls` below 10 GiB and ≥ 512 MiB free disk, at most
+        one queued/running conversion per user. The same file (path + size + mtime) returns its running or
+        finished conversion with a fresh signed URL (`200`, also used to re-sign). ffmpeg (fixed argv, `nice
+        transcode.nice` + `ionice` idle) writes H.264/AAC 4 s segments of an EVENT playlist into
+        `DATA_DIR/tmp/hls/<task>/`; at most `transcode.max_concurrent` conversions run at once (the rest stays
+        queued). Progress = seconds of media (`progress.unit` `items`). Owner scope only.
+      tags: [files]
+      operationId: filesHlsStart
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [path]
+              properties:
+                path: { type: string, description: Video file }
+      responses:
+        "200":
+          description: The conversion of this file that is running or finished already
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HLSStart" }
+        "202":
+          description: Queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HLSStart" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { description: "`FORBIDDEN reason=transcode_disabled`", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { description: "`CONFLICT reason=already_running details.taskId` (another conversion of this user) or `reason=disk_budget` (cache full)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "413": { description: "`QUOTA_EXCEEDED reason=disk`", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "415": { description: "`UNSUPPORTED_TYPE reason=not_video`", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "`VALIDATION_FAILED reason=too_long|unknown_duration details.maxMinutes, durationMs`", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { $ref: "#/components/responses/Error" }
+        "501": { description: "`DEPENDENCY_MISSING` (ffmpeg/ffprobe)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/files/hls/{id}/playlist.m3u8:
+    get:
+      summary: HLS playlist of a conversion (signed URL; Step 23d)
+      description: |
+        The EVENT playlist ffmpeg is writing, rewritten: every segment URI carries this request's
+        `scope&exp&sig` (one signature per task folder) and `#EXT-X-START:TIME-OFFSET=0` makes players start at
+        the beginning. `Cache-Control: private, no-store` while converting, `private, max-age=3600` when done;
+        `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox; default-src 'none'`. No cookie needed.
+      tags: [files]
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid }, description: Task id }
+        - { name: scope, in: query, required: true, schema: { type: string } }
+        - { name: exp, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: sig, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Playlist
+          content:
+            application/vnd.apple.mpegurl: { schema: { type: string } }
+        "202": { description: "Conversion queued or starting; no playlist yet (`Retry-After: 2`)" }
+        "403": { description: "`SIGNATURE_INVALID|SIGNATURE_EXPIRED`, `FORBIDDEN reason=account_inactive|transcode_disabled`", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Unknown, foreign, cancelled or cleaned-up conversion", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/files/hls/{id}/{segment}:
+    get:
+      summary: One HLS segment (signed URL; Step 23d)
+      description: "`segment` must match `seg_NNNNN.ts` (anything else → 404; folders are never listed). `video/mp2t`, Range supported, `Cache-Control: private, max-age=3600`, same content headers as the playlist."
+      tags: [files]
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: segment, in: path, required: true, schema: { type: string, pattern: '^seg_[0-9]{5}\.ts$' } }
+        - { name: scope, in: query, required: true, schema: { type: string } }
+        - { name: exp, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: sig, in: query, required: true, schema: { type: string } }
+        - { name: Range, in: header, schema: { type: string } }
+      responses:
+        "200":
+          description: MPEG-TS segment
+          content:
+            video/mp2t: { schema: { type: string, format: binary } }
+        "206": { description: Partial content }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
   /api/v1/files/subtitle:
     get:
       summary: Sidecar subtitle as sanitised WebVTT (signed URL; Step 17b)
@@ -4591,6 +4683,7 @@ components:
         passwordMinLength: { type: integer }
         defaultLanguage: { type: string, enum: [id, en] }
         adminCanBrowseUsers: { type: boolean }
+        transcodeEnabled: { type: boolean, description: "Step 23d: setting transcode.enabled dan ffmpeg + ffprobe tersedia — player menawarkan konversi HLS" }
         features:
           type: object
           additionalProperties: { type: boolean }
@@ -5385,6 +5478,15 @@ components:
           required: [taskId]
           properties:
             taskId: { type: string }
+    HLSStart:
+      type: object
+      description: "Answer of POST /files/hls (Step 23d)"
+      required: [task, playlistUrl, expiresAt, ready]
+      properties:
+        task: { $ref: "#/components/schemas/Task" }
+        playlistUrl: { type: string, description: "Signed `/api/v1/files/hls/<task>/playlist.m3u8?scope&exp&sig` (purpose hls, TTL MEDIA_URL_TTL); segments inherit the query" }
+        expiresAt: { type: string, format: date-time }
+        ready: { type: boolean, description: "At least 2 segments exist or the conversion finished" }
     TaskAccepted:
       type: object
       description: "`202` answer of an operation converted into a task"

@@ -104,7 +104,11 @@ type Spec struct {
 	NeedsSecret bool
 	// Link, when set, computes the notification link from the finished task.
 	Link func(t Task) string
-	Run  Runner
+	// MaxConcurrent, when set and > 0, caps the running tasks of this type
+	// across all users (transcode_hls: setting transcode.max_concurrent,
+	// Step 23d). Tasks beyond it stay queued without taking a slot.
+	MaxConcurrent func() int
+	Run           Runner
 }
 
 // EnqueueRequest describes a new task. Payload is JSON-encoded as given

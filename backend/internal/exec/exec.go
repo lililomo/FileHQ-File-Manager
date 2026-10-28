@@ -16,6 +16,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -25,7 +26,7 @@ import (
 const (
 	DefaultTimeout   = 30 * time.Second
 	DefaultMaxOutput = 64 << 10 // 64 KiB per stream
-	niceLevel        = "10"
+	niceLevel        = 10
 )
 
 // Sentinel errors.
@@ -79,6 +80,9 @@ type Spec struct {
 	MaxOutput int64
 	// NoNice disables nice/ionice (e.g. interactive probes that must be quick).
 	NoNice bool
+	// Nice overrides the nice level (0–19, clamped) of the wrapper; nil = 10.
+	// HLS transcoding passes the admin setting transcode.nice (Step 23d).
+	Nice *int
 	// Env adds variables on top of the minimal environment.
 	Env []string
 	// Stdout, when set, receives stdout directly (streaming) instead of the
@@ -140,7 +144,11 @@ func (r *Runner) Argv(s Spec) []string {
 	argv := make([]string, 0, len(s.Args)+6)
 	if !s.NoNice {
 		if r.NicePath != "" {
-			argv = append(argv, r.NicePath, "-n", niceLevel)
+			level := niceLevel
+			if s.Nice != nil {
+				level = min(max(*s.Nice, 0), 19)
+			}
+			argv = append(argv, r.NicePath, "-n", strconv.Itoa(level))
 		}
 		if r.IonicePath != "" {
 			argv = append(argv, r.IonicePath, "-c", "3")

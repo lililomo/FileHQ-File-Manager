@@ -30,6 +30,10 @@ const (
 	// PurposeEntry streams one member of an archive (Step 14b): Path is the
 	// archive, Extra the member name (query "inner").
 	PurposeEntry Purpose = "entry"
+	// PurposeHLS signs one transcoding output folder (Step 23d): Path is the
+	// task id; playlist and segments share the signature. Deliberately not
+	// accepted by ParsePurpose (POST /files/sign cannot mint it).
+	PurposeHLS Purpose = "hls"
 )
 
 // ParsePurpose validates a purpose string.
@@ -161,7 +165,7 @@ func ShareScope(shareID string) string { return "s:" + shareID }
 // download/inline/zip use the short TTL, media/thumb the long one.
 func TTLFor(p Purpose, signedTTL, mediaTTL time.Duration) time.Duration {
 	switch p {
-	case PurposeMedia, PurposeThumb, PurposeEntry:
+	case PurposeMedia, PurposeThumb, PurposeEntry, PurposeHLS:
 		return mediaTTL
 	default:
 		return signedTTL

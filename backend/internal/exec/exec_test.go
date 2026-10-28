@@ -94,4 +94,11 @@ func TestArgvWrappers(t *testing.T) {
 	if len(argv) != 1 || argv[0] != "/usr/bin/tool" {
 		t.Fatalf("NoNice argv = %q", argv)
 	}
+	// Step 23d: transcode.nice overrides the level, clamped to 0..19
+	for in, want := range map[int]string{19: "19", 0: "0", 25: "19", -3: "0"} {
+		argv = r.Argv(Spec{Bin: "/usr/bin/tool", Nice: &in})
+		if len(argv) < 3 || argv[2] != want {
+			t.Fatalf("Nice %d argv = %q", in, argv)
+		}
+	}
 }

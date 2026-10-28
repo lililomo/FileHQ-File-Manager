@@ -407,6 +407,15 @@ func runServe(envFile string, noMigrate bool) int {
 		ErrorCode: files.TaskErrorCode, ItemDelay: devItemDelay(cfg),
 	})
 	files.RegisterTasks(engine, filesSvc)
+	// On-the-fly HLS transcoding (Step 23d, SPEC §8.14): admin settings
+	// transcode.* (default off), task transcode_hls capped by
+	// transcode.max_concurrent, output in DATA_DIR/tmp/hls swept hourly-idle.
+	transcoder := media.NewTranscoder(media.TranscoderOptions{
+		Runner: runner, Prober: prober, FFmpeg: cfg.FFmpegPath, DataDir: cfg.DataDir, Tasks: store, Logger: logger,
+		Settings: func() media.TranscodeSettings { return transcodeSettings(cfg.Runtime()) },
+		IdleTTL:  devHLSIdleTTL(cfg),
+	})
+	transcoder.Register(engine)
 	filesSvc.TrashHook = shareSvc
 	filesSvc.Shares = shareSvc
 
@@ -542,7 +551,7 @@ func runServe(envFile string, noMigrate bool) int {
 		DB: database, Trash: trashStore, Thumbs: thumbsSvc, Scheduler: jobs,
 		PruneActivity: filesSvc.PruneActivity, PruneShareAccess: shareSvc.PruneAccessLogs,
 		CleanUploads: func(ctx context.Context) (any, error) {
-			return cleanAbandoned(ctx, uploadSvc, remoteSvc, archiveSvc, logger)
+			return cleanAbandoned(ctx, uploadSvc, remoteSvc, archiveSvc, transcoder, logger)
 		},
 	}); err != nil {
 		logger.Error("maintenance setup failed", slog.String("error", err.Error()))
@@ -594,6 +603,7 @@ func runServe(envFile string, noMigrate bool) int {
 		Versions:    versionsSvc,
 		Share:       shareSvc,
 		Admin:       adminSvc,
+		Transcode:   transcoder,
 		Warnings: func() []string {
 			var out []string
 			for _, tool := range thumbsSvc.MissingTools() {
@@ -621,6 +631,7 @@ func runServe(envFile string, noMigrate bool) int {
 		return 1
 	}
 	logger.Info("task engine started", slog.Int("maxPerUser", cfg.TaskMaxPerUser), slog.Int("maxGlobal", cfg.TaskMaxGlobal))
+	transcoder.Start(ctx)
 
 	var metricsSrv *http.Server
 	if reg != nil {
@@ -669,8 +680,9 @@ func runServe(envFile string, noMigrate bool) int {
 }
 
 // cleanAbandoned is the clean_uploads maintenance job: abandoned tus
-// uploads (Step 12a), remote download parts (13) and archive workspaces (14a).
-func cleanAbandoned(ctx context.Context, uploadSvc *upload.Service, remoteSvc *remotedl.Service, archiveSvc *archive.Service, logger *slog.Logger) (any, error) {
+// uploads (Step 12a), remote download parts (13), archive workspaces (14a)
+// and idle HLS folders (23d; also swept by the transcoder's own ticker).
+func cleanAbandoned(ctx context.Context, uploadSvc *upload.Service, remoteSvc *remotedl.Service, archiveSvc *archive.Service, transcoder *media.Transcoder, logger *slog.Logger) (any, error) {
 	res, err := uploadSvc.CleanExpired(ctx)
 	out := map[string]any{"expired": res.Expired, "orphans": res.Orphans, "prunedRows": res.Pruned}
 	if n, rerr := remoteSvc.CleanOrphans(ctx); rerr != nil {
@@ -683,7 +695,34 @@ func cleanAbandoned(ctx context.Context, uploadSvc *upload.Service, remoteSvc *r
 	} else {
 		out["archiveWorkspaces"] = n
 	}
+	if n, herr := transcoder.Sweep(ctx); herr != nil {
+		logger.Warn("hls cleanup failed", slog.String("error", herr.Error()))
+	} else {
+		out["hlsFolders"] = n
+	}
 	return out, err
+}
+
+// transcodeSettings maps the admin settings transcode.* (Step 23d).
+func transcodeSettings(rt *config.Runtime) media.TranscodeSettings {
+	return media.TranscodeSettings{
+		Enabled: rt.TranscodeEnabled, MaxConcurrent: rt.TranscodeMaxConcurrent, MaxHeight: media.ResolutionHeight(rt.TranscodeMaxResolution),
+		MaxDuration: time.Duration(rt.TranscodeMaxDurationMinutes) * time.Minute, Nice: rt.TranscodeNice,
+	}
+}
+
+// devHLSIdleTTL reads DEV_HLS_IDLE_TTL (e.g. "2m"), honoured only in
+// development so a manual check can watch the HLS sweeper without waiting
+// an hour; production always keeps folders 1 h (0 = default).
+func devHLSIdleTTL(cfg *config.Config) time.Duration {
+	if cfg.AppEnv != config.EnvDevelopment {
+		return 0
+	}
+	d, err := time.ParseDuration(os.Getenv("DEV_HLS_IDLE_TTL"))
+	if err != nil || d <= 0 || d > media.DefaultHLSIdleTTL {
+		return 0
+	}
+	return d
 }
 
 // registerJobs wires the scheduled jobs of SPEC §7.3 that are not admin

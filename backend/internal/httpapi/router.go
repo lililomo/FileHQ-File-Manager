@@ -73,6 +73,7 @@ type Options struct {
 	Share       *share.Service      // public links (Step 18a); nil disables /shares and /public/shares
 	Admin       *admin.Service      // admin panel (Step 19a); nil disables /admin/*
 	Metrics     *metrics.Registry   // request metrics registry (Step 20); nil disables
+	Transcode   *media.Transcoder   // on-the-fly HLS (Step 23d); nil answers DEPENDENCY_MISSING / 404
 }
 
 // Server holds dependencies shared by handlers.
@@ -108,39 +109,41 @@ type Server struct {
 	versions    *versions.Store
 	shares      *share.Service
 	admin       *admin.Service
+	transcode   *media.Transcoder
 }
 
 // New builds the router. The returned handler is safe for http.Server.
 func New(o Options) http.Handler {
 	s := &Server{
-		cfg:      o.Cfg,
-		logger:   o.Logger,
-		version:  o.Version,
-		assets:   o.Assets,
-		store:    o.Store,
-		auth:     o.Auth,
-		listing:  o.Listing,
-		locks:    o.Locks,
-		jails:    newJailCache(nil),
-		media:    o.Media,
-		thumbs:   o.Thumbs,
-		signer:   o.Signer,
-		files:    o.Files,
-		quota:    o.Quota,
-		audit:    o.Audit,
-		meta:     o.Meta,
-		tasks:    o.Tasks,
-		events:   o.Events,
-		notify:   o.Notify,
-		upload:   o.Upload,
-		zips:     o.ZipStore,
-		dlLimit:  o.Downloads,
-		remote:   o.Remote,
-		archives: o.Archives,
-		search:   o.Search,
-		versions: o.Versions,
-		shares:   o.Share,
-		admin:    o.Admin,
+		cfg:       o.Cfg,
+		logger:    o.Logger,
+		version:   o.Version,
+		assets:    o.Assets,
+		store:     o.Store,
+		auth:      o.Auth,
+		listing:   o.Listing,
+		locks:     o.Locks,
+		jails:     newJailCache(nil),
+		media:     o.Media,
+		thumbs:    o.Thumbs,
+		signer:    o.Signer,
+		files:     o.Files,
+		quota:     o.Quota,
+		audit:     o.Audit,
+		meta:      o.Meta,
+		tasks:     o.Tasks,
+		events:    o.Events,
+		notify:    o.Notify,
+		upload:    o.Upload,
+		zips:      o.ZipStore,
+		dlLimit:   o.Downloads,
+		remote:    o.Remote,
+		archives:  o.Archives,
+		search:    o.Search,
+		versions:  o.Versions,
+		shares:    o.Share,
+		admin:     o.Admin,
+		transcode: o.Transcode,
 	}
 	s.warnings = o.Warnings
 	if s.dlLimit == nil {
@@ -182,10 +185,10 @@ func New(o Options) http.Handler {
 	r.Get("/readyz", s.handleReadyz)
 
 	r.Route("/api/v1", func(api chi.Router) {
-		api.Use(TimeoutExcept(APITimeout, EventsPath, TusPrefix, DownloadPath, RawPath, ZipPath, EntryContentPath, ContentSearchPath, PublicSharePrefix, AuditExportPath, BackupDownloadPrefix))
+		api.Use(TimeoutExcept(APITimeout, EventsPath, TusPrefix, DownloadPath, RawPath, ZipPath, EntryContentPath, HLSPrefix, ContentSearchPath, PublicSharePrefix, AuditExportPath, BackupDownloadPrefix))
 		api.Use(MaxBytes(JSONBodyLimit, TusPrefix, ContentPath, PublicShareTusMarker))
 		api.Use(AsUserBodyPeek)
-		api.Use(s.limitAPI(o.Cfg.RateLimits.API, TusPrefix, ThumbPath, DownloadPath, RawPath, ZipPath, EntryContentPath, SubtitlePath, PublicSharePrefix, EventsPath))
+		api.Use(s.limitAPI(o.Cfg.RateLimits.API, TusPrefix, ThumbPath, DownloadPath, RawPath, ZipPath, EntryContentPath, SubtitlePath, HLSPrefix, PublicSharePrefix, EventsPath))
 		api.NotFound(func(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, r, CodeNotFound, 0, "endpoint not found", nil)
 		})
@@ -222,6 +225,7 @@ func (s *Server) mountAPI(api chi.Router) {
 		s.mountEvents(api)
 		s.mountUpload(api)
 		s.mountDownload(api)
+		s.mountHLS(api)
 		s.mountRemoteDL(api)
 		s.mountArchives(api)
 		s.mountSearch(api)

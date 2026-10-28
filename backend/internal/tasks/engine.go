@@ -112,6 +112,7 @@ type Engine struct {
 	queue      []*Task // FIFO
 	running    map[string]*run
 	perUser    map[string]int
+	perType    map[string]int               // running tasks per type (Spec.MaxConcurrent)
 	secrets    map[string]map[string]string // queued task secrets
 	wake       chan struct{}
 	stopping   bool
@@ -137,7 +138,7 @@ func New(o Options) *Engine {
 		o.MaxGlobal = 2
 	}
 	e := &Engine{o: o, logger: o.Logger, now: o.Now, specs: map[string]Spec{}, running: map[string]*run{},
-		perUser: map[string]int{}, secrets: map[string]map[string]string{}, wake: make(chan struct{}, 1), notifyMin: NotifyMinDuration}
+		perUser: map[string]int{}, perType: map[string]int{}, secrets: map[string]map[string]string{}, wake: make(chan struct{}, 1), notifyMin: NotifyMinDuration}
 	if o.NotifyMinDuration != nil {
 		e.notifyMin = *o.NotifyMinDuration
 	}
@@ -372,6 +373,12 @@ func (e *Engine) dispatch() {
 			kept = append(kept, t)
 			continue
 		}
+		if spec.MaxConcurrent != nil {
+			if n := spec.MaxConcurrent(); n > 0 && e.perType[t.Type] >= n {
+				kept = append(kept, t)
+				continue
+			}
+		}
 		r := &run{task: t, spec: spec, done: make(chan struct{}), secrets: e.secrets[t.ID]}
 		// the cancel func is created here, under e.mu, so a Cancel that arrives
 		// before execute runs still reaches the runner's context (review C)
@@ -379,6 +386,7 @@ func (e *Engine) dispatch() {
 		r.cancel = cancel
 		delete(e.secrets, t.ID)
 		e.running[t.ID] = r
+		e.perType[t.Type]++
 		if t.UserID != "" {
 			e.perUser[t.UserID]++
 		}
@@ -482,6 +490,9 @@ func (e *Engine) finish(r *run, result any, err error) {
 	}
 	e.mu.Lock()
 	delete(e.running, t.ID)
+	if e.perType[t.Type]--; e.perType[t.Type] <= 0 {
+		delete(e.perType, t.Type)
+	}
 	if t.UserID != "" {
 		e.perUser[t.UserID]--
 		if e.perUser[t.UserID] <= 0 {
@@ -591,9 +602,14 @@ func (e *Engine) live(id, userID string) (Task, bool) {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		snap := *r.task
-		snap.Progress.Done, snap.Progress.Total = r.pdone, r.ptotal
-		snap.Progress.Percent = percent(r.pdone, r.ptotal)
-		snap.ETASeconds, snap.SpeedBps = r.eta, r.speed
+		// finish() already wrote the final progress (done = total) before the
+		// run leaves e.running; only an active run reports the live counters
+		// (Step 23d: fixes a flake of TestProgressThrottleAndETA)
+		if !snap.State.Final() {
+			snap.Progress.Done, snap.Progress.Total = r.pdone, r.ptotal
+			snap.Progress.Percent = percent(r.pdone, r.ptotal)
+			snap.ETASeconds, snap.SpeedBps = r.eta, r.speed
+		}
 		snap.CancelRequested = r.cancelReq
 		return snap, true
 	}
@@ -883,10 +899,14 @@ func (rt *Runtime) flush(force bool) {
 	if first := r.samples[0]; len(r.samples) > 1 && now.After(first.t) {
 		dt := now.Sub(first.t).Seconds()
 		if dt > 0 && r.pdone > first.done {
-			sp := int64(float64(r.pdone-first.done) / dt)
+			spf := float64(r.pdone-first.done) / dt
+			sp := int64(spf)
 			r.speed = &sp
-			if r.ptotal > r.pdone && sp > 0 {
-				eta := (r.ptotal - r.pdone) / sp
+			// from the fractional rate: a task slower than one unit per
+			// second (transcoding at 0.5× real time, hashing big files)
+			// still gets an ETA (Step 23d)
+			if r.ptotal > r.pdone && spf > 0 {
+				eta := int64(float64(r.ptotal-r.pdone) / spf)
 				r.eta = &eta
 			}
 		}

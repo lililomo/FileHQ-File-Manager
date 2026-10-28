@@ -264,3 +264,48 @@ func mustUser(t *testing.T, e *env, name string) sqlc.User {
 	}
 	return u
 }
+
+// TestSettingsTranscodeKeys: the Step 23d keys (settings only, no env) with
+// their defaults, bounds and live snapshot.
+func TestSettingsTranscodeKeys(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	items, err := e.svc.ListSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]any{KeyTranscodeEnabled: false, KeyTranscodeConcurrent: 1, KeyTranscodeResolution: "720p",
+		KeyTranscodeMaxDuration: 180, KeyTranscodeNice: 19} {
+		it := itemOf(t, items, key)
+		if it.Group != GroupMedia || it.Source != "default" || it.Value != want || it.Default != want {
+			t.Fatalf("%s: %+v", key, it)
+		}
+	}
+	if v := itemOf(t, items, KeyTranscodeNice).Validation; v == nil || *v.Min != 0 || *v.Max != 19 {
+		t.Fatalf("nice bounds: %+v", v)
+	}
+	for _, c := range []struct {
+		key    string
+		value  any
+		reason string
+	}{
+		{KeyTranscodeConcurrent, 0, "min"}, {KeyTranscodeConcurrent, 5, "max"}, {KeyTranscodeResolution, "4k", "invalid"},
+		{KeyTranscodeMaxDuration, 181, "max"}, {KeyTranscodeNice, 20, "max"}, {KeyTranscodeNice, -1, "min"}, {KeyTranscodeEnabled, 1, "type"},
+	} {
+		_, err := e.svc.UpdateSettings(ctx, e.actor, map[string]json.RawMessage{c.key: raw(c.value)})
+		if ae := asAdminErr(t, err); ae.Details["key"] != c.key || ae.Details["reason"] != c.reason {
+			t.Fatalf("%s=%v: %v", c.key, c.value, ae.Details)
+		}
+	}
+	if _, err := e.svc.UpdateSettings(ctx, e.actor, map[string]json.RawMessage{KeyTranscodeEnabled: raw(true), KeyTranscodeConcurrent: raw(2),
+		KeyTranscodeResolution: raw("480p"), KeyTranscodeMaxDuration: raw(30), KeyTranscodeNice: raw(0)}); err != nil {
+		t.Fatal(err)
+	}
+	rt := e.cfg.Runtime()
+	if !rt.TranscodeEnabled || rt.TranscodeMaxConcurrent != 2 || rt.TranscodeMaxResolution != "480p" || rt.TranscodeMaxDurationMinutes != 30 || rt.TranscodeNice != 0 {
+		t.Fatalf("snapshot: %+v", rt)
+	}
+	if _, err := e.svc.ResetSettings(ctx, e.actor, []string{KeyTranscodeEnabled}); err != nil || e.cfg.Runtime().TranscodeEnabled {
+		t.Fatalf("reset: %v", err)
+	}
+}

@@ -44,6 +44,12 @@ type Runtime struct {
 	DefaultLanguage        string
 	// BrandingLogo is the stored logo file name under DATA_DIR/branding ("" = none).
 	BrandingLogo string
+	// On-the-fly HLS transcoding (Step 23d, settings transcode.*; no env).
+	TranscodeEnabled            bool
+	TranscodeMaxConcurrent      int
+	TranscodeMaxResolution      string // 480p|720p|1080p
+	TranscodeMaxDurationMinutes int
+	TranscodeNice               int
 	// Overrides holds the raw JSON of every settings row that produced this
 	// snapshot (key → value_json), for the admin UI "source" column.
 	Overrides map[string]json.RawMessage
@@ -63,6 +69,7 @@ func (c *Config) BaseRuntime() *Runtime {
 		TaskMaxPerUser: c.TaskMaxPerUser, AuditRetentionDays: c.AuditRetentionDays, ActivityRetentionDays: c.ActivityRetentionDays,
 		TZDefault: c.TZDefault, TZDefaultName: c.TZDefaultName, BlockedExtensions: slices.Clone(c.BlockedExtensions),
 		PasswordMinLength: c.PasswordMinLength, AppName: c.AppName, DefaultLanguage: c.DefaultLanguage,
+		TranscodeEnabled: false, TranscodeMaxConcurrent: 1, TranscodeMaxResolution: "720p", TranscodeMaxDurationMinutes: 180, TranscodeNice: 19,
 		Overrides: map[string]json.RawMessage{},
 	}
 }

@@ -222,6 +222,7 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		{http.MethodPut, "/api/v1/me/folder-prefs"},
 		{http.MethodDelete, "/api/v1/me/folder-prefs?path=/"},
 		{http.MethodPost, "/api/v1/files/sign"},
+		{http.MethodPost, "/api/v1/files/hls"}, // Step 23d
 		// Step 9a file operations
 		{http.MethodPost, "/api/v1/files/rename"},
 		{http.MethodPost, "/api/v1/files/copy"},
@@ -486,9 +487,12 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		// Step 23a: TOTP (gated above)
 		"POST /api/v1/me/totp/setup": true, "POST /api/v1/me/totp/enable": true, "POST /api/v1/me/totp/disable": true,
 		"POST /api/v1/me/totp/recovery-codes": true, "POST /api/v1/admin/users/{id}/reset-totp": true,
+		// Step 23d: POST /files/hls is gated above; playlist/segments are
+		// signed-only and their URL comes from that gated POST
+		"POST /api/v1/files/hls": true, "GET /api/v1/files/hls/{id}/playlist.m3u8": true, "GET /api/v1/files/hls/{id}/{segment}": true,
 	}
 	// the signed endpoints reject cookie-only access: no signature → 403
-	for _, p := range []string{"/api/v1/files/thumb?path=/x&size=128", "/api/v1/files/download?path=/x", "/api/v1/files/raw?path=/x&purpose=media", "/api/v1/files/zip?token=x", "/api/v1/archives/entry-content?path=/x&inner=a", "/api/v1/files/subtitle?path=/x.srt&purpose=media"} {
+	for _, p := range []string{"/api/v1/files/thumb?path=/x&size=128", "/api/v1/files/download?path=/x", "/api/v1/files/raw?path=/x&purpose=media", "/api/v1/files/zip?token=x", "/api/v1/archives/entry-content?path=/x&inner=a", "/api/v1/files/subtitle?path=/x.srt&purpose=media", "/api/v1/files/hls/0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/playlist.m3u8"} {
 		if r := env.call(http.MethodGet, p, ip, nil, nil, ck); r.rec.Code != 403 || r.code(t) != "SIGNATURE_INVALID" {
 			t.Fatalf("%s without signature: %d %s", p, r.rec.Code, r.rec.Body.String())
 		}

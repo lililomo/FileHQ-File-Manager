@@ -30,7 +30,7 @@ type toolSpec struct {
 }
 
 var toolSpecs = []toolSpec{
-	{"ffmpeg", "FFMPEG_PATH", "thumbnail video, cover audio, srt→vtt", false, []string{"-version"}},
+	{"ffmpeg", "FFMPEG_PATH", "thumbnail video, cover audio, srt→vtt, konversi HLS (opsional)", false, []string{"-version"}},
 	{"ffprobe", "FFPROBE_PATH", "metadata media (durasi, dimensi, codec)", false, []string{"-version"}},
 	{"vipsthumbnail", "VIPS_PATH", "thumbnail gambar cepat (fallback decoder Go)", false, []string{"--vips-version"}},
 	{"pdftoppm", "PDFTOPPM_PATH", "thumbnail PDF", false, []string{"-v"}},
