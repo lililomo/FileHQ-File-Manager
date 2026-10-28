@@ -316,6 +316,31 @@ func lastAdminErr(field string) *Error {
 		map[string]any{"reason": "last_admin", "fields": map[string]any{field: "last_admin"}})
 }
 
+// errLastAdmin is returned from inside a write transaction when the row
+// about to be demoted, disabled or deleted is the last active admin.
+var errLastAdmin = errors.New("last active admin")
+
+// lastAdminInTx re-reads the user and counts the active admins inside the
+// write transaction (BEGIN IMMEDIATE), so two admins demoting each other at
+// the same moment cannot both pass the pre-check (review E m-11 / review F).
+func lastAdminInTx(ctx context.Context, tx db.Repository, id string) error {
+	cur, err := tx.GetUserByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if cur.Role != "admin" || cur.Status != "active" {
+		return nil
+	}
+	n, err := tx.CountActiveAdmins(ctx)
+	if err != nil {
+		return err
+	}
+	if n <= 1 {
+		return errLastAdmin
+	}
+	return nil
+}
+
 func selfErr(field string) *Error {
 	return newErr("VALIDATION_FAILED", http.StatusConflict, "you cannot do this to your own account",
 		map[string]any{"reason": "self", "fields": map[string]any{field: "self"}})
@@ -405,7 +430,19 @@ func (s *Service) UpdateUser(ctx context.Context, a Actor, id string, in UpdateI
 		return &v, nil
 	}
 	now := db.FormatTime(s.now())
+	lastAdminField := ""
+	if _, demoted := changes["role"]; demoted && role == "user" {
+		lastAdminField = "role"
+	}
+	if statusChanged && status == "disabled" {
+		lastAdminField = "status"
+	}
 	err = s.repo.WithTx(ctx, func(tx db.Repository) error {
+		if lastAdminField != "" {
+			if err := lastAdminInTx(ctx, tx, u.ID); err != nil {
+				return err
+			}
+		}
 		if err := tx.UpdateUserProfile(ctx, sqlc.UpdateUserProfileParams{DisplayName: display, Role: role, QuotaBytes: quota, UpdatedAt: now, ID: u.ID}); err != nil {
 			return err
 		}
@@ -431,6 +468,9 @@ func (s *Service) UpdateUser(ctx context.Context, a Actor, id string, in UpdateI
 		s.record(ctx, tx, a, audit.ActionUserUpdate, "user", u.ID, details)
 		return nil
 	})
+	if errors.Is(err, errLastAdmin) {
+		return nil, lastAdminErr(lastAdminField)
+	}
 	if err != nil {
 		return nil, internalErr(err)
 	}
@@ -556,6 +596,9 @@ func (s *Service) DeleteUser(ctx context.Context, a Actor, id string, in DeleteI
 		action = audit.ActionUserArchive
 	}
 	err = s.repo.WithTx(ctx, func(tx db.Repository) error {
+		if err := lastAdminInTx(ctx, tx, u.ID); err != nil {
+			return err
+		}
 		if err := tx.SoftDeleteUser(ctx, sqlc.SoftDeleteUserParams{DeletedAt: db.Ptr(now), UpdatedAt: now, ID: u.ID}); err != nil {
 			return err
 		}
@@ -566,6 +609,9 @@ func (s *Service) DeleteUser(ctx context.Context, a Actor, id string, in DeleteI
 		s.record(ctx, tx, a, action, "user", u.ID, map[string]any{"username": u.Username, "mode": in.Mode, "sessionsRevoked": revoked})
 		return nil
 	})
+	if errors.Is(err, errLastAdmin) {
+		return nil, nil, lastAdminErr("id")
+	}
 	if err != nil {
 		return nil, nil, internalErr(err)
 	}

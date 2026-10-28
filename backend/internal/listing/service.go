@@ -258,7 +258,7 @@ func (s *Service) List(ctx context.Context, j *fsjail.Jail, req ListRequest) (*L
 // filterItems applies hidden/filter/types without copying when nothing
 // filters.
 func filterItems(items []*Item, req ListRequest) []*Item {
-	if req.Hidden && req.Filter == "" && len(req.Types) == 0 && req.Tag == "" {
+	if req.Hidden && req.Filter == "" && len(req.Types) == 0 && req.Tag == "" && !hasStagingName(items) {
 		return items
 	}
 	var needle string
@@ -287,6 +287,18 @@ func filterItems(items []*Item, req ListRequest) []*Item {
 		out = append(out, it)
 	}
 	return out
+}
+
+// hasStagingName reports whether the fast path (hidden on, no filter) must
+// still copy the slice to drop staging entries (review F m-01: they were
+// returned verbatim when "show hidden files" was on).
+func hasStagingName(items []*Item) bool {
+	for _, it := range items {
+		if isStagingName(it.Name) {
+			return true
+		}
+	}
+	return false
 }
 
 func matchesType(it *Item, types []files.Category) bool {

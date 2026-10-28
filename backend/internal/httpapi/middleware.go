@@ -24,6 +24,7 @@ const (
 	ctxRequestID ctxKey = iota
 	ctxPeerTrusted
 	ctxUserID
+	ctxAsUserPaths
 )
 
 var requestIDRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)

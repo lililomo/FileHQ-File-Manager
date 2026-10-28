@@ -60,7 +60,7 @@ func (l *thumbLimiter) release(userID string) {
 const ThumbPath = "/api/v1/files/thumb"
 
 func (s *Server) mountThumbs(api chi.Router) {
-	api.With(s.limitBy("thumb", s.cfg.RateLimits.Thumb, keyScope)).Get("/files/thumb", s.handleFilesThumb)
+	api.With(s.limitBy("thumb", s.cfg.RateLimits.Thumb, s.keyVerifiedScope)).Get("/files/thumb", s.handleFilesThumb)
 }
 
 // verifySigned parses and verifies a signed URL of the given purpose and

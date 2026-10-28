@@ -11,6 +11,7 @@ import (
 
 	"kppbwi.app/filemanager/internal/auth"
 	"kppbwi.app/filemanager/internal/config"
+	"kppbwi.app/filemanager/internal/download"
 )
 
 // Central HTTP rate limiting (SPEC §10.5, Step 20). Every limit is a token
@@ -110,12 +111,16 @@ func keySession(r *http.Request) string {
 	return keyIP(r)
 }
 
-// keyScope keys signed media requests on their scope ("u:<id>" or
-// "r:<share>:<user>") before verification; unsigned requests fall back to
-// the IP so they cannot exhaust somebody else's quota.
-func keyScope(r *http.Request) string {
-	if sc := r.URL.Query().Get("scope"); sc != "" && len(sc) <= 128 {
-		return "sc:" + sc
+// keyVerifiedScope keys signed media requests on their scope ("u:<id>" or
+// "r:<share>:<user>") only when the signature verifies (one HMAC, no DB);
+// anything unsigned, forged or expired is charged to the client IP so that
+// nobody can spend another account's budget by merely naming its scope
+// (review F M-02).
+func (s *Server) keyVerifiedScope(r *http.Request) string {
+	if s.signer != nil {
+		if p, sig, err := download.FromQuery(r.URL.Query()); err == nil && p.Scope != "" && len(p.Scope) <= 128 && s.signer.Verify(p, sig) == nil {
+			return "sc:" + p.Scope
+		}
 	}
 	return keyIP(r)
 }

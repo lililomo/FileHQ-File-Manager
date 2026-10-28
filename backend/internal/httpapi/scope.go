@@ -1,8 +1,14 @@
 package httpapi
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"mime"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -136,9 +142,12 @@ func (s *Server) openAsUserScope(w http.ResponseWriter, r *http.Request, actor s
 		return nil, nil, nil, false
 	}
 	if s.audit != nil {
+		details := map[string]any{"username": target.Username, "path": r.URL.Query().Get("path"), "method": r.Method, "endpoint": r.URL.Path}
+		if paths, _ := r.Context().Value(ctxAsUserPaths).([]string); len(paths) > 0 {
+			details["paths"] = paths
+		}
 		s.audit.Record(r.Context(), audit.Entry{ActorID: actor.ID, ActorUsername: actor.Username, Action: audit.ActionAdminBrowseUser,
-			TargetType: "user", TargetID: target.ID, IP: ClientIP(r), UserAgent: r.UserAgent(),
-			Details: map[string]any{"username": target.Username, "path": r.URL.Query().Get("path"), "method": r.Method, "endpoint": r.URL.Path}})
+			TargetType: "user", TargetID: target.ID, IP: ClientIP(r), UserAgent: r.UserAgent(), Details: details})
 	}
 	if target.ID == actor.ID {
 		j, release, err := s.jails.acquire(s.cfg.StorageRoot, actor)
@@ -165,6 +174,88 @@ func (s *Server) openAsUserScope(w http.ResponseWriter, r *http.Request, actor s
 }
 
 // openShareScope opens the sub-root of a resolved share for actor.
+// asUserBodyKeys are the JSON fields through which handlers receive paths
+// (mkdir/rename/copy/move/delete/zip/compress/sign/...). asUserBodyPaths
+// lists their string values so the admin.browse_user audit row names what a
+// write under ?as_user= touched, not only the endpoint (review E m-10).
+var asUserBodyKeys = map[string]bool{"path": true, "paths": true, "src": true, "dst": true, "dest": true, "to": true, "from": true,
+	"target": true, "destination": true, "sources": true, "items": true, "entries": true, "newName": true, "name": true}
+
+const asUserBodyMaxPaths = 50
+
+// AsUserBodyPeek runs before the handlers (which decode the body before
+// opening the scope): for ?as_user= requests it reads the JSON body once,
+// stores the path-like values for the audit row and hands an equivalent
+// body (read error included) back to the handler.
+func AsUserBodyPeek(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("as_user") != "" {
+			if paths := asUserBodyPaths(r); len(paths) > 0 {
+				r = r.WithContext(context.WithValue(r.Context(), ctxAsUserPaths, paths))
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// asUserBodyPaths peeks a JSON request body of at most JSONBodyLimit bytes
+// (bodies without a known length or above it, e.g. PUT /files/content, are
+// left to the handler) and lists the values of asUserBodyKeys.
+func asUserBodyPaths(r *http.Request) []string {
+	if r.Body == nil || r.Body == http.NoBody || r.Method == http.MethodGet || r.Method == http.MethodHead {
+		return nil
+	}
+	if r.ContentLength < 0 || r.ContentLength > JSONBodyLimit {
+		return nil
+	}
+	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt != "application/json" {
+		return nil
+	}
+	raw, err := io.ReadAll(r.Body)
+	_ = r.Body.Close()
+	var rest io.Reader = bytes.NewReader(raw)
+	if err != nil {
+		rest = io.MultiReader(rest, errReader{err})
+	}
+	r.Body = io.NopCloser(rest)
+	if err != nil {
+		return nil
+	}
+	var doc any
+	if json.Unmarshal(raw, &doc) != nil {
+		return nil
+	}
+	var out []string
+	var walk func(v any, named bool)
+	walk = func(v any, named bool) {
+		if len(out) >= asUserBodyMaxPaths {
+			return
+		}
+		switch x := v.(type) {
+		case string:
+			if named && x != "" {
+				out = append(out, x)
+			}
+		case []any:
+			for _, e := range x {
+				walk(e, named)
+			}
+		case map[string]any:
+			for k, e := range x {
+				walk(e, asUserBodyKeys[k])
+			}
+		}
+	}
+	walk(doc, false)
+	sort.Strings(out)
+	return out
+}
+
+// errReader replays a body read error for the handler (e.g. MaxBytesError).
+type errReader struct{ err error }
+
+func (e errReader) Read([]byte) (int, error) { return 0, e.err }
+
 func (s *Server) openShareScope(w http.ResponseWriter, r *http.Request, actor sqlc.User, acc *share.Access) (*fsjail.Jail, *reqScope, func(), bool) {
 	oj, orelease, err := s.jails.acquire(s.cfg.StorageRoot, acc.Owner)
 	if err != nil {

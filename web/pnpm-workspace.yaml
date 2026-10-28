@@ -1,3 +1,8 @@
 minimumReleaseAgeExclude:
   - '@tanstack/react-virtual@3.14.19'
   - '@tanstack/virtual-core@3.19.4'
+# Review F M-01: monaco-editor 0.57.0 pins dompurify 3.4.15 exactly (critical
+# GHSA-cg2g-xh64-v4q7 and high GHSA-mrv2-3pqr-j5jr, both fixed in 3.4.17 — the
+# version the app itself depends on); no upstream release carries the fix yet.
+overrides:
+  dompurify: 3.4.17

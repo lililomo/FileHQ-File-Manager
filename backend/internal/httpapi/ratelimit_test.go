@@ -133,14 +133,30 @@ func TestRateLimitPerSessionRoutes(t *testing.T) {
 
 func TestRateLimitThumbPerScope(t *testing.T) {
 	env := newAuthEnv(t, "RATE_LIMIT_THUMB=1/1m")
-	target := "/api/v1/files/thumb?scope=u:someone&path=/a.jpg&size=128&purpose=thumb&exp=1&sig=x"
+	ckA, hdrA := env.newUser(t, "ani", readyPassword)
+	ckB, hdrB := env.newUser(t, "budi", readyPassword)
+	sign := func(ck *http.Cookie, hdr map[string]string) string {
+		r := env.call(http.MethodPost, "/api/v1/files/sign", "203.0.113.5:1", map[string]any{"paths": []string{"/a.jpg"}, "purpose": "thumb", "size": 128}, hdr, ck)
+		if r.rec.Code != 200 {
+			t.Fatalf("sign: %d %s", r.rec.Code, r.rec.Body.String())
+		}
+		return r.body["urls"].([]any)[0].(map[string]any)["url"].(string)
+	}
+	target := sign(ckA, hdrA)
 	if r := env.call(http.MethodGet, target, "203.0.113.5:1", nil, nil, nil); r.rec.Code == 429 {
 		t.Fatal("first request limited")
 	}
 	expectRateLimited(t, env.call(http.MethodGet, target, "203.0.113.5:1", nil, nil, nil), "thumb")
-	if r := env.call(http.MethodGet, strings.Replace(target, "u:someone", "u:other", 1), "203.0.113.5:1", nil, nil, nil); r.rec.Code == 429 {
+	// another account's scope has its own bucket, even from the same address
+	if r := env.call(http.MethodGet, sign(ckB, hdrB), "203.0.113.5:1", nil, nil, nil); r.rec.Code == 429 {
 		t.Fatal("scopes are independent")
 	}
+	// an unsigned request is charged to its IP, never to the scope it names
+	forged := "/api/v1/files/thumb?scope=u:someone&path=/a.jpg&size=128&purpose=thumb&exp=1&sig=x"
+	if r := env.call(http.MethodGet, forged, "198.51.100.3:1", nil, nil, nil); r.rec.Code == 429 {
+		t.Fatal("first forged request limited")
+	}
+	expectRateLimited(t, env.call(http.MethodGet, forged, "198.51.100.3:1", nil, nil, nil), "thumb")
 }
 
 func TestRateLimitAPICoarseExemptsSignedRoutes(t *testing.T) {
