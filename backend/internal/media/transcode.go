@@ -757,7 +757,14 @@ func (t *Transcoder) sweepVerdict(ctx context.Context, root *fsjail.SysDir, name
 			return true, "task_gone"
 		case err != nil:
 			return false, "" // database trouble: keep, retry next sweep
-		case row.Type != TaskTranscodeHLS || row.State != string(tasks.Done) || row.UserID == nil:
+		case row.Type != TaskTranscodeHLS || row.UserID == nil:
+			return true, "not_task"
+		case row.State == string(tasks.Queued) || row.State == string(tasks.Running):
+			// the engine still owns it: the runner has marked the entry done
+			// but finish() has not written the row yet (a restart marks stale
+			// running rows interrupted before the first sweep)
+			return false, ""
+		case row.State != string(tasks.Done):
 			return true, "not_done"
 		}
 		if e == nil {

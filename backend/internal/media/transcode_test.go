@@ -635,6 +635,47 @@ func TestHLSSweep(t *testing.T) {
 	}
 }
 
+// TestHLSSweepKeepsFinishingTask: the runner marks the folder done a moment
+// before the engine writes the final row; a sweep in that window (or while
+// the row is still running/queued for any other reason) must keep the
+// folder — only failed/cancelled/interrupted rows and missing tasks lose it
+// (Fable verification of Step 23d).
+func TestHLSSweepKeepsFinishingTask(t *testing.T) {
+	e := newTCEnv(t)
+	e.writeMarker("delay", "5")
+	e.writeMarker("segments", "50")
+	task := e.enqueue("budi", "slow.mkv")
+	dir := e.hlsDir(task.ID)
+	deadline := time.Now().Add(5 * time.Second)
+	for !exists(filepath.Join(dir, "seg_00000.ts")) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !exists(filepath.Join(dir, "seg_00000.ts")) {
+		t.Fatal("first segment never written")
+	}
+	// simulate the window: entry done, row still running
+	e.tc.mu.Lock()
+	e.tc.entries[task.ID].done = true
+	e.tc.mu.Unlock()
+	if n, err := e.tc.Sweep(context.Background()); err != nil || n != 0 || !exists(dir) {
+		t.Fatalf("sweep removed the folder of a running row: n=%d err=%v exists=%v", n, err, exists(dir))
+	}
+	e.tc.mu.Lock()
+	e.tc.entries[task.ID].done = false
+	e.tc.mu.Unlock()
+	if _, err := e.engine.Cancel(context.Background(), e.users["budi"], task.ID); err != nil {
+		t.Fatal(err)
+	}
+	e.wait("budi", task.ID, final, "cancelled")
+	// a cancelled row (not done) does lose its folder when one is left behind
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := e.tc.Sweep(context.Background()); n != 1 || exists(dir) {
+		t.Fatalf("cancelled row folder kept: n=%d", n)
+	}
+}
+
 // TestHLSDiskBudget: above the budget new conversions are refused (at
 // enqueue and when a queued task starts).
 func TestHLSDiskBudget(t *testing.T) {
