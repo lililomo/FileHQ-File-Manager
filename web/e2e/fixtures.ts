@@ -19,18 +19,33 @@ export async function loginAsAdmin(page: Page): Promise<void> {
   await page.goto('/login')
   await page.getByLabel('Username').fill(ADMIN_USERNAME)
   await page.getByLabel('Password', { exact: true }).fill(ADMIN_NEW_PASSWORD)
-  await page.getByRole('button', { name: 'Masuk' }).click()
+  const submit = page.getByRole('button', { name: 'Masuk' })
+  await submit.click()
   // only the wrong-password alert switches to the initial password (another
   // alert, e.g. a toast, must not win the race — R-F/23a/23b flake)
   const alert = page.getByRole('alert').filter({ hasText: 'Username atau password salah' })
-  const outcome = await Promise.race([
-    // 'commit': the SPA reaches /files without a guaranteed load event; the
-    // URL is asserted again below
-    page
-      .waitForURL(/\/(files|change-password)/, { waitUntil: 'commit' })
-      .then(() => 'nav' as const),
-    alert.waitFor({ state: 'visible' }).then(() => 'alert' as const),
-  ])
+  // the full suite logs in more than RATE_LIMIT_LOGIN_IP (20/min) allows at
+  // times: a 429 shows this alert, so wait out Retry-After and submit again
+  // (Step 23c: the real cause of the responsive.spec flake)
+  const limited = page.getByRole('alert').filter({ hasText: 'Terlalu banyak permintaan' })
+  let outcome: 'nav' | 'alert' | 'limited' = 'limited'
+  for (let attempt = 0; attempt < 3 && outcome === 'limited'; attempt++) {
+    outcome = await Promise.race([
+      // 'commit': the URL is asserted again below
+      page
+        .waitForURL(/\/(files|change-password)/, { waitUntil: 'commit' })
+        .then(() => 'nav' as const),
+      alert.waitFor({ state: 'visible' }).then(() => 'alert' as const),
+      limited.waitFor({ state: 'visible' }).then(() => 'limited' as const),
+    ])
+    if (outcome === 'limited') {
+      const seconds = Number(/(\d+) detik/.exec((await limited.textContent()) ?? '')?.[1] ?? 30)
+      await page.waitForTimeout(Math.min(seconds + 1, 65) * 1000)
+      await expect(submit).toBeEnabled({ timeout: 10_000 })
+      await submit.click()
+      await limited.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => undefined)
+    }
+  }
   if (outcome === 'alert') {
     await page.getByLabel('Password', { exact: true }).fill(ADMIN_INITIAL_PASSWORD)
     await page.getByRole('button', { name: 'Masuk' }).click()
