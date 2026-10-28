@@ -433,8 +433,20 @@ func Load(o Options) (*Config, error) {
 	}
 	c.ContentBaseURL = strings.TrimRight(l.str("CONTENT_BASE_URL"), "/")
 	if c.ContentBaseURL != "" {
-		if u, err := url.Parse(c.ContentBaseURL); err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		u, err := url.Parse(c.ContentBaseURL)
+		switch {
+		case err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https"):
 			l.errf("CONTENT_BASE_URL", "must be an absolute http(s) URL or empty")
+		case u.Path != "" && u.Path != "/", u.RawQuery != "", u.Fragment != "":
+			l.errf("CONTENT_BASE_URL", "must be an origin only (scheme://host[:port]), got %q", c.ContentBaseURL)
+		case prod && u.Scheme != "https":
+			l.errf("CONTENT_BASE_URL", "must use https in production")
+		default:
+			// the content host is told apart from the app host by Host: the
+			// same host would turn the whole application into a 404
+			if a, aerr := url.Parse(c.AppBaseURL); aerr == nil && strings.EqualFold(a.Host, u.Host) {
+				l.errf("CONTENT_BASE_URL", "must differ from the APP_BASE_URL host (%s)", a.Host)
+			}
 		}
 	}
 	c.ThumbWorkers = l.intv("THUMB_WORKERS", 1, 16)

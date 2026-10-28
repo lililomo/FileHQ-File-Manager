@@ -208,7 +208,7 @@ func (s *Server) handleArchiveEntryContent(w http.ResponseWriter, r *http.Reques
 	name := archive.EntryBaseName(es.Entry.Name)
 	d := download.Policy(mt, name, download.PurposeMedia)
 	h := w.Header()
-	download.SetContentHeaders(h, s.corp())
+	download.SetContentHeaders(h, s.corp(r))
 	h.Set("Content-Type", d.ContentType)
 	h.Set("Content-Disposition", download.ContentDisposition(d.Inline, name))
 	h.Set("Cache-Control", entryCacheControl)

@@ -6,6 +6,16 @@ info:
     REST API aplikasi File Manager multi-user `file.kppbwi.app` (SPEC §6).
     Kerangka ini dibuat di Step 1 dan diperluas setiap step. Base path API: `/api/v1`.
     Semua error memakai envelope `{"error":{"code","message","details"}}`.
+
+    **Origin konten terpisah (Step 23e, SPEC ADR-06, §8.9, §10.3).** Bila `CONTENT_BASE_URL` diisi, URL bertanda
+    tangan (`/files/sign`, `/files/zip`, `/files/hls`, `/archives/sign`, `/public/shares/{token}/sign|zip`) menjadi
+    absolut ke origin itu. Pada host konten hanya route berikut dilayani (metode `GET`/`HEAD`, plus `OPTIONS` preflight
+    CORS → `204` dengan `Access-Control-Allow-Origin: <APP_BASE_URL>`, `Allow-Methods: GET, HEAD`, `Allow-Headers: Range`,
+    `Max-Age: 600`; preflight bukan route chi, karena itu tidak terdaftar per path di dokumen ini): `/files/raw`,
+    `/files/download`, `/files/zip`, `/files/thumb`, `/archives/entry-content`, `/files/hls/{id}/*`,
+    `/public/shares/{token}/raw|thumb|download|zip`; cookie diabaikan (tanpa sesi, tanpa cookie unlock) dan selain itu
+    `404 NOT_FOUND`. Pada host aplikasi route-route yang sama dijawab `302` ke origin konten (path + query sama).
+    Bila kosong (bawaan) tidak ada yang berubah.
 servers:
   - url: https://file.kppbwi.app
     description: Produksi (di belakang Nginx aaPanel)
@@ -1473,6 +1483,11 @@ paths:
         `variant=thumb` serves the 512 px thumbnail (`202` + `Retry-After` while rendering), `variant=preview`
         the 2048 px WebP of a raster/SVG image rendered on demand (falls back to the 512 px thumbnail for
         video/PDF/audio). Inline media is not counted against the download concurrency limit.
+        Step 23e: on the separate content origin (`CONTENT_BASE_URL` set) a `.html/.htm/.xhtml` file with
+        `purpose=inline` is served inline as `text/html` with
+        `Content-Security-Policy: sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; frame-ancestors <app origin>`
+        for the viewer's sandboxed iframe; on the app origin (or without a content origin) HTML stays an
+        `application/octet-stream` attachment. See the API description for host routing, CORS and the `302`.
       tags: [files]
       security: []
       parameters:
@@ -3321,6 +3336,44 @@ paths:
         "204": { description: Unlocked (Set-Cookie) }
         "400": { $ref: "#/components/responses/Error" }
         "401": { description: SHARE_PASSWORD_WRONG, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /api/v1/public/shares/{token}/sign:
+    post:
+      tags: [public]
+      summary: Signed content URL(s) for a guest (Step 23e; needed on the separate content origin, where no unlock cookie exists)
+      description: |
+        Guarded like every guest call (token/slug + unlock cookie + traffic limit). Returns URLs signed with the
+        share scope `s:<id>` for `raw` (`media|inline`), `thumb` (`size`) and `download`; `zip` URLs come from
+        `POST …/zip`. Absolute (`CONTENT_BASE_URL`) when a content origin is configured, relative otherwise.
+        `download` on a preview-only link → `403 FORBIDDEN reason:preview_only`. The content host verifies the
+        signature (purpose bound to the route, TTL `SIGNED_URL_TTL` for download, `MEDIA_URL_TTL` otherwise).
+      operationId: publicShareSign
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                path: { type: string, description: "share-relative path (file links: `/`)" }
+                purpose: { type: string, enum: [media, inline, download, thumb] }
+                size: { type: integer, enum: [128, 256, 512], description: "thumb only (default 256)" }
+                items:
+                  type: array
+                  maxItems: 500
+                  items: { type: object, required: [path], properties: { path: { type: string }, purpose: { type: string }, size: { type: integer } } }
+      responses:
+        "200":
+          description: "`{url, expiresAt, purpose}` or, for `items`, `{urls:[{path,url,purpose,expiresAt}], expiresAt, invalid:[…]}`"
+          content: { application/json: { schema: { type: object } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "410": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/RateLimited" }

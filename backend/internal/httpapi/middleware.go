@@ -153,6 +153,29 @@ const FinalCSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; styl
 // InitialCSP is kept as an alias for callers from earlier steps.
 const InitialCSP = FinalCSP
 
+// BuildCSP is FinalCSP with the content origin (CONTENT_BASE_URL, Step 23e)
+// added to img-src, media-src and connect-src, and frame-src opened for the
+// sandboxed HTML preview iframe. An empty origin returns FinalCSP unchanged
+// (frame-src 'none'). Built once at startup by New.
+func BuildCSP(contentOrigin string) string {
+	o := strings.TrimRight(strings.TrimSpace(contentOrigin), "/")
+	if o == "" {
+		return FinalCSP
+	}
+	var out []string
+	for d := range strings.SplitSeq(FinalCSP, "; ") {
+		name, _, _ := strings.Cut(d, " ")
+		switch name {
+		case "img-src", "media-src", "connect-src":
+			d += " " + o
+		case "frame-src":
+			d = "frame-src " + o
+		}
+		out = append(out, d)
+	}
+	return strings.Join(out, "; ")
+}
+
 // APICSP is the policy of JSON responses (SPEC §10.3): nothing may load.
 const APICSP = "default-src 'none'; frame-ancestors 'none'"
 
@@ -169,7 +192,14 @@ func isAPIPath(p string) bool {
 // added only when the request is known to be HTTPS (TLS or trusted
 // X-Forwarded-Proto). API responses are never cacheable (review A, M-01);
 // webassets overrides Cache-Control for hashed assets and index.html.
-func SecurityHeaders(next http.Handler) http.Handler {
+func SecurityHeaders(next http.Handler) http.Handler { return SecurityHeadersWith(FinalCSP)(next) }
+
+// SecurityHeadersWith is SecurityHeaders with the HTML policy given (BuildCSP).
+func SecurityHeadersWith(htmlCSP string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler { return securityHeaders(htmlCSP, next) }
+}
+
+func securityHeaders(htmlCSP string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
@@ -183,13 +213,13 @@ func SecurityHeaders(next http.Handler) http.Handler {
 			h.Set("Cache-Control", "no-store")
 			h.Set("Content-Security-Policy", APICSP)
 		} else {
-			h.Set("Content-Security-Policy", FinalCSP)
+			h.Set("Content-Security-Policy", htmlCSP)
 		}
 		https := r.TLS != nil || (PeerTrustedFrom(r.Context()) && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"))
 		if https {
 			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 			if !isAPIPath(r.URL.Path) {
-				h.Set("Content-Security-Policy", FinalCSP+"; upgrade-insecure-requests")
+				h.Set("Content-Security-Policy", htmlCSP+"; upgrade-insecure-requests")
 			}
 		}
 		next.ServeHTTP(w, r)

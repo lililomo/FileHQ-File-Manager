@@ -366,3 +366,37 @@ func TestCheckDepsTable(t *testing.T) {
 		t.Errorf("table missing statuses:\n%s", out)
 	}
 }
+
+// Step 23e: CONTENT_BASE_URL is an origin distinct from the app host.
+func TestLoadContentBaseURL(t *testing.T) {
+	env, _, _ := baseEnv(t)
+	cfg, err := load(t, env, "CONTENT_BASE_URL=https://usercontent.example.test/")
+	if err != nil || cfg.ContentBaseURL != "https://usercontent.example.test" {
+		t.Fatalf("valid: %v %q", err, cfg.ContentBaseURL)
+	}
+	for _, c := range []struct{ value, want string }{
+		{"https://file.example.test", "must differ"},
+		{"HTTPS://FILE.EXAMPLE.TEST", "must differ"},
+		{"https://usercontent.example.test/content", "origin only"},
+		{"https://usercontent.example.test/?x=1", "origin only"},
+		{"ftp://usercontent.example.test", "absolute http(s)"},
+		{"usercontent.example.test", "absolute http(s)"},
+	} {
+		_, err := load(t, env, "CONTENT_BASE_URL="+c.value)
+		if err == nil || !hasProblem(problems(t, err), "CONTENT_BASE_URL") {
+			t.Errorf("%q: err = %v", c.value, err)
+		}
+	}
+	prod := append([]string{}, env...)
+	for i, kv := range prod {
+		if strings.HasPrefix(kv, "APP_ENV=") {
+			prod[i] = "APP_ENV=production"
+		}
+		if strings.HasPrefix(kv, "APP_BASE_URL=") {
+			prod[i] = "APP_BASE_URL=https://file.example.test"
+		}
+	}
+	if _, err := load(t, prod, "CONTENT_BASE_URL=http://usercontent.example.test"); err == nil || !hasProblem(problems(t, err), "CONTENT_BASE_URL") {
+		t.Errorf("production http content origin accepted: %v", err)
+	}
+}

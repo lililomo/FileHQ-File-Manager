@@ -1,6 +1,13 @@
 /** Listing API client (SPEC §6.3, §8.3). Types mirror `listing.Item`/`ListResult`. */
 import { api, type Query } from '@/lib/api'
-import { isPublicScope, publicApiPath, publicUrl } from '@/lib/public-scope'
+import {
+  getPublicScope,
+  isPublicScope,
+  publicApiPath,
+  publicContentOrigin,
+  publicUrl,
+} from '@/lib/public-scope'
+import { signPublicUrls } from '@/features/public/publicApi'
 
 /** `media_metadata` cache (SPEC §4.2); null until the server probed the file. */
 export interface MediaMeta {
@@ -204,6 +211,12 @@ export interface SignBatchResponse {
 }
 
 export function signThumbs(paths: string[], size: ThumbSize): Promise<SignBatchResponse> {
+  if (isPublicScope() && publicContentOrigin())
+    // Step 23e: the content origin has no unlock cookie → signed guest URLs
+    return signPublicUrls(
+      getPublicScope()?.token ?? '',
+      paths.map((path) => ({ path, purpose: 'thumb' as const, size })),
+    )
   if (isPublicScope())
     return Promise.resolve({
       urls: paths.map((path) => ({ path, url: publicUrl('thumb', { path, size }) })),

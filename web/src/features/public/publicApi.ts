@@ -23,6 +23,8 @@ export interface PublicMeta {
   downloadLimitReached: boolean
   maxDownloads?: number | null
   downloadCount: number
+  /** Step 23e: content origin; when set, content URLs come from `POST …/sign` */
+  contentBaseUrl?: string
 }
 
 const base = (token: string) => `public/shares/${encodeURIComponent(token)}`
@@ -55,6 +57,30 @@ export function publicZip(token: string, paths: string[]): Promise<{ url: string
     body: { paths },
     skipAuthRedirect: true,
   })
+}
+
+export type PublicSignPurpose = 'media' | 'inline' | 'download' | 'thumb'
+
+/** `POST …/sign` (Step 23e): URLs signed with the share scope for the content
+ *  origin, where the unlock cookie does not exist. */
+export function signPublicUrl(
+  token: string,
+  path: string,
+  purpose: PublicSignPurpose,
+  size?: number,
+): Promise<{ url: string; expiresAt: string; purpose: PublicSignPurpose }> {
+  return api(`${base(token)}/sign`, {
+    method: 'POST',
+    body: size ? { path, purpose, size } : { path, purpose },
+    skipAuthRedirect: true,
+  })
+}
+
+export function signPublicUrls(
+  token: string,
+  items: { path: string; purpose: PublicSignPurpose; size?: number }[],
+): Promise<{ urls: { path: string; url: string }[]; expiresAt: string; invalid: string[] }> {
+  return api(`${base(token)}/sign`, { method: 'POST', body: { items }, skipAuthRedirect: true })
 }
 
 export const publicMetaKey = (token: string) => ['public', token, 'meta'] as const

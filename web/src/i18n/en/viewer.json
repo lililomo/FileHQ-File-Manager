@@ -199,7 +199,12 @@
     "lines_other": "{{count}} lines",
     "wrap": "Wrap lines",
     "partial": "Large file: only the first {{kb}} KB are shown.",
-    "htmlNote": "Showing the HTML source. Live preview is disabled for security (arrives in Step 23e)."
+    "htmlNote": "Showing the HTML source. Live preview is only available when a separate content origin is configured (SPEC ADR-06).",
+    "htmlTabs": "HTML view",
+    "htmlPreviewTab": "Preview",
+    "htmlSourceTab": "Show source",
+    "htmlFrameTitle": "Preview of {{name}} (sandbox)",
+    "htmlSandboxNote": "The preview runs in a sandbox: scripts and network access are disabled."
   },
   "markdown": {
     "rendered": "Rendered",

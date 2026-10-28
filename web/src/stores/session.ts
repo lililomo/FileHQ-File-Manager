@@ -48,6 +48,9 @@ export interface ClientConfig {
   shareDefaultExpiryDays?: number
   /** Step 23d: admin setting transcode.enabled with ffmpeg/ffprobe present */
   transcodeEnabled?: boolean
+  /** Step 23e: origin that serves signed content ("" = same origin); when set
+   *  the HTML viewer offers the sandboxed preview */
+  contentBaseUrl?: string
   features: Record<string, boolean>
 }
 

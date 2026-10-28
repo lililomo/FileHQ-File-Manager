@@ -13,8 +13,8 @@ import { opensInViewer } from '@/features/viewer/viewers'
 import { isApiError } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { formatBytes, formatDate } from '@/lib/format'
-import { publicUrl, setPublicScope } from '@/lib/public-scope'
-import { startDownload } from '@/lib/media-url'
+import { setPublicScope } from '@/lib/public-scope'
+import { signDownloadUrl, startDownload } from '@/lib/media-url'
 import { PasswordForm } from './PasswordForm'
 import { PublicBrowser } from './PublicBrowser'
 import { getPublicMeta, publicMetaKey, type PublicMeta } from './publicApi'
@@ -35,16 +35,18 @@ export function PublicPage({ token, path, viewPath }: PublicPageProps) {
   const qc = useQueryClient()
   const navigate = useNavigate()
   // synchronous: children must see the scope on their first render
-  useLayoutEffect(() => {
-    setPublicScope({ token })
-    return () => setPublicScope(null)
-  }, [token])
   const meta = useQuery({
     queryKey: publicMetaKey(token),
     queryFn: ({ signal }) => getPublicMeta(token, signal),
     retry: false,
     staleTime: 30_000,
   })
+  // Step 23e: the meta says whether content lives on a separate origin
+  const contentBaseUrl = meta.data?.contentBaseUrl ?? ''
+  useLayoutEffect(() => {
+    setPublicScope(contentBaseUrl ? { token, contentBaseUrl } : { token })
+    return () => setPublicScope(null)
+  }, [token, contentBaseUrl])
   const splat = (p: string) => (p === '/' ? '' : p.replace(/^\//, ''))
   const go = useCallback(
     (folder: string, view?: string) =>
@@ -169,7 +171,10 @@ function PublicFileCard({ meta, onPreview }: { meta: PublicMeta; onPreview: () =
           </Button>
         ) : null}
         {canDownload ? (
-          <Button onClick={() => startDownload(publicUrl('download', { path: '/' }), meta.name)} data-testid="public-download">
+          <Button
+            onClick={() => void signDownloadUrl('/').then((u) => startDownload(u, meta.name))}
+            data-testid="public-download"
+          >
             <Download aria-hidden="true" />
             {t('public.download')}
           </Button>

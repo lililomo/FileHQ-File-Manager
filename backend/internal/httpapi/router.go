@@ -110,6 +110,7 @@ type Server struct {
 	shares      *share.Service
 	admin       *admin.Service
 	transcode   *media.Transcoder
+	content     *contentOrigin // separate user-content origin (Step 23e); nil = same origin
 }
 
 // New builds the router. The returned handler is safe for http.Server.
@@ -163,6 +164,11 @@ func New(o Options) http.Handler {
 	if s.signer == nil && len(o.Cfg.AppSecret) > 0 {
 		s.signer = download.NewSigner(o.Cfg.AppSecret, nil)
 	}
+	s.content = newContentOrigin(o.Cfg)
+	if s.signer != nil && s.content != nil {
+		// every signed URL points at the content origin from now on
+		s.signer = s.signer.WithBase(s.content.base)
+	}
 	if s.listing == nil {
 		s.listing = listing.New(listing.Options{Secret: o.Cfg.AppSecret, PageSize: o.Cfg.ListingPageSize})
 	}
@@ -177,7 +183,10 @@ func New(o Options) http.Handler {
 	r.Use(RealIP(o.Cfg))
 	r.Use(AccessLog(o.Logger))
 	r.Use(Recoverer(o.Logger))
-	r.Use(SecurityHeaders)
+	r.Use(SecurityHeadersWith(BuildCSP(o.Cfg.ContentBaseURL)))
+	if s.content != nil {
+		r.Use(s.content.middleware)
+	}
 	r.Use(Metrics(o.Metrics))
 	r.Use(Compress)
 

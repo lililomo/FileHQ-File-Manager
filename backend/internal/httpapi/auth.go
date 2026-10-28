@@ -316,6 +316,9 @@ func (s *Server) meConfig() map[string]any {
 		"adminCanBrowseUsers":    s.cfg.AdminCanBrowseUsers,
 		// Step 23d: the player offers "play with conversion" only when true
 		"transcodeEnabled": s.transcode != nil && s.transcode.Enabled(),
+		// Step 23e: "" = same origin; otherwise media comes from this origin and
+		// the HTML viewer offers the sandboxed preview
+		"contentBaseUrl": s.contentBaseURL(),
 		"features": map[string]bool{
 			"ffmpeg":   feature("ffmpeg", s.cfg.FFmpegPath),
 			"ffprobe":  feature("ffprobe", s.cfg.FFprobePath),

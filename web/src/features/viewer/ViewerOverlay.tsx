@@ -30,6 +30,9 @@ const VideoPlayer = lazy(() =>
   import('./video/VideoPlayer').then((m) => ({ default: m.VideoPlayer })),
 )
 const CodeViewer = lazy(() => import('./text/CodeViewer').then((m) => ({ default: m.CodeViewer })))
+const HtmlPreview = lazy(() =>
+  import('./text/HtmlPreview').then((m) => ({ default: m.HtmlPreview })),
+)
 const MarkdownViewer = lazy(() =>
   import('./text/MarkdownViewer').then((m) => ({ default: m.MarkdownViewer })),
 )
@@ -227,7 +230,7 @@ export function ViewerOverlay({
         ) : kind === 'text' ? (
           <CodeViewer item={item} />
         ) : kind === 'html' ? (
-          <CodeViewer item={item} note={t('viewer:text.htmlNote')} />
+          <HtmlPreview item={item} />
         ) : kind === 'markdown' ? (
           <MarkdownViewer item={item} onOpenPath={onOpenPath} />
         ) : kind === 'table' ? (

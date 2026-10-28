@@ -458,6 +458,7 @@ func TestReviewAMustChangePasswordGate(t *testing.T) {
 		"GET /api/v1/public/shares/{token}/raw":   true, "HEAD /api/v1/public/shares/{token}/raw": true,
 		"GET /api/v1/public/shares/{token}/download": true, "HEAD /api/v1/public/shares/{token}/download": true,
 		"GET /api/v1/public/shares/{token}/zip": true, "HEAD /api/v1/public/shares/{token}/zip": true, "POST /api/v1/public/shares/{token}/zip": true,
+		"POST /api/v1/public/shares/{token}/sign":    true, // Step 23e
 		"GET /api/v1/public/shares/{token}/subtitle": true, "HEAD /api/v1/public/shares/{token}/subtitle": true,
 		"GET /api/v1/shared-with-me": true, "GET /api/v1/shared-with-me/{id}": true, "DELETE /api/v1/shared-with-me/{id}": true,
 		"GET /api/v1/shares/user-suggest": true, "GET /api/v1/users/suggest": true,

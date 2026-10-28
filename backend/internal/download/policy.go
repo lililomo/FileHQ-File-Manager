@@ -18,6 +18,7 @@ type Disposition struct {
 	Inline      bool   // Content-Disposition: inline (only raster image, audio, video)
 	ContentType string // what the response carries; OctetStream for dangerous types
 	Dangerous   bool   // the detected or declared type is active content
+	HTMLPreview bool   // served inline as HTML for the sandboxed preview (content origin only, Step 23e)
 }
 
 // dangerousMIME lists sniffed types that must never be served with their own
@@ -54,6 +55,45 @@ var inlineRaster = map[string]bool{
 	"image/jpeg": true, "image/png": true, "image/gif": true, "image/webp": true,
 	"image/avif": true, "image/bmp": true, "image/x-icon": true, "image/vnd.microsoft.icon": true,
 	"image/heic": true, "image/heif": true, "image/tiff": true, "image/apng": true,
+}
+
+// HTMLPreviewCSP is the policy of an HTML document served inline for the
+// sandboxed preview iframe (Step 23e, SPEC §8.14 "Preview HTML", §10.3):
+// no script, no network, no plugins; only inline styles and data: images.
+// httpapi appends frame-ancestors <app origin> so only the app may embed it.
+const HTMLPreviewCSP = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"
+
+// HTMLPreviewContentType is the Content-Type of that response.
+const HTMLPreviewContentType = "text/html; charset=utf-8"
+
+// htmlExt are the extensions the HTML preview accepts.
+var htmlExt = map[string]bool{"html": true, "htm": true, "xhtml": true, "xht": true}
+
+// HTMLPreviewable reports whether a file may be served inline as HTML for the
+// sandboxed preview: the name says HTML and the bytes are HTML/XHTML or plain
+// text (an .html file that starts with text instead of a tag). The sandbox and
+// the cookie-less content origin are the controls; the type only decides how
+// the browser renders the document. Callers apply this only on the content
+// host for purpose=inline — on the app origin HTML stays an attachment.
+func HTMLPreviewable(detectedMIME, name string) bool {
+	mt := strings.ToLower(strings.TrimSpace(detectedMIME))
+	if i := strings.IndexByte(mt, ';'); i >= 0 {
+		mt = strings.TrimSpace(mt[:i])
+	}
+	ext := strings.ToLower(strings.TrimPrefix(path.Ext(name), "."))
+	if !htmlExt[ext] {
+		return false
+	}
+	switch mt {
+	case "text/html", "application/xhtml+xml", "text/plain":
+		return true
+	}
+	return false
+}
+
+// HTMLPreviewDisposition is the verdict for a sandboxed HTML preview.
+func HTMLPreviewDisposition() Disposition {
+	return Disposition{Inline: true, ContentType: HTMLPreviewContentType, Dangerous: true, HTMLPreview: true}
 }
 
 // Policy decides how a file is served: detectedMIME comes from magic bytes

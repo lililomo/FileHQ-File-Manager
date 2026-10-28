@@ -26,6 +26,7 @@ Penanda:
 10. [Troubleshooting](#10-troubleshooting)
 11. [Membatalkan instalasi](#11-membatalkan-instalasi)
 12. [Hasil smoke test](#12-hasil-smoke-test)
+13. [Origin konten terpisah (opsional, Step 23e)](#13-origin-konten-terpisah-opsional-step-23e)
 
 ## 1. Ringkasan perubahan di server
 
@@ -406,3 +407,159 @@ DNS publik, "langsung ke origin" = `--resolve file.kppbwi.app:443:<SERVER_IP>`.
 | `deploy/test/nginx_snippet_test.sh` (Nginx aaPanel 1.30.6, prefix scratch, template server block Reverse Proxy) | `nginx -t` OK; 21 path sensitif → 404 dari Nginx; ACME dari document root; `/s/<token>` tidak di access log; 60 MiB lolos, 70 MiB → 413; Range 206; `proxy_cache` global tidak terpakai |
 | `systemd-analyze verify deploy/filemanager.service` | tanpa pesan (exit 0) |
 | `systemd-analyze security --offline=yes deploy/filemanager.service` | **1.4 OK** (unit belum dipasang; nilai final dicatat setelah install) |
+
+## 13. Origin konten terpisah (opsional, Step 23e)
+
+**Keputusan pemilik.** Bagian ini mengaktifkan alternatif (a) SPEC ADR-06: file user (gambar, video, PDF, unduhan,
+zip, thumbnail, playlist HLS, konten share publik) disajikan dari host **kedua** `usercontent.file.kppbwi.app` yang
+**tidak punya cookie sama sekali**, dan viewer HTML mendapat pratinjau langsung di iframe `sandbox`. **Tidak ada yang
+berubah di produksi sampai `CONTENT_BASE_URL` diisi di `.env`** — kode 23e sudah ada di binary, tetapi dengan variabel
+kosong perilaku dan header identik dengan v1.0. Boleh tidak diaktifkan sama sekali; boleh dibatalkan kapan saja (13.6).
+
+Prasyarat: Step 22 sudah jalan (site `file.kppbwi.app` aktif), akses DNS Cloudflare, login aaPanel, `sudo`.
+Binary yang berjalan harus memuat Step 23e (`git log --oneline -1` ≥ commit 23e; bila service masih binary lama,
+`sudo bash deploy/update.sh --yes` dulu — langkah 13.4 melakukannya juga).
+
+### 13.1 DNS (Cloudflare)
+
+1. Cloudflare → zona `kppbwi.app` → **DNS** → **Records** → **Add record** (nama menu **perlu verifikasi**).
+2. Type **A**, Name `usercontent.file` (hasil `usercontent.file.kppbwi.app`), IPv4 address `<SERVER_IP>` (IP origin
+   yang sama dengan `file.kppbwi.app`), **Proxy status: Proxied** (awan oranye) — sama seperti record `file`. Bila
+   server punya AAAA untuk `file`, tambahkan AAAA yang sama; bila tidak, cukup A.
+3. **SSL/TLS** → mode **Full (strict)** sudah berlaku untuk seluruh zona (dipilih di Step 22 — cek sekali lagi); tidak
+   ada pengaturan per-host yang perlu diubah. Jangan aktifkan "Always Use HTTPS" khusus untuk host ini (Force HTTPS
+   aaPanel yang mengalihkan).
+4. Cek dari server (DNS publik; jawaban = IP Cloudflare, bukan IP origin, seperti `file.kppbwi.app`):
+
+   ```bash
+   dig +short usercontent.file.kppbwi.app A
+   ```
+
+### 13.2 Site Reverse Proxy kedua di aaPanel
+
+Jalur otomatis (API internal panel yang sama dengan Step 22; **terverifikasi** untuk site utama 28 Okt 2026, opsi
+`--domain/--snippet` baru di 23e — **perlu verifikasi** pada jalannya pertama):
+
+```bash
+cd /www/wwwroot/file.kppbwi.app
+P=/www/server/panel/pyenv/bin/python3
+sudo $P deploy/aapanel/site.py --domain usercontent.file.kppbwi.app --snippet deploy/nginx-usercontent.conf --remark "FileManager content" status
+sudo $P deploy/aapanel/site.py --domain usercontent.file.kppbwi.app --snippet deploy/nginx-usercontent.conf --remark "FileManager content" create
+sudo $P deploy/aapanel/site.py --domain usercontent.file.kppbwi.app --snippet deploy/nginx-usercontent.conf --remark "FileManager content" configure
+```
+
+Jalur UI (nama menu/tombol **perlu verifikasi**, sama dengan 4.A):
+
+1. aaPanel → **Website** → tab **Reverse Proxy** → **Add**: Domain `usercontent.file.kppbwi.app`; Target URL
+   `http://127.0.0.1:8080` (**binary yang sama**, bukan port lain); Send domain `$http_host`; Remark
+   `FileManager content`. Simpan. Jangan aktifkan cache.
+2. Site `usercontent.file.kppbwi.app` → **Proxy** → baris `/` → **Edit**: timeout **10 / 3600 / 3600**; **Custom
+   configuration** ← **PART A** dari `deploy/nginx-usercontent.conf`; Cache **off**; WebSocket boleh tetap aktif.
+3. Site → **Config file** → **server block** ← **PART B** dari `deploy/nginx-usercontent.conf` (allowlist route konten
+   + metode `GET|HEAD|OPTIONS` + real-IP Cloudflare). Simpan → aaPanel `nginx -t` + reload.
+4. Site directory baru `/www/wwwroot/usercontent.file.kppbwi.app` dibuat aaPanel (berisi `index.html`/`404.html`
+   bawaan — tidak pernah disajikan karena semua path di-proxy atau 404; boleh dihapus). **Jangan** menghapus proyek
+   dengan opsi hapus direktori.
+5. Cek (hanya membaca):
+
+   ```bash
+   nginx -T 2>/dev/null | sed -n '/server_name usercontent.file.kppbwi.app/,/^}/p' | grep -nE 'proxy_pass|proxy_cache|access_log|request_method|public/shares|real_ip_header'
+   ```
+
+   Harus terlihat `proxy_pass http://127.0.0.1:8080`, `proxy_cache off`, `access_log off`, baris `if ($uri !~ …public/shares…)`,
+   `if ($request_method !~ …)`, `real_ip_header CF-Connecting-IP`.
+
+### 13.3 SSL Let's Encrypt + Force HTTPS
+
+```bash
+sudo $P deploy/aapanel/site.py --domain usercontent.file.kppbwi.app ssl           # HTTP-01 lewat Cloudflare, seperti site utama
+sudo $P deploy/aapanel/site.py --domain usercontent.file.kppbwi.app force-https
+```
+
+atau UI: site → **SSL** → **Let's Encrypt** → centang domain → verifikasi file → **Apply** → **Force HTTPS**
+(perlu verifikasi nama tombol). ACME tetap bekerja walau PART B mem-404-kan hampir semuanya: `/.well-known/`
+dikecualikan dari aturan `if` dan dilayani dari document root oleh include well-known aaPanel (diuji
+`deploy/test/nginx_snippet_test.sh`). Sebelum variabel diisi, host ini menjawab semua path (termasuk `/`) dengan
+`404` — itu normal.
+
+### 13.4 Aktifkan di aplikasi
+
+1. Edit `.env` sebagai root (file 0600 milik `filemanager`; jangan pernah menampilkan isinya di terminal/log):
+
+   ```bash
+   sudo sed -i 's|^#\? *CONTENT_BASE_URL=.*$|CONTENT_BASE_URL=https://usercontent.file.kppbwi.app|' /www/wwwroot/file.kppbwi.app/.env
+   sudo grep -c '^CONTENT_BASE_URL=https://usercontent.file.kppbwi.app$' /www/wwwroot/file.kppbwi.app/.env   # 1
+   ```
+
+   (bila barisnya belum ada sama sekali, tambahkan `CONTENT_BASE_URL=https://usercontent.file.kppbwi.app` tanpa
+   komentar di belakang nilai). Nilai harus origin saja, `https`, host berbeda dari `APP_BASE_URL` — selain itu
+   service menolak start (`configuration error(s)`), dan `update.sh` akan rollback otomatis.
+2. Restart lewat alur update (backup DB + rollback otomatis; tanpa migrasi):
+
+   ```bash
+   sudo bash deploy/update.sh --yes
+   ```
+
+### 13.5 Verifikasi
+
+Dari laptop (lewat Cloudflare; `H()` seperti di bagian 6):
+
+```bash
+H() { curl -s -D - -o /dev/null "$@"; }
+# host konten: bukan aplikasi — 404 JSON untuk SPA/API/share page, tanpa cookie, CORS hanya untuk origin aplikasi
+for p in / /login /s/x /api/v1/auth/me /healthz /api/v1/files/list; do
+  printf '%-22s %s\n' "$p" "$(curl -s -o /dev/null -w '%{http_code}' https://usercontent.file.kppbwi.app$p)"; done   # semua 404
+H https://usercontent.file.kppbwi.app/api/v1/auth/me | grep -iE '^HTTP|set-cookie|content-type'   # 404, application/json, TANPA set-cookie
+# route konten tanpa tanda tangan: 403 dari aplikasi (bukan 404 Nginx) → proxy jalan
+H 'https://usercontent.file.kppbwi.app/api/v1/files/raw?path=%2Fa&purpose=media' | grep -iE '^HTTP|access-control|cross-origin-resource'
+#   HTTP/2 403 · access-control-allow-origin: https://file.kppbwi.app · cross-origin-resource-policy: cross-origin
+curl -s -D - -o /dev/null -X OPTIONS -H 'Origin: https://file.kppbwi.app' -H 'Access-Control-Request-Method: GET' \
+  -H 'Access-Control-Request-Headers: range' 'https://usercontent.file.kppbwi.app/api/v1/files/raw?path=%2Fa' | grep -iE '^HTTP|access-control'
+#   204 · allow-origin https://file.kppbwi.app · allow-methods GET, HEAD · allow-headers Range · max-age 600
+# origin aplikasi: route konten dialihkan ke origin konten
+H 'https://file.kppbwi.app/api/v1/files/raw?path=%2Fa&purpose=media' | grep -iE '^HTTP|^location'
+#   HTTP/2 302 · location: https://usercontent.file.kppbwi.app/api/v1/files/raw?path=%2Fa&purpose=media
+H https://file.kppbwi.app/healthz | grep -iE '^HTTP'                              # 200 (aplikasi tetap di origin lama)
+# CSP aplikasi memuat origin konten
+H https://file.kppbwi.app/login | grep -i content-security-policy | grep -oE '(img|media|connect|frame)-src[^;]*'
+```
+
+Di browser (login seperti biasa di `https://file.kppbwi.app`):
+
+1. DevTools → Network: buka gambar/video/PDF di viewer → request `files/raw?…sig=` menuju
+   `usercontent.file.kppbwi.app`, status 200/206, **tanpa** header `Cookie` pada request, `access-control-allow-origin:
+   https://file.kppbwi.app` pada respons; thumbnail di listing juga dari host konten.
+2. Buka file `.html` → tab **Pratinjau** merender dokumen di iframe (skrip di dalamnya tidak jalan; catatan
+   "Pratinjau berjalan di sandbox…"), tab **Tampilkan source** menampilkan markup. Tanpa variabel, hanya sumber.
+3. Unduh file → unduhan tetap berjalan (URL absolut ke host konten, `Content-Disposition: attachment`).
+4. Link share publik berpassword → buka password → gambar/thumbnail tamu dimuat dari host konten (`…/public/shares/<token>/raw?…sig=`).
+5. Bila `transcode.enabled` aktif: "Putar dengan konversi" → playlist + segmen `files/hls/…` dari host konten.
+6. Konsol tanpa pelanggaran CSP (origin konten ada di `img-src/media-src/connect-src/frame-src`).
+
+Di server: `journalctl -u filemanager -n 50` tanpa WARN/ERROR; `curl -s http://127.0.0.1:8080/readyz` 200.
+
+### 13.6 Rollback
+
+Kosongkan variabel dan jalankan update lagi — aplikasi kembali ke perilaku v1 seketika (URL bertanda tangan relatif,
+host aplikasi menyajikan konten sendiri, viewer HTML sumber saja):
+
+```bash
+sudo sed -i 's|^CONTENT_BASE_URL=.*$|CONTENT_BASE_URL=|' /www/wwwroot/file.kppbwi.app/.env
+sudo bash deploy/update.sh --yes
+```
+
+Site aaPanel kedua boleh dibiarkan (semua path 404) atau dihapus **tanpa** opsi hapus direktori; record DNS boleh
+tetap. URL bertanda tangan yang masih hidup (≤ 2 jam) dan menunjuk ke host konten akan gagal setelah rollback —
+pemutar/viewer meminta tanda tangan baru sendiri (`SIGNATURE_*` → sign ulang), tab yang terbuka cukup dimuat ulang.
+
+### 13.7 Troubleshooting
+
+| Gejala | Penyebab umum | Tindakan |
+| --- | --- | --- |
+| Service tidak start setelah 13.4 (`update.sh` rollback) | `CONTENT_BASE_URL` berisi path/`http`/host sama dengan `APP_BASE_URL` | perbaiki nilai (origin saja, `https`, host `usercontent…`), ulangi `update.sh` |
+| Gambar/video tidak tampil, konsol "blocked by CORS" | PART A/B belum terpasang di site kedua atau `proxy_pass` ke port lain | `nginx -T` seperti 13.2 langkah 5; harus `127.0.0.1:8080` |
+| `https://usercontent…/api/v1/files/raw?…` → 404 halaman Nginx | aturan `if` PART B salah ketik / route di luar allowlist | tempel ulang PART B dari repo; path yang sah ada di komentar PART B |
+| Semua path host konten 404 termasuk raw | normal bila `CONTENT_BASE_URL` masih kosong (aplikasi belum tahu host itu) — tetapi raw tetap harus 403, bukan 404, setelah 13.4 | cek `.env` + restart |
+| Unduhan/pratinjau meminta tanda tangan berulang | jam server/klien, atau rollback sebagian (variabel kosong tetapi tab lama) | muat ulang tab; `timedatectl` |
+| Sertifikat kedua gagal | DNS belum propagasi / record tidak proxied sama seperti `file` | `dig`, ulangi `site.py … ssl` |
+

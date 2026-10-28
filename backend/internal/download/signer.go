@@ -64,8 +64,9 @@ type Params struct {
 // Signer produces and verifies HMAC-SHA256 signatures with a key derived
 // from APP_SECRET (HKDF, info "signed-url").
 type Signer struct {
-	key []byte
-	now func() time.Time
+	key  []byte
+	now  func() time.Time
+	base string // CONTENT_BASE_URL (Step 23e); "" = relative URLs on the app origin
 }
 
 // NewSigner derives the signing key from the application secret.
@@ -79,6 +80,18 @@ func NewSigner(appSecret []byte, now func() time.Time) *Signer {
 	}
 	return &Signer{key: key, now: now}
 }
+
+// WithBase returns a copy whose URL method prefixes CONTENT_BASE_URL
+// (Step 23e, ADR-06 alternative (a)). The signature itself never covers the
+// host: a URL minted for the content origin verifies on any host that serves
+// the route, which is what lets the app origin redirect to it.
+func (s *Signer) WithBase(base string) *Signer {
+	return &Signer{key: s.key, now: s.now, base: strings.TrimRight(base, "/")}
+}
+
+// Base is the absolute prefix of signed URLs ("" when the content origin is
+// the app origin).
+func (s *Signer) Base() string { return s.base }
 
 // message encodes the fields unambiguously: every field is length-prefixed so
 // a "|" inside a path cannot be confused with the separator.
@@ -200,5 +213,6 @@ func Route(p Purpose) string {
 	}
 }
 
-// URL builds the relative signed URL of p.
-func (s *Signer) URL(p Params) string { return Route(p.Purpose) + "?" + s.Query(p).Encode() }
+// URL builds the signed URL of p: relative on the app origin, absolute
+// (CONTENT_BASE_URL + route) when a content origin is configured.
+func (s *Signer) URL(p Params) string { return s.base + Route(p.Purpose) + "?" + s.Query(p).Encode() }

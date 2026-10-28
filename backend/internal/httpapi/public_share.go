@@ -59,6 +59,7 @@ func (s *Server) mountPublicShares(api chi.Router) {
 			g.Use(OriginCheck(s.cfg.AppBaseURL))
 			g.With(MaxBytes(JSONBodyLimit)).Post("/unlock", s.handlePublicShareUnlock)
 			g.With(MaxBytes(JSONBodyLimit)).Post("/zip", s.handlePublicShareZipCreate)
+			g.With(MaxBytes(JSONBodyLimit)).Post("/sign", s.handlePublicShareSign)
 			s.mountPublicShareUpload(g)
 		})
 	})
@@ -100,10 +101,20 @@ func (s *Server) resolvePublic(w http.ResponseWriter, r *http.Request, gate bool
 		return nil, false
 	}
 	p := &publicShare{row: row, owner: owner, token: token, ip: ip}
-	if c, cerr := r.Cookie(p.cookieName()); cerr == nil {
-		p.unlocked = s.shares.Unlocked(row, c.Value)
-	} else {
-		p.unlocked = !share.HasPassword(row)
+	switch {
+	case s.content.isContentHost(r):
+		// Step 23e: no cookie exists on the content origin; a signature minted
+		// by POST …/sign after the unlock is the only authorisation
+		if !s.verifyPublicSignature(w, r, p) {
+			return nil, false
+		}
+		p.unlocked = true
+	default:
+		if c, cerr := r.Cookie(p.cookieName()); cerr == nil {
+			p.unlocked = s.shares.Unlocked(row, c.Value)
+		} else {
+			p.unlocked = !share.HasPassword(row)
+		}
 	}
 	if gate {
 		gerr := s.shares.Gate(row, owner, p.unlocked)
@@ -228,6 +239,9 @@ type publicMeta struct {
 	DownloadLimitReached bool    `json:"downloadLimitReached"`
 	MaxDownloads         *int64  `json:"maxDownloads,omitempty"`
 	DownloadCount        int64   `json:"downloadCount"`
+	// ContentBaseURL (Step 23e): when set the guest page signs its content
+	// URLs through POST …/sign instead of relying on the unlock cookie.
+	ContentBaseURL string `json:"contentBaseUrl,omitempty"`
 }
 
 func (s *Server) handlePublicShareMeta(w http.ResponseWriter, r *http.Request) {
@@ -245,7 +259,7 @@ func (s *Server) handlePublicShareMeta(w http.ResponseWriter, r *http.Request) {
 		IsDir: p.row.IsDir == 1, AllowDownload: p.row.AllowDownload == 1, AllowUpload: p.row.AllowUpload == 1,
 		HideListing: p.row.HideListing == 1, ExpiresAt: p.row.ExpiresAt, PasswordRequired: share.HasPassword(p.row),
 		Unlocked: p.unlocked, DownloadLimitReached: share.LimitReached(p.row), MaxDownloads: p.row.MaxDownloads,
-		DownloadCount: p.row.DownloadCount,
+		DownloadCount: p.row.DownloadCount, ContentBaseURL: s.contentBaseURL(),
 	}
 	if gerr != nil {
 		// locked: name, size and note stay hidden until the password is right
@@ -461,7 +475,13 @@ func (s *Server) servePublicFile(w http.ResponseWriter, r *http.Request, j *fsja
 		return false
 	}
 	d := download.Policy(mt, info.Name, purpose)
-	download.SetContentHeaders(w.Header(), s.corp())
+	if s.htmlPreviewAllowed(r, purpose, mt, info.Name) {
+		d = download.HTMLPreviewDisposition()
+	}
+	download.SetContentHeaders(w.Header(), s.corp(r))
+	if d.HTMLPreview {
+		s.setHTMLPreviewHeaders(w.Header())
+	}
 	download.ServeFile(w, r, f, info, d, info.Name)
 	return true
 }
@@ -766,7 +786,11 @@ func (s *Server) handlePublicShareZipCreate(w http.ResponseWriter, r *http.Reque
 	if len(vps) == 1 && vps[0].IsRoot() {
 		name = s.shares.View(p.row).Name + ".zip"
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"url": PublicSharePrefix + p.token + "/zip?id=" + id, "name": name, "count": len(paths)})
+	zipURL := PublicSharePrefix + p.token + "/zip?id=" + id
+	if s.content != nil && s.signer != nil {
+		zipURL, _ = s.publicSignedURL(p, download.PurposeZip, "", id)
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"url": zipURL, "name": name, "count": len(paths)})
 }
 
 func (s *Server) handlePublicShareZipGet(w http.ResponseWriter, r *http.Request) {
@@ -820,7 +844,7 @@ func (s *Server) handlePublicShareZipGet(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	h := w.Header()
-	download.SetContentHeaders(h, s.corp())
+	download.SetContentHeaders(h, s.corp(r))
 	h.Set("Content-Type", "application/zip")
 	name := download.ZipFilename(s.cfg.Runtime().AppName, paths, req.Name, req.CreatedAt)
 	if req.Name == "" && len(req.Paths) == 1 && req.Paths[0] == "/" {

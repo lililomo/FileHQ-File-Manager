@@ -24,8 +24,7 @@ import { ViewerOverlay } from '@/features/viewer/ViewerOverlay'
 import { opensInViewer } from '@/features/viewer/viewers'
 import { errorMessage } from '@/lib/errors'
 import { formatBytes, formatDate } from '@/lib/format'
-import { publicUrl } from '@/lib/public-scope'
-import { startDownload } from '@/lib/media-url'
+import { signDownloadUrl, startDownload } from '@/lib/media-url'
 import { hasOsFiles } from '@/features/file-ops/dnd'
 import { useTransfersStore } from '@/stores/transfers'
 import { listPublic, publicListKey, publicZip, type PublicMeta, type PublicSortField } from './publicApi'
@@ -74,7 +73,7 @@ export function PublicBrowser({ token, meta, path, viewPath, onNavigate }: Publi
     (it: Item) => {
       if (it.isDir) onNavigate(it.path)
       else if (opensInViewer(it)) onNavigate(path, it.path)
-      else if (canDownload) startDownload(publicUrl('download', { path: it.path }), it.name)
+      else if (canDownload) void signDownloadUrl(it.path).then((u) => startDownload(u, it.name))
     },
     [onNavigate, path, canDownload],
   )
@@ -263,7 +262,9 @@ export function PublicBrowser({ token, meta, path, viewPath, onNavigate }: Publi
                         variant="ghost"
                         size="icon"
                         aria-label={`${t('public.download')} ${it.name}`}
-                        onClick={() => startDownload(publicUrl('download', { path: it.path }), it.name)}
+                        onClick={() =>
+                          void signDownloadUrl(it.path).then((u) => startDownload(u, it.name))
+                        }
                         data-testid="public-row-download"
                       >
                         <Download aria-hidden="true" />

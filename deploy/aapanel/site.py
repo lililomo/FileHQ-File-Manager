@@ -14,6 +14,19 @@ Perlu verifikasi on any other aaPanel version. Safe to re-run.
     /www/server/panel/pyenv/bin/python3 deploy/aapanel/site.py ssl
     /www/server/panel/pyenv/bin/python3 deploy/aapanel/site.py force-https
 
+Options (Step 23e — the optional second site for the separate user-content
+origin, docs/DEPLOY-AAPANEL.md §13; defaults reproduce the main site exactly):
+
+    --domain  usercontent.file.kppbwi.app     (default file.kppbwi.app)
+    --snippet deploy/nginx-usercontent.conf   (default deploy/nginx-aapanel.conf)
+    --remark  "FileManager content"           (default FileManager)
+    --target  http://127.0.0.1:8080           (default; same binary for both sites)
+
+    /www/server/panel/pyenv/bin/python3 deploy/aapanel/site.py --domain usercontent.file.kppbwi.app --snippet deploy/nginx-usercontent.conf --remark "FileManager content" create
+    …                                                           --domain usercontent.file.kppbwi.app --snippet deploy/nginx-usercontent.conf configure
+    …                                                           --domain usercontent.file.kppbwi.app ssl
+    …                                                           --domain usercontent.file.kppbwi.app force-https
+
 Never prints certificates or keys.
 """
 import json
@@ -26,6 +39,35 @@ TARGET = 'http://127.0.0.1:8080'
 REMARK = 'FileManager'
 SNIPPET = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'nginx-aapanel.conf')
 TIMEOUTS = {'proxy_connect_timeout': '10', 'proxy_send_timeout': '3600', 'proxy_read_timeout': '3600'}
+
+
+def parse_args(argv):
+    """`[--domain D] [--snippet F] [--remark R] [--target T] <command>`; the
+    command may come first or last. Returns (command, options)."""
+    opts = {'domain': DOMAIN, 'snippet': SNIPPET, 'remark': REMARK, 'target': TARGET}
+    command = ''
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a.startswith('--') and a[2:] in opts:
+            if i + 1 >= len(argv):
+                raise SystemExit('%s needs a value' % a)
+            opts[a[2:]] = argv[i + 1]
+            i += 2
+            continue
+        if a.startswith('--'):
+            raise SystemExit('unknown option %s' % a)
+        if command:
+            raise SystemExit('one command only (got %s and %s)' % (command, a))
+        command = a
+        i += 1
+    return command, opts
+
+
+if __name__ == '__main__':
+    _command, _opts = parse_args(sys.argv[1:])
+    DOMAIN, REMARK, TARGET = _opts['domain'], _opts['remark'], _opts['target']
+    SNIPPET = _opts['snippet'] if os.path.isabs(_opts['snippet']) else os.path.join(os.getcwd(), _opts['snippet'])
 
 snippet_path = os.path.abspath(SNIPPET)
 os.chdir(PANEL)
@@ -90,7 +132,8 @@ def cmd_status():
     print('vhost: {} ({})'.format(conf, 'present' if text else 'MISSING'))
     print('proxy_pass to the app: {}'.format('yes' if TARGET in text else 'NO'))
     print('part A (proxy_request_buffering off): {}'.format('yes' if 'proxy_request_buffering off' in text else 'NO'))
-    print('part B (location = /readyz): {}'.format('yes' if 'location = /readyz' in text else 'NO'))
+    part_b_marker = 'location = /readyz' if 'nginx-aapanel.conf' in snippet_path else 'real_ip_header CF-Connecting-IP'
+    print('part B ({}): {}'.format(part_b_marker, 'yes' if part_b_marker in text else 'NO'))
     print('read timeout 3600s: {}'.format('yes' if 'proxy_read_timeout 3600s' in text else 'NO'))
     print('ssl: {}'.format('on' if 'ssl_certificate ' in text else 'off'))
     print('force https: {}'.format('yes' if 'HTTP_TO_HTTPS_START' in text else 'no'))
@@ -180,8 +223,9 @@ COMMANDS = {'status': cmd_status, 'create': cmd_create, 'configure': cmd_configu
             'ssl': cmd_ssl, 'force-https': cmd_force_https}
 
 if __name__ == '__main__':
-    name = sys.argv[1] if len(sys.argv) > 1 else ''
-    if name not in COMMANDS:
+    if _command not in COMMANDS:
         print(__doc__)
         sys.exit(2)
-    sys.exit(COMMANDS[name]())
+    if not os.path.isfile(snippet_path):
+        raise SystemExit('snippet not found: %s' % snippet_path)
+    sys.exit(COMMANDS[_command]())

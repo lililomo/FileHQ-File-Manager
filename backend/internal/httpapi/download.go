@@ -45,14 +45,6 @@ func (s *Server) mountDownload(api chi.Router) {
 	})
 }
 
-// corp is the Cross-Origin-Resource-Policy of content responses.
-func (s *Server) corp() string {
-	if s.cfg.ContentBaseURL != "" {
-		return "same-site"
-	}
-	return "same-origin"
-}
-
 // acquireDownloadSlot enforces the 3 concurrent downloads/zips per user.
 func (s *Server) acquireDownloadSlot(w http.ResponseWriter, r *http.Request, userID string) (func(), bool) {
 	release, ok := s.dlLimit.Acquire(userID)
@@ -132,7 +124,13 @@ func (s *Server) serveSigned(w http.ResponseWriter, r *http.Request, ss *signedS
 		return
 	}
 	d := download.Policy(mt, info.Name, purpose)
-	download.SetContentHeaders(w.Header(), s.corp())
+	if s.htmlPreviewAllowed(r, purpose, mt, info.Name) {
+		d = download.HTMLPreviewDisposition()
+	}
+	download.SetContentHeaders(w.Header(), s.corp(r))
+	if d.HTMLPreview {
+		s.setHTMLPreviewHeaders(w.Header())
+	}
 	download.ServeFile(w, r, f, info, d, info.Name)
 	if purpose == download.PurposeDownload && r.Method == http.MethodGet && r.Header.Get("Range") == "" && s.files != nil && ss.Share == nil {
 		s.files.RecordActivity(r.Context(), u.ID, files.ActDownload, string(info.Path), "", map[string]any{"size": info.Size, "mime": d.ContentType})
@@ -339,7 +337,7 @@ func (s *Server) handleFilesZipGet(w http.ResponseWriter, r *http.Request) {
 	defer unlock()
 
 	h := w.Header()
-	download.SetContentHeaders(h, s.corp())
+	download.SetContentHeaders(h, s.corp(r))
 	h.Set("Content-Type", "application/zip")
 	h.Set("Content-Disposition", download.ContentDisposition(false, download.ZipFilename(s.cfg.Runtime().AppName, paths, req.Name, req.CreatedAt)))
 	h.Set("Cache-Control", "private, no-store")

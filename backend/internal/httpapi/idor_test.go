@@ -45,6 +45,7 @@ var idorRoutes = map[string]idorKind{
 	"HEAD /api/v1/public/shares/{token}/subtitle": idorPublic, "GET /api/v1/public/shares/{token}/thumb": idorPublic,
 	"GET /api/v1/public/shares/{token}/zip": idorPublic, "HEAD /api/v1/public/shares/{token}/zip": idorPublic,
 	"POST /api/v1/public/shares/{token}/zip": idorPublic, "POST /api/v1/public/shares/{token}/unlock": idorPublic,
+	"POST /api/v1/public/shares/{token}/sign":            idorPublic, // Step 23e
 	"POST /api/v1/public/shares/{token}/upload/precheck": idorPublic, "POST /api/v1/public/shares/{token}/upload/tus": idorPublic,
 	"OPTIONS /api/v1/public/shares/{token}/upload/tus": idorPublic, "OPTIONS /api/v1/public/shares/{token}/upload/tus/{id}": idorPublic,
 	"HEAD /api/v1/public/shares/{token}/upload/tus/{id}": idorPublic, "PATCH /api/v1/public/shares/{token}/upload/tus/{id}": idorPublic,

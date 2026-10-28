@@ -70,7 +70,9 @@ func (s *Server) mountHLS(api chi.Router) {
 // hlsURL signs the playlist URL of task id for userID.
 func (s *Server) hlsURL(userID, id string) (string, string) {
 	exp := s.signer.Expiry(download.TTLFor(download.PurposeHLS, s.cfg.SignedURLTTL, s.cfg.MediaURLTTL))
-	return HLSPrefix + id + "/" + media.PlaylistName + "?" + s.hlsQuery(userID, id, exp), isoTime(exp)
+	// absolute on the content origin (Step 23e): the segment URIs of the
+	// rewritten playlist are relative, so they follow the playlist's host
+	return s.signedBase() + HLSPrefix + id + "/" + media.PlaylistName + "?" + s.hlsQuery(userID, id, exp), isoTime(exp)
 }
 
 func (s *Server) hlsQuery(userID, id string, exp int64) string {
@@ -291,7 +293,7 @@ func (s *Server) handleHLSPlaylist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h := w.Header()
-	download.SetContentHeaders(h, s.corp())
+	download.SetContentHeaders(h, s.corp(r))
 	h.Set("Content-Type", hlsPlaylistType)
 	h.Set("Content-Length", strconv.Itoa(len(out)))
 	if finished {
@@ -324,7 +326,7 @@ func (s *Server) handleHLSSegment(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = f.Close() }()
 	h := w.Header()
-	download.SetContentHeaders(h, s.corp())
+	download.SetContentHeaders(h, s.corp(r))
 	h.Set("Content-Type", hlsSegmentType)
 	h.Set("Cache-Control", hlsCacheFinished) // a written segment never changes
 	h.Set("Accept-Ranges", "bytes")

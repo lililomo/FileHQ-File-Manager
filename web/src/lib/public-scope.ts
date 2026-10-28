@@ -9,6 +9,9 @@ import { API_BASE } from '@/lib/api'
 
 export interface PublicScope {
   token: string
+  /** Step 23e: separate content origin advertised by the share meta ("" =
+   *  same origin → the unlock cookie authorises `publicUrl` directly) */
+  contentBaseUrl?: string
 }
 
 let scope: PublicScope | null = null
@@ -25,6 +28,12 @@ export function getPublicScope(): PublicScope | null {
 
 export function isPublicScope(): boolean {
   return scope !== null
+}
+
+/** True when guest content must be fetched from the separate content origin
+ *  (cookie-less: URLs have to be signed through `POST …/sign`). */
+export function publicContentOrigin(): string {
+  return scope?.contentBaseUrl ?? ''
 }
 
 export function onPublicScopeChange(fn: () => void): () => void {

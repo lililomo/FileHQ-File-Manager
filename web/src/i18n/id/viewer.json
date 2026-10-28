@@ -199,7 +199,12 @@
     "lines_other": "{{count}} baris",
     "wrap": "Bungkus baris",
     "partial": "File besar: hanya {{kb}} KB pertama yang ditampilkan.",
-    "htmlNote": "Menampilkan sumber HTML. Pratinjau langsung dinonaktifkan demi keamanan (hadir di Step 23e)."
+    "htmlNote": "Menampilkan sumber HTML. Pratinjau langsung hanya tersedia bila origin konten terpisah dikonfigurasi (SPEC ADR-06).",
+    "htmlTabs": "Tampilan HTML",
+    "htmlPreviewTab": "Pratinjau",
+    "htmlSourceTab": "Tampilkan source",
+    "htmlFrameTitle": "Pratinjau {{name}} (sandbox)",
+    "htmlSandboxNote": "Pratinjau berjalan di sandbox: skrip dan jaringan dimatikan."
   },
   "markdown": {
     "rendered": "Tampilan",

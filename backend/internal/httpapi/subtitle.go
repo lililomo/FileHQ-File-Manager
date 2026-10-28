@@ -135,7 +135,7 @@ func (s *Server) writeSubtitle(w http.ResponseWriter, r *http.Request, j *fsjail
 		vtt = media.SanitizeVTT(text)
 	}
 	h := w.Header()
-	download.SetContentHeaders(h, s.corp())
+	download.SetContentHeaders(h, s.corp(r))
 	h.Set("Content-Type", "text/vtt; charset=utf-8")
 	h.Set("Cache-Control", "private, max-age=300")
 	h.Set("Content-Length", strconv.Itoa(len(vtt)))

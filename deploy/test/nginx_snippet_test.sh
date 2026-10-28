@@ -15,6 +15,11 @@ NGINX=${FM_NGINX:-$(command -v nginx || true)}
 [[ -x $BIN ]] || { echo "FAIL: $BIN missing — run make build first"; exit 1; }
 [[ -x $NGINX ]] || { echo "FAIL: nginx not found (set FM_NGINX)"; exit 1; }
 SNIPPET=$REPO/deploy/nginx-aapanel.conf
+# Step 23e: the optional second site (separate user-content origin) is
+# rendered as a second server block of the same scratch Nginx, in front of
+# the same app configured with CONTENT_BASE_URL=https://usercontent.test.
+CONTENT_SNIPPET=$REPO/deploy/nginx-usercontent.conf
+CONTENT_HOST=usercontent.test
 
 T=$(new_root nginx)
 APP_PID="" NGINX_PID=""
@@ -37,6 +42,10 @@ part() { awk -v b="# --- BEGIN PART $1" -v e="# --- END PART $1" 'index($0,b)==1
 PART_A=$(part A)
 PART_B=$(part B | sed "s#http://127.0.0.1:8080#http://127.0.0.1:$APORT#")
 [[ -n $PART_A && -n $PART_B ]] || { echo "FAIL: PART A/B markers not found in $SNIPPET"; exit 1; }
+cpart() { awk -v b="# --- BEGIN PART $1" -v e="# --- END PART $1" 'index($0,b)==1{on=1;next} index($0,e)==1{on=0} on' "$CONTENT_SNIPPET"; }
+CONTENT_A=$(cpart A)
+CONTENT_B=$(cpart B)
+[[ -n $CONTENT_A && -n $CONTENT_B ]] || { echo "FAIL: PART A/B markers not found in $CONTENT_SNIPPET"; exit 1; }
 
 # aaPanel's Nginx has lua-nginx-module compiled in and needs its library path.
 LUA_LINE=""
@@ -100,6 +109,36 @@ $PART_B
         if ( \$uri ~ "^/\.well-known/.*\.(php|jsp|py|js|css|lua|ts|go|zip|tar\.gz|rar|7z|sql|bak)$" ) { return 403; }
         access_log $T/logs/site.log fm;
     }
+    # --- second Reverse Proxy project: the user-content origin (Step 23e) ---
+    server {
+        listen 127.0.0.1:$NPORT;
+        server_name $CONTENT_HOST;
+        index index.php index.html index.htm default.php default.htm default.html;
+        root $T/site;
+        #PROXY-CONF-START
+        location ^~ / {
+            proxy_pass http://127.0.0.1:$APORT;
+            proxy_set_header Host \$http_host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Real-Port \$remote_port;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header REMOTE-HOST \$remote_addr;
+            proxy_connect_timeout 10s;
+            proxy_send_timeout 3600s;
+            proxy_read_timeout 3600s;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade \$http_upgrade;
+            proxy_set_header Connection "upgrade";
+$CONTENT_A
+        }
+        #PROXY-CONF-END
+        #SERVER-BLOCK START
+$CONTENT_B
+        #SERVER-BLOCK END
+        location ~ ^/(\.user.ini|\.htaccess|\.git|\.env|\.svn|\.project|LICENSE|README.md) { return 404; }
+        location /.well-known { allow all; root $T/site; }
+        access_log $T/logs/content.log fm;
+    }
 }
 EOF
 mkdir -p "$T/tmp"
@@ -114,6 +153,7 @@ check "nginx -t accepts the snippet inside the aaPanel template" test "$rc" = 0
 	ADMIN_INITIAL_PASSWORD=$(openssl rand -hex 12)
 	export APP_ENV=production APP_BASE_URL=https://file.kppbwi.app LISTEN_ADDR=127.0.0.1:$APORT \
 		STORAGE_ROOT=$T/storage DATA_DIR=$T/storage/.system TRUSTED_PROXIES=127.0.0.1 ALLOW_ROOT=true \
+		CONTENT_BASE_URL=https://$CONTENT_HOST \
 		APP_SECRET ADMIN_INITIAL_PASSWORD
 	exec "$BIN" serve
 ) >"$T/logs/app.log" 2>&1 &
@@ -178,6 +218,48 @@ check "Range length 100" test "$(curl -s -r 0-99 "$U$asset" | wc -c)" = 100
 curl -s -o /dev/null "$U$asset"
 curl -s -o /dev/null "$U$asset"
 check "aaPanel's global proxy_cache stays unused (proxy_cache off)" test -z "$(find "$T/cache" -type f -print -quit)"
+# --- the user-content origin (Step 23e, deploy/nginx-usercontent.conf) ---
+C() { curl -s -o "$T/cbody" -w '%{http_code}' --max-time 5 --path-as-is -H "Host: $CONTENT_HOST" "$@"; }
+content_nginx_404() { [[ $(C "$U$1") == 404 && $(cat "$T/cbody") == *"<center>nginx"* ]]; }
+for p in / /login /files /s/token123 /healthz /readyz /metrics /.env /api/v1/auth/me /api/v1/version /api/v1/files/list \
+	/api/v1/public/shares/tok /api/v1/public/shares/tok/list /api/v1/files/hls /api/v1/files/hls/x /api/v1/files/raw/x \
+	/api/v1/files/rawx /api/v1/filesraw /assets/index.js; do
+	check "content host: $p → 404 from Nginx" content_nginx_404 "$p"
+done
+app_json() { # proxied: the app answers with its JSON envelope (never Nginx's HTML page)
+	local code
+	code=$(C "$U$1")
+	[[ $code == "$2" && $(cat "$T/cbody") == *'"error"'* ]]
+}
+check "content host: /api/v1/files/raw proxied (app 403 unsigned)" app_json "/api/v1/files/raw?path=%2Fa&purpose=media" 403
+check "content host: /api/v1/files/download proxied" app_json "/api/v1/files/download?path=%2Fa" 403
+check "content host: /api/v1/files/zip proxied" app_json "/api/v1/files/zip?token=x" 403
+check "content host: /api/v1/files/thumb proxied" app_json "/api/v1/files/thumb?path=%2Fa&size=128" 403
+check "content host: /api/v1/archives/entry-content proxied" app_json "/api/v1/archives/entry-content?path=%2Fa&inner=b" 403
+check "content host: HLS playlist proxied" app_json "/api/v1/files/hls/0123456789abcdef/playlist.m3u8" 403
+check "content host: HLS segment proxied" app_json "/api/v1/files/hls/0123456789abcdef/seg_00000.ts" 403
+check "content host: public raw proxied (app 404 unknown token, JSON)" app_json "/api/v1/public/shares/tok/raw?path=%2F" 404
+check "content host: public thumb proxied" app_json "/api/v1/public/shares/tok/thumb?path=%2F" 404
+check "content host: public download proxied" app_json "/api/v1/public/shares/tok/download?path=%2F" 404
+check "content host: public zip proxied" app_json "/api/v1/public/shares/tok/zip?id=x" 404
+content_method_404() { [[ $(C -X "$1" "$U$2") == 404 && $(cat "$T/cbody") == *"<center>nginx"* ]]; }
+check "content host: POST on a content route → 404 from Nginx" content_method_404 POST /api/v1/files/raw
+check "content host: PUT → 404 from Nginx" content_method_404 PUT /api/v1/files/zip
+check "content host: DELETE → 404 from Nginx" content_method_404 DELETE /api/v1/files/raw
+pre=$(curl -s -D - -o /dev/null --max-time 5 -X OPTIONS -H "Host: $CONTENT_HOST" -H "Origin: https://file.kppbwi.app" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: range" "$U/api/v1/files/raw?path=%2Fa")
+check "content host: OPTIONS preflight → 204" grep -q '^HTTP/1.1 204' <<<"$pre"
+check "content host: Access-Control-Allow-Origin = app origin" grep -qi '^access-control-allow-origin: https://file.kppbwi.app' <<<"$pre"
+check "content host: Access-Control-Allow-Headers: Range" grep -qi '^access-control-allow-headers: Range' <<<"$pre"
+check "content host: no Set-Cookie" bash -c "! grep -qi '^set-cookie' <<<'$pre'"
+content_acme() { [[ $(C "$U/.well-known/acme-challenge/test") == 200 && $(cat "$T/cbody") == acme-token-123 ]]; }
+check "content host: ACME challenge still served from the document root" content_acme
+check "app host: content route → 302 to the content origin" test "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 5 "$U/api/v1/files/raw?path=%2Fa&purpose=media")" = "302 https://$CONTENT_HOST/api/v1/files/raw?path=%2Fa&purpose=media"
+check "app host: SPA still served (no redirect)" test "$(http_code "$U/files/a")" = 200
+sleep 0.3
+# proxied requests (the ones that carry sig=) are not logged; the server-level
+# 404s above are (no signature in them)
+check "content host: proxied content requests absent from the Nginx access log (access_log off)" bash -c "! grep -q 'GET /api/v1/files/raw?' '$T/logs/content.log' 2>/dev/null"
+check "content host: the Nginx 404s are still logged" grep -q 'GET /api/v1/auth/me' "$T/logs/content.log"
 check "no Nginx errors logged" bash -c "! grep -E '\[(emerg|alert|crit)\]' '$T/logs/error.log'"
 
 finish
