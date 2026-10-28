@@ -3,7 +3,7 @@
 | | |
 | --- | --- |
 | Tanggal | 15 Oktober 2026 |
-| Basis kode | commit `1b0cfde` (branch `main`, Step 14b selesai) |
+| Basis kode | commit `951f799` (branch `main`, Step 14b selesai) |
 | Lingkup | `backend/internal/{tasks,sse,notify,upload,download,netguard,remotedl,archive,exec,httpapi}` (endpoint `tasks/*`, `events`, `upload/*`, `files/raw|download|zip|sign`, `remote-downloads/*`, `archives/*`), fixture `testdata/`, `docs/SECURITY.md`, `docs/openapi.yaml` |
 | Acuan | PRD E5, E6, E15 · SPEC §7, §8.8–8.11, §10 · ADR-06/08/15 · PROMPT Step R-C · review-B minor tertunda |
 | Reviewer | Sesi baru tanpa konteks implementasi; fase perbaikan dilanjutkan oleh sesi berikutnya setelah sesi review terputus |

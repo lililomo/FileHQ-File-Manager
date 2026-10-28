@@ -3,7 +3,7 @@
 | | |
 | --- | --- |
 | Tanggal | 22 Oktober 2026 |
-| Basis kode | commit `e75f056` (branch `main`, Step 19b selesai) |
+| Basis kode | commit `4fa3115` (branch `main`, Step 19b selesai) |
 | Lingkup | `backend/internal/{share, admin, audit, scheduler, upload (jalur share), listing (scope), httpapi (scope, scope_upload, shares, public_share, public_share_upload, admin_*, me_sessions, middleware)}`, `db/repo_admin*.go`; `web/src/features/{share, public, admin, settings}`, `web/src/lib/{share-scope,public-scope,api}.ts`; `docs/SECURITY.md`, SPEC §8.15–8.18, §6.6, §10 |
 | Acuan | PRD E10, E12, E13 · SPEC §5.2–5.3, §6.6, §8.15–8.18, §10 · ADR-16 · PROMPT Step R-E · PROGRESS "Deviasi dari SPEC" + "Catatan lintas step" (baris "Terbuka → R-E"/"Untuk R-E") · review-D minor tertunda |
 | Reviewer | Sesi baru tanpa konteks implementasi (Fable); fase perbaikan di sesi yang sama |

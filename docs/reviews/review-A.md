@@ -3,7 +3,7 @@
 | | |
 | --- | --- |
 | Tanggal | 14 Oktober 2026 |
-| Basis kode | commit `5cee171` (branch `main`) |
+| Basis kode | commit `255c1ef` (branch `main`) |
 | Lingkup | `backend/internal/{config,db,audit,auth,fsjail,listing,files,httpapi}`, `backend/cmd/filemanager`, `docs/openapi.yaml` |
 | Acuan | PRD E1–E3, §11 · SPEC §3, §4, §5, §6, §8.1–8.3, §10 · PROMPT Step R-A |
 | Reviewer | Sesi baru tanpa konteks implementasi |

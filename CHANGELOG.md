@@ -52,41 +52,41 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id/1.1.0/); versi
 Rilis MVP (PRD §9: M1–M5). Tag `v1.0.0` dibuat setelah persetujuan pemilik (lihat `docs/reviews/review-F.md`).
 
 ### Fondasi (M1 — Step 1–8)
-- Scaffolding monorepo Go (`backend/`) + React/Vite (`web/`), config fail-fast, log JSON `slog`, `/healthz` `/readyz`, CI GitHub Actions (`e357924`).
-- SQLite WAL via `modernc.org/sqlite` + goose + sqlc, repositori inti (`09c4e76`).
-- Auth: seed admin dari `.env`, sesi server-side (cookie `fm_session` HttpOnly/Secure/Lax), CSRF HMAC + Fetch Metadata, argon2id + daftar 100k password umum, lockout bertahap + limit IP, wajib ganti password, provisioning folder home saat login pertama (`1341a58`).
-- `internal/fsjail` di atas `os.Root` (openat2 `RESOLVE_BENEATH`): validasi path/nama, kebijakan symlink, lock manager per path, test keamanan TOCTOU (`c7d2b53`).
-- Listing: natural sort di server, cursor opaque bertanda tangan, cache LRU 15 s, `stat`/`mkdir`/`create` (`6d72ef0`).
-- Frontend: design token (terang/gelap/sistem tanpa flash), UI kit, i18n id/en, router, API client, halaman login & ganti password (`d2c6105`); layout browser, breadcrumb/address bar, Details view tervirtualisasi (`121351a`); kolom, sort (+sekunder), seleksi, keyboard, tab folder, panel preview (`b4d6522`); List/Tiles/Large/Extra large + pipeline thumbnail (vips/ffmpeg/pdftoppm) + cache metadata media (`438158d`).
-- Review A (`9fdcf06`, perbaikan `3fa168d`): header cache/CORP API, ekstensi diblokir, aturan nama path penuh.
+- Scaffolding monorepo Go (`backend/`) + React/Vite (`web/`), config fail-fast, log JSON `slog`, `/healthz` `/readyz`, CI GitHub Actions (`3f354a0`).
+- SQLite WAL via `modernc.org/sqlite` + goose + sqlc, repositori inti (`371709e`).
+- Auth: seed admin dari `.env`, sesi server-side (cookie `fm_session` HttpOnly/Secure/Lax), CSRF HMAC + Fetch Metadata, argon2id + daftar 100k password umum, lockout bertahap + limit IP, wajib ganti password, provisioning folder home saat login pertama (`9cb1a53`).
+- `internal/fsjail` di atas `os.Root` (openat2 `RESOLVE_BENEATH`): validasi path/nama, kebijakan symlink, lock manager per path, test keamanan TOCTOU (`b9e967f`).
+- Listing: natural sort di server, cursor opaque bertanda tangan, cache LRU 15 s, `stat`/`mkdir`/`create` (`e4a299a`).
+- Frontend: design token (terang/gelap/sistem tanpa flash), UI kit, i18n id/en, router, API client, halaman login & ganti password (`6b96336`); layout browser, breadcrumb/address bar, Details view tervirtualisasi (`42e4e8c`); kolom, sort (+sekunder), seleksi, keyboard, tab folder, panel preview (`d1cec10`); List/Tiles/Large/Extra large + pipeline thumbnail (vips/ffmpeg/pdftoppm) + cache metadata media (`95ffc00`).
+- Review A (`aef20f4`, perbaikan `67f66c8`): header cache/CORP API, ekstensi diblokir, aturan nama path penuh.
 
 ### Operasi file & transfer (M2 — Step 9a–13)
-- Operasi file (rename/move/copy/delete/duplicate/symlink/chmod/batch rename/undo 10 s) dengan dialog konflik, pembaruan referensi metadata, lock path (`e22d8e3`, `8f4a636`).
-- Recycle Bin per user (restore/purge/auto-purge), kuota inkremental + rekalkulasi, ukuran folder (`a7f8129`); favorit, pin, catatan, tag warna, Recent, Aktivitas, analisis penyimpanan (`840a485`).
-- Review B (`8bfc851`, perbaikan `33c7555`): kuota pada `files/create`, ekstensi diblokir di batch rename, perbaikan axe.
-- Task engine persisten (cancel/retry), SSE realtime, panel task, notifikasi in-app (`df76840`).
-- Upload tus resumable (pause/resume/reload, folder, paste clipboard, precheck kuota), panel transfer (`88218c0`).
-- Download HTTP Range, zip streaming tanpa file sementara, signed URL HMAC dengan kebijakan konten inline (ADR-06) (`c9bb687`).
-- Remote download sebagai task dengan SSRF guard (DNS pin, redirect per hop, allow/denylist) (`5b801f4`).
+- Operasi file (rename/move/copy/delete/duplicate/symlink/chmod/batch rename/undo 10 s) dengan dialog konflik, pembaruan referensi metadata, lock path (`2d46e82`, `23024b2`).
+- Recycle Bin per user (restore/purge/auto-purge), kuota inkremental + rekalkulasi, ukuran folder (`7a6ef10`); favorit, pin, catatan, tag warna, Recent, Aktivitas, analisis penyimpanan (`01c3514`).
+- Review B (`f159535`, perbaikan `a3e6082`): kuota pada `files/create`, ekstensi diblokir di batch rename, perbaikan axe.
+- Task engine persisten (cancel/retry), SSE realtime, panel task, notifikasi in-app (`358d67a`).
+- Upload tus resumable (pause/resume/reload, folder, paste clipboard, precheck kuota), panel transfer (`f92ee5e`).
+- Download HTTP Range, zip streaming tanpa file sementara, signed URL HMAC dengan kebijakan konten inline (ADR-06) (`d920bcd`).
+- Remote download sebagai task dengan SSRF guard (DNS pin, redirect per hop, allow/denylist) (`fd2c2d1`).
 
 ### Arsip, search, editor, viewer (M3 — Step 14a–17b)
-- Compress/extract zip (termasuk AES), 7z, rar (baca), tar/gz/bz2/xz/zst dengan proteksi zip-slip/bomb, password 7-Zip lewat stdin (`e9da365`); archive browser: lihat isi tanpa extract, extract sebagian, preview entri, tambah/hapus entri zip (`3b84792`).
-- Review C (`fa6e24f`, perbaikan `2833029`): finalisasi upload saat retry, penanganan password 7z, redaksi path host 7-Zip.
-- Search nama + isi (ripgrep, RE2), replace in files dengan preview dan rollback versi (`07fa750`, `c35c34a`).
-- Editor Monaco multi-tab: encoding/EOL/deteksi bahasa, simpan atomik + versi pre-image, konflik ETag + diff, riwayat versi, find in files, format, preview Markdown, draft lokal (`c717cf6`, `1108e4d`, `3e0ca49`, `5f6252e`).
-- Viewer: gambar (EXIF, preview shrink-only, slideshow), PDF (pdf.js, Range, outline, cari, password, cetak), audio + mini-player persisten, video (Video.js 10, subtitle, PiP, resume), teks/Markdown/CSV/JSON, Quick Look (`9712223` … `c2a6436`, `079f208`, `a8b14d6`).
-- Review D (`524a741`, perbaikan `b59e342`, `acad6b7`): deteksi password 7z deterministik, pembersihan sesi editor, hardening viewer.
+- Compress/extract zip (termasuk AES), 7z, rar (baca), tar/gz/bz2/xz/zst dengan proteksi zip-slip/bomb, password 7-Zip lewat stdin (`b12b3ab`); archive browser: lihat isi tanpa extract, extract sebagian, preview entri, tambah/hapus entri zip (`d1d708b`).
+- Review C (`63d8abd`, perbaikan `d34e23f`): finalisasi upload saat retry, penanganan password 7z, redaksi path host 7-Zip.
+- Search nama + isi (ripgrep, RE2), replace in files dengan preview dan rollback versi (`a24fe37`, `8313d95`).
+- Editor Monaco multi-tab: encoding/EOL/deteksi bahasa, simpan atomik + versi pre-image, konflik ETag + diff, riwayat versi, find in files, format, preview Markdown, draft lokal (`2fd4ea5`, `cb85a51`, `8606bee`, `c939cae`).
+- Viewer: gambar (EXIF, preview shrink-only, slideshow), PDF (pdf.js, Range, outline, cari, password, cetak), audio + mini-player persisten, video (Video.js 10, subtitle, PiP, resume), teks/Markdown/CSV/JSON, Quick Look (`de84523` … `08ac6bc`, `bbeac3b`, `00def8a`).
+- Review D (`3c35322`, perbaikan `cdda200`, `f6c0e7a`): deteksi password 7z deterministik, pembersihan sesi editor, hardening viewer.
 
 ### Sharing & admin (M4 — Step 18a–19b)
-- Link publik: token 256-bit (DB hash + AES-GCM), slug, password, kedaluwarsa, batas unduh, file request, halaman tamu `/s/<token>`, QR (`442bfba`, `c4c92d8`).
-- Share ke user (viewer/editor) lewat `fsjail.SubRoot`, "Dibagikan ke saya", "Share saya" + log akses (`9572dbf`, `585416a`).
-- Admin: dashboard, manajemen user (admin terakhir dilindungi), settings live, branding, browse-as-user teraudit (`9854982`, `7181f30`); audit log + export CSV, task & share global, maintenance (backup SQLite `VACUUM INTO`, integrity check, purge), profil + sesi + preferensi (`7795985`, `5be2669`).
-- Review E (`5b3a664`, perbaikan `34c47e0`): batas unduh vs Range, redaksi token di access log, kebocoran path pemilik di jalur upload share.
+- Link publik: token 256-bit (DB hash + AES-GCM), slug, password, kedaluwarsa, batas unduh, file request, halaman tamu `/s/<token>`, QR (`a0bdbda`, `1dff4c4`).
+- Share ke user (viewer/editor) lewat `fsjail.SubRoot`, "Dibagikan ke saya", "Share saya" + log akses (`e9a293a`, `8900175`).
+- Admin: dashboard, manajemen user (admin terakhir dilindungi), settings live, branding, browse-as-user teraudit (`b1d9fbc`, `8acb556`); audit log + export CSV, task & share global, maintenance (backup SQLite `VACUUM INTO`, integrity check, purge), profil + sesi + preferensi (`bbffb1e`, `114897a`).
+- Review E (`8310abc`, perbaikan `b876856`): batas unduh vs Range, redaksi token di access log, kebocoran path pemilik di jalur upload share.
 
 ### Hardening, performa, deployment (M5 — Step 20–22, R-F)
-- CSP final tanpa `unsafe-inline`/`unsafe-eval` script, header keamanan lengkap, rate limit terpusat dengan header `RateLimit-*`, `/metrics` loopback (`dc70ca5`); suite IDOR atas semua route, test rahasia-di-log, korpus fuzz, audit dependensi di CI (`e6ff855`); `docs/SECURITY.md` + ASVS L2 (`ab376e2`).
-- Performa: listing 10.500 entri dingin p95 132–223 ms, hangat ≤ 22 ms, idle RSS ≈ 27 MB, gzip middleware, harness `make perf` (`7867920`); render 10k < 300 ms, long task ≤ 100 ms, anggaran bundle < 300 KB gzip (JS awal 220,7 KB) (`8a02e65`); WCAG 2.2 AA (axe 0 serius di 11 layar), responsif 375/820/1440 (`399892a`, `4f0b617`, `bc611da`).
-- Deployment: `deploy/install.sh` idempoten, unit systemd hardened (`systemd-analyze security` 1.4), `deploy/update.sh` dengan backup + rollback otomatis (`8b485dd`); snippet Nginx aaPanel (Reverse Proxy), Docker opsional, CI deploy, `docs/DEPLOY-AAPANEL.md` (`3d2511b`, `5032d9c`); real IP Cloudflare + smoke test nyata di server (`b940f98`).
+- CSP final tanpa `unsafe-inline`/`unsafe-eval` script, header keamanan lengkap, rate limit terpusat dengan header `RateLimit-*`, `/metrics` loopback (`f59a1f4`); suite IDOR atas semua route, test rahasia-di-log, korpus fuzz, audit dependensi di CI (`a823923`); `docs/SECURITY.md` + ASVS L2 (`52e77bd`).
+- Performa: listing 10.500 entri dingin p95 132–223 ms, hangat ≤ 22 ms, idle RSS ≈ 27 MB, gzip middleware, harness `make perf` (`832e903`); render 10k < 300 ms, long task ≤ 100 ms, anggaran bundle < 300 KB gzip (JS awal 220,7 KB) (`6858ab4`); WCAG 2.2 AA (axe 0 serius di 11 layar), responsif 375/820/1440 (`33fa2d5`, `a6bbffc`, `d7635a9`).
+- Deployment: `deploy/install.sh` idempoten, unit systemd hardened (`systemd-analyze security` 1.4), `deploy/update.sh` dengan backup + rollback otomatis (`f371eb5`); snippet Nginx aaPanel (Reverse Proxy), Docker opsional, CI deploy, `docs/DEPLOY-AAPANEL.md` (`b1e30c9`, `d904cbb`); real IP Cloudflare + smoke test nyata di server (`ff11b34`).
 - Review F (`docs/reviews/review-F.md`): limiter thumbnail dikunci pada scope terverifikasi (M-02), aturan admin terakhir di dalam transaksi (M-03), `pnpm audit` bersih lewat override dompurify 3.4.17 + jsdom 30.1.3 (M-01), audit `admin.browse_user` memuat path body, nama staging tidak bocor ke listing saat file tersembunyi ditampilkan; checklist rilis v1.0 diverifikasi di produksi.
 
 ### Catatan rilis

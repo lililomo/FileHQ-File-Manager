@@ -3,7 +3,7 @@
 | | |
 | --- | --- |
 | Acuan | SPEC §1.6, §8.3, §8.4, §11.5 · PRD §2 (G3, G4, G5, G6), §8 · PROMPT Step 21 |
-| Diukur | 24 Oktober 2026, ±22.00–23.00 WIB, commit kerja Step 21 di atas `26c1913` |
+| Diukur | 24 Oktober 2026, ±22.00–23.00 WIB, commit kerja Step 21 di atas `c51531d` |
 | Perintah | `make perf` (backend) · `pnpm -C web e2e perf.spec.ts` (frontend) · `pnpm -C web build` (bundle) |
 
 ## 1. Ringkasan terhadap target
@@ -23,7 +23,7 @@
 | Sort 10.000 entri dari server sampai baris pertama (SPEC §11.5) | < 300 ms | 171–234 ms | — | ✅ |
 | JS awal (PRD G6) | < 300 KB gzip | **220,6 KB** (21 chunk) | — | ✅ (gagal keras di CI bila ≥ 300 KB) |
 
-Sebelum optimasi Step 21 (binary `26c1913`, harness yang sama): list dingin p95 **287 ms** (4 CPU) / **400 ms** (CPU 0) dan idle RSS setelah login **156 MB / 219 MB** — target idle < 100 MB **gagal** sebelum Step 21.
+Sebelum optimasi Step 21 (binary `c51531d`, harness yang sama): list dingin p95 **287 ms** (4 CPU) / **400 ms** (CPU 0) dan idle RSS setelah login **156 MB / 219 MB** — target idle < 100 MB **gagal** sebelum Step 21.
 
 ## 2. Lingkungan
 
@@ -66,7 +66,7 @@ Gzip 5 KB untuk 242 KB adalah rasio fixture sintetis (nama berurutan, kunci JSON
 
 In-process (`make bench`, tanpa HTTP/JSON):
 
-| Benchmark | Sebelum (26c1913) | Sesudah | |
+| Benchmark | Sebelum (c51531d) | Sesudah | |
 | --- | --- | --- | --- |
 | `BenchmarkListDir10k` 4 CPU | 219 ms · 68,3 MB · 249.612 alokasi | **62–66 ms · 11,1 MB · 84.850 alokasi** | −70 % |
 | `BenchmarkListDir10k` 1 CPU | 191 ms | **69–100 ms** | −48…64 % |
@@ -118,7 +118,7 @@ Sudah ada sebelum Step 21 (diverifikasi, tidak diubah): cache listing LRU 64 MB 
 
 Playwright Chromium headless di mesin yang sama dengan backend (4 vCPU dibagi browser, binary, runner), binary `make build` (bundle produksi). Fixture: `perf10k/` = 10.000 file (12 ekstensi, nama `file<i>`/`Laporan <i> (final)`) + 500 folder. Waktu diambil **di dalam halaman**: `performance.mark` saat `dblclick`/`click` (listener capture) dan `performance.measure` pada frame setelah baris target ada di DOM (`MutationObserver` → `requestAnimationFrame` → `setTimeout 0`), sehingga round trip Playwright tidak terhitung. Long task dari `PerformanceObserver({type:'longtask'})`. **Tracing Playwright dimatikan** untuk spec ini: snapshot DOM tracing (`trace: retain-on-failure` global) terukur sebagai long task aplikasi (terlihat di profil CDP).
 
-| Skenario (gerbang) | Sebelum 21-2 (UI `7867920`) | Sesudah 21-2 (4 run) |
+| Skenario (gerbang) | Sebelum 21-2 (UI `832e903`) | Sesudah 21-2 (4 run) |
 | --- | --- | --- |
 | Render pertama 10.500 entri, cache server dingin (< 1 s) | 270 ms | 205 / 273 / 232 / 219 ms |
 | Navigasi hangat back/forward, p95 dari 10 (< 150 ms) | 134 ms | 94 / 96 / 86 / 100 ms; di suite E2E penuh **143 / 106 / 166 ms** (tiga run; folder root admin sudah berisi data spec lain, mesin dibagi) — gerbang ini berisik di server bersama, spec diberi `retries: 1` (verifikasi Step 21); ukur di perangkat klien nyata saat R-F |
