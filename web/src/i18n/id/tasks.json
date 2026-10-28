@@ -43,6 +43,7 @@
     "extract": "Ekstrak {{name}}",
     "zipEditAdd": "Tambah {{n}} item ke {{name}}",
     "zipEditRemove": "Hapus {{n}} entri dari {{name}}",
+    "duplicates": "Cari duplikat di {{name}}",
     "job": {
       "recalc_quota": "Rekalkulasi kuota",
       "clear_thumbs": "Cache thumbnail",

@@ -22,6 +22,8 @@ export function taskLabel(task: Task, t: LooseT, lang: string): string {
       return t('tasks:label.dirSize', { name: name(p.path) || '/' })
     case 'checksum':
       return t('tasks:label.checksum', { name: name(p.path) })
+    case 'duplicate_finder':
+      return t('tasks:label.duplicates', { name: name(p.path) || '/' })
     case 'compress': {
       const n = typeof p.name === 'string' ? p.name : ''
       if (n) return t('tasks:label.compress', { name: n })

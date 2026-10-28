@@ -11,6 +11,7 @@ import { formatBytes, formatNumber } from '@/lib/format'
 import { useClipboardStore } from '@/stores/clipboard'
 import { getPref } from '@/stores/prefs'
 import { QUOTA_QUERY_KEY } from '@/features/quota/api'
+import { DUPLICATES_QUERY_KEY, STORAGE_QUERY_KEY } from '@/features/storage-analysis/api'
 import { taskLabel } from '@/features/tasks/taskLabel'
 import { uploadFromDataTransfer } from '@/features/upload/useUploader'
 import { useTasksStore } from '@/stores/tasks'
@@ -113,8 +114,9 @@ export interface FileOps {
   ) => Promise<OpResponse | null>
   rename: (path: string, newName: string) => Promise<OpResponse | null>
   duplicate: (path: string) => Promise<OpResponse | null>
-  /** Delete to the Recycle Bin (asks first when `fileops.confirm_delete`). */
-  remove: (paths: string[]) => Promise<OpResponse | null>
+  /** Delete to the Recycle Bin (asks first when `fileops.confirm_delete`,
+   *  unless the caller already confirmed: `{ confirm: false }`). */
+  remove: (paths: string[], opts?: { confirm?: boolean }) => Promise<OpResponse | null>
   /** Shift+Delete flow (dialog + `HAPUS` for > 50 items); bypasses the Recycle Bin. */
   removePermanent: (paths: string[]) => Promise<OpResponse | null>
   /** "Hitung ukuran": walks the folder and patches the Ukuran column (Step 10a). */
@@ -157,6 +159,10 @@ export function useFileOps(): FileOps {
     try {
       await undoOperation(entry!.token)
       await qc.invalidateQueries({ queryKey: ['list'] })
+      // restored items reappear in the storage analysis / duplicate report
+      void qc.invalidateQueries({ queryKey: STORAGE_QUERY_KEY })
+      void qc.invalidateQueries({ queryKey: DUPLICATES_QUERY_KEY })
+      void qc.invalidateQueries({ queryKey: QUOTA_QUERY_KEY })
       const msg = t('fileops:toast.undone', { what: entry!.label })
       toast.success(msg)
       announce(msg)
@@ -334,9 +340,9 @@ export function useFileOps(): FileOps {
     [qc, invalidate, done, fail, lt, n],
   )
   const remove = useCallback<FileOps['remove']>(
-    async (paths) => {
+    async (paths, opts) => {
       if (paths.length === 0) return null
-      if (getPref<boolean>('fileops.confirm_delete', true)) {
+      if (opts?.confirm !== false && getPref<boolean>('fileops.confirm_delete', true)) {
         const ok = await askDelete('deleteConfirm', paths)
         if (!ok) return null
       }

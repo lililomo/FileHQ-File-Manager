@@ -20,9 +20,15 @@ export async function loginAsAdmin(page: Page): Promise<void> {
   await page.getByLabel('Username').fill(ADMIN_USERNAME)
   await page.getByLabel('Password', { exact: true }).fill(ADMIN_NEW_PASSWORD)
   await page.getByRole('button', { name: 'Masuk' }).click()
-  const alert = page.getByRole('alert')
+  // only the wrong-password alert switches to the initial password (another
+  // alert, e.g. a toast, must not win the race — R-F/23a/23b flake)
+  const alert = page.getByRole('alert').filter({ hasText: 'Username atau password salah' })
   const outcome = await Promise.race([
-    page.waitForURL(/\/(files|change-password)/).then(() => 'nav' as const),
+    // 'commit': the SPA reaches /files without a guaranteed load event; the
+    // URL is asserted again below
+    page
+      .waitForURL(/\/(files|change-password)/, { waitUntil: 'commit' })
+      .then(() => 'nav' as const),
     alert.waitFor({ state: 'visible' }).then(() => 'alert' as const),
   ])
   if (outcome === 'alert') {

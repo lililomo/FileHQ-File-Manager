@@ -26,6 +26,10 @@ import {
   type AnalysisNode,
 } from './api'
 import { Treemap } from './Treemap'
+import { Duplicates } from './Duplicates'
+import type { StorageTab } from './dupSelection'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { FileOpsDialogs } from '@/features/file-ops/FileOpsDialogs'
 
 function findNode(root: AnalysisNode, path: string): AnalysisNode | null {
   if (root.path === path && root.kind === 'dir') return root
@@ -56,9 +60,54 @@ function useWidth() {
   return [ref, width] as const
 }
 
-/** `/storage` (SPEC §8.7): squarified treemap (depth ≤ 3, drill-down), the
- *  50 largest files, totals per type, Recycle Bin / versions and "Hitung ulang". */
-export function StoragePage() {
+/** `/storage` (SPEC §8.7): tabs "Ringkasan" (summary) and "Duplikat"
+ *  (Step 23c), deep link `?tab=duplicates`. */
+export function StoragePage({
+  tab = 'summary',
+  onTabChange,
+}: {
+  tab?: StorageTab
+  onTabChange?: (tab: StorageTab) => void
+}) {
+  const { t } = useTranslation(['meta'])
+  const ops = useFileOps()
+  return (
+    <div className="flex h-full flex-col overflow-auto" data-testid="storage-page">
+      <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
+        <h1 className="text-lg font-semibold">{t('meta:storage.title')}</h1>
+        <p className="w-full text-xs text-text-muted sm:ml-2 sm:w-auto">
+          {t('meta:storage.subtitle')}
+        </p>
+      </header>
+      <Tabs
+        value={tab}
+        onValueChange={(v) => onTabChange?.(v === 'duplicates' ? 'duplicates' : 'summary')}
+        className="gap-0"
+      >
+        <TabsList variant="line" className="mx-4 mt-2" aria-label={t('meta:storage.tabs.label')}>
+          <TabsTrigger value="summary" data-testid="storage-tab-summary">
+            {t('meta:storage.tabs.summary')}
+          </TabsTrigger>
+          <TabsTrigger value="duplicates" data-testid="storage-tab-duplicates">
+            {t('meta:storage.tabs.duplicates')}
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="summary">
+          <StorageSummary />
+        </TabsContent>
+        <TabsContent value="duplicates" className="p-4">
+          <Duplicates />
+        </TabsContent>
+      </Tabs>
+      {/* delete confirmations of both tabs (the browser mounts its own) */}
+      <FileOpsDialogs ops={ops} />
+    </div>
+  )
+}
+
+/** "Ringkasan": squarified treemap (depth ≤ 3, drill-down), the 50 largest
+ *  files, totals per type, Recycle Bin / versions and "Hitung ulang". */
+function StorageSummary() {
   const { t, i18n } = useTranslation(['meta', 'files', 'fileops', 'errors'])
   const lang = i18n.resolvedLanguage ?? 'id'
   const lt = t as unknown as (k: string, o?: Record<string, unknown>) => string
@@ -120,12 +169,8 @@ export function StoragePage() {
   const height = Math.max(240, Math.min(480, Math.round(width * 0.5)))
 
   return (
-    <div className="flex h-full flex-col overflow-auto" data-testid="storage-page">
-      <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <h1 className="text-lg font-semibold">{t('meta:storage.title')}</h1>
-        <p className="w-full text-xs text-text-muted sm:ml-2 sm:w-auto">
-          {t('meta:storage.subtitle')}
-        </p>
+    <div data-testid="storage-summary-tab">
+      <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
         <div className="ml-auto flex items-center gap-2">
           {data ? (
             <span className="text-xs text-text-muted" data-testid="storage-generated">
@@ -144,7 +189,7 @@ export function StoragePage() {
             {recompute.isPending ? t('meta:storage.computing') : t('meta:storage.recompute')}
           </Button>
         </div>
-      </header>
+      </div>
       {query.isPending ? (
         <div className="space-y-3 p-4" aria-busy="true">
           <Skeleton className="h-64 w-full" />

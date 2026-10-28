@@ -4,6 +4,15 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id/1.1.0/); versi
 
 ## [Unreleased]
 
+### Added (Step 23c — Duplicate finder)
+- Tab "Duplikat" di `/storage` (deep link `?tab=duplicates`): pilih folder, "Cari duplikat" berjalan sebagai task `duplicate_finder` (ukuran → SHA-256 64 KiB awal+akhir → SHA-256 penuh; symlink, berkas kosong, nama staging dilewati, hard link dihitung sekali; batas 1 jam, bisa dibatalkan), hasil disimpan 24 jam.
+- Per grup: pilih salinan yang dipertahankan (default terlama/path terpendek), hapus sisanya ke Recycle Bin (bisa diurungkan) atau "Ganti dengan symlink" (server memeriksa ulang hash; undo memulihkan file asli); peringatan untuk berkas di item yang dibagikan.
+- Endpoint `GET|POST /me/duplicates`, `POST /me/duplicates/symlink` (pemilik saja, di openapi dan suite IDOR).
+
+### Fixed (Step 23c)
+- Tombol Hapus di tabel "50 file terbesar" `/storage` tidak lagi menggantung saat konfirmasi hapus aktif (dialog konfirmasi kini dipasang di halaman itu).
+- E2E: `loginAsAdmin` hanya beralih ke password awal bila alert berisi "Username atau password salah" (flake `responsive.spec`).
+
 ### Added (Step 23b — Dual-pane)
 - Mode dual-pane di file browser (≥ 1280 px): dua panel berdampingan; panel kiri tetap mengikuti URL, panel kanan punya tab (≤ 10), riwayat, urutan, filter dan seleksi sendiri; satu panel fokus menerima toolbar, shortcut, palette dan panel preview. Toggle lewat View ▾ → "Dual-pane", palette, atau `F6`; di bawah 1280 px otomatis kembali ke satu panel.
 - Aksi "Salin ke panel lain" / "Pindahkan ke panel lain" (menu konteks, toolbar ⋯, palette) memakai copy/move biasa: dialog konflik, task untuk batch besar, toast "Urungkan".

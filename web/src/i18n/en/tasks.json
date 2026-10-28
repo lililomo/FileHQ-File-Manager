@@ -43,6 +43,7 @@
     "extract": "Extract {{name}}",
     "zipEditAdd": "Add {{n}} items to {{name}}",
     "zipEditRemove": "Remove {{n}} entries from {{name}}",
+    "duplicates": "Find duplicates in {{name}}",
     "job": {
       "recalc_quota": "Recalculate quota",
       "clear_thumbs": "Thumbnail cache",
