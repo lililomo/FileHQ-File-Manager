@@ -143,5 +143,6 @@ export const GROUP_ORDER = [
   'sharing',
   'security',
   'tasks',
+  'media',
   'appearance',
 ] as const

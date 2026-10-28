@@ -191,7 +191,8 @@
       "sharing": "Sharing",
       "security": "Keamanan",
       "appearance": "Tampilan",
-      "tasks": "Task"
+      "tasks": "Task",
+      "media": "Media & konversi video"
     },
     "key": {
       "max_upload_size": "Batas ukuran upload per file",
@@ -221,7 +222,12 @@
       "app_name": "Nama aplikasi",
       "default_language": "Bahasa default",
       "tz_default": "Zona waktu server",
-      "branding.logo": "Logo"
+      "branding.logo": "Logo",
+      "transcode.enabled": "Konversi video HLS on-the-fly",
+      "transcode.max_concurrent": "Konversi bersamaan (semua user)",
+      "transcode.max_resolution": "Resolusi maksimum hasil konversi",
+      "transcode.max_duration_minutes": "Durasi video maksimum (menit)",
+      "transcode.nice": "Prioritas CPU ffmpeg (nice)"
     },
     "hint": {
       "size": "Contoh: 50GB, 16MB, 512KB",
@@ -249,6 +255,13 @@
       "none": "Belum ada logo; nama aplikasi dipakai sebagai logo teks.",
       "uploaded": "Logo diperbarui.",
       "removed": "Logo dihapus."
+    },
+    "help": {
+      "transcode.enabled": "Default mati. Memutar HEVC/MKV/AVI lewat ffmpeg → H.264/AAC (HLS) memakan CPU berat; aktifkan hanya bila server punya CPU cadangan.",
+      "transcode.max_concurrent": "Konversi di atas batas ini menunggu di antrean (tanpa memakai slot task). Per user tetap 1.",
+      "transcode.max_resolution": "Tinggi frame hasil dibatasi (video lebih kecil tidak diperbesar); 720p disarankan untuk 4 vCPU.",
+      "transcode.max_duration_minutes": "Video lebih panjang ditolak (batas mutlak 180 menit).",
+      "transcode.nice": "19 = prioritas terendah (disarankan); 0 = setara proses lain. I/O selalu idle (ionice)."
     }
   },
   "audit": {

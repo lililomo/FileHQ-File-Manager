@@ -46,6 +46,8 @@ export interface ClientConfig {
   /** Step 19a: custom PNG logo uploaded by the admin ("" when none) */
   logoUrl?: string
   shareDefaultExpiryDays?: number
+  /** Step 23d: admin setting transcode.enabled with ffmpeg/ffprobe present */
+  transcodeEnabled?: boolean
   features: Record<string, boolean>
 }
 

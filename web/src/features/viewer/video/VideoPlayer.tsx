@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Captions,
   Download,
+  Film,
   Maximize,
   Minimize,
   Pause,
@@ -23,9 +24,14 @@ import { api } from '@/lib/api'
 import { isPublicScope } from '@/lib/public-scope'
 import { formatDuration } from '@/lib/format'
 import { getMediaUrl, isSignatureExpired } from '@/lib/media-url'
+import { isShareScope } from '@/lib/share-scope'
 import { pushScope, registerShortcut } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
+import { useSessionStore } from '@/stores/session'
 import { videoVerdict } from './codec'
+import { canOfferTranscode, type HlsSource } from './hls'
+import { HlsPlayer } from './HlsPlayer'
+import { useHlsPlayback } from './useHlsPlayback'
 
 /** Video speeds (SPEC §8.14: 0.25–2×; Video.js 10 ships a fixed list, so
  *  the menu is ours and calls `setPlaybackRate`). */
@@ -65,9 +71,20 @@ export interface VideoPlayerProps {
 
 /** Video viewer (SPEC §8.14 VideoPlayer, ADR-07): Video.js 10 store +
  *  `<Video>` with our own controls; codec check before loading, signed URL
- *  refresh on 403, sidecar subtitles, resume prompt, auto-next. Lazy chunk. */
+ *  refresh on 403, sidecar subtitles, resume prompt, auto-next. Lazy chunk.
+ *  A video the browser cannot decode can be converted to HLS on the server
+ *  when the admin enabled it (Step 23d, `HlsPlayer`). */
 export function VideoPlayer({ item, next, onNext, onDownload }: VideoPlayerProps) {
   const { t } = useTranslation('viewer')
+  const transcodeEnabled = useSessionStore((s) => s.config?.transcodeEnabled)
+  const [convert, setConvert] = useState<string | null>(null)
+  const offer = (playable: boolean, decodeFailed = false) =>
+    canOfferTranscode({
+      verdict: { playable },
+      decodeFailed,
+      transcodeEnabled,
+      foreignScope: isPublicScope() || isShareScope(),
+    })
   const info = useQuery({
     queryKey: mediaInfoKey(item.path, false),
     queryFn: ({ signal }) => getMediaInfo(item.path, false, signal),
@@ -116,6 +133,31 @@ export function VideoPlayer({ item, next, onNext, onDownload }: VideoPlayerProps
     },
     (type) => probe.canPlayType(type),
   )
+  const body = (hls?: HlsSource) => (
+    <Player>
+      <PlayerBody
+        key={item.path}
+        item={item}
+        src={src ?? ''}
+        hls={hls}
+        info={facts}
+        // seeking beyond the converted part is impossible: resume only once
+        // the conversion is complete
+        resumeAt={hls && !hls.finished ? 0 : (position.data?.seconds ?? 0)}
+        next={next}
+        onNext={onNext}
+        onDownload={onDownload}
+        onConvert={!hls && offer(false, true) ? () => setConvert(item.path) : undefined}
+      />
+    </Player>
+  )
+  if (convert === item.path && !srcError) {
+    return (
+      <HlsPlayer item={item} onDownload={onDownload} onBack={() => setConvert(null)}>
+        {(hls) => body(hls)}
+      </HlsPlayer>
+    )
+  }
   if (!verdict.playable || srcError || !src) {
     return (
       <Unsupported
@@ -127,26 +169,23 @@ export function VideoPlayer({ item, next, onNext, onDownload }: VideoPlayerProps
             : t('video.failed')
         }
         onDownload={onDownload}
+        onConvert={!srcError && offer(verdict.playable) ? () => setConvert(item.path) : undefined}
       />
     )
   }
-  return (
-    <Player>
-      <PlayerBody
-        key={item.path}
-        item={item}
-        src={src}
-        info={facts}
-        resumeAt={position.data?.seconds ?? 0}
-        next={next}
-        onNext={onNext}
-        onDownload={onDownload}
-      />
-    </Player>
-  )
+  return body()
 }
 
-function Unsupported({ message, onDownload }: { message: string; onDownload: () => void }) {
+function Unsupported({
+  message,
+  onDownload,
+  onConvert,
+}: {
+  message: string
+  onDownload: () => void
+  /** Step 23d: offered when the admin enabled transcoding */
+  onConvert?: (() => void) | undefined
+}) {
   const { t } = useTranslation('viewer')
   return (
     <div className="flex h-full items-center justify-center p-6" data-testid="video-unsupported">
@@ -154,11 +193,25 @@ function Unsupported({ message, onDownload }: { message: string; onDownload: () 
         <p className="text-sm text-text" role="alert">
           {message}
         </p>
-        <p className="text-xs text-text-muted">{t('video.unsupportedHint')}</p>
-        <Button variant="primary" onClick={onDownload} data-testid="video-download">
-          <Download aria-hidden="true" />
-          {t('card.download')}
-        </Button>
+        <p className="text-xs text-text-muted">
+          {onConvert ? t('video.transcodeOffer') : t('video.unsupportedHint')}
+        </p>
+        <div className="flex flex-wrap justify-center gap-2">
+          {onConvert ? (
+            <Button variant="primary" onClick={onConvert} data-testid="video-transcode">
+              <Film aria-hidden="true" />
+              {t('video.transcode')}
+            </Button>
+          ) : null}
+          <Button
+            variant={onConvert ? 'secondary' : 'primary'}
+            onClick={onDownload}
+            data-testid="video-download"
+          >
+            <Download aria-hidden="true" />
+            {t('card.download')}
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -166,33 +219,42 @@ function Unsupported({ message, onDownload }: { message: string; onDownload: () 
 
 interface BodyProps {
   item: Item
+  /** signed raw URL (direct playback; poster in both modes) */
   src: string
+  /** Step 23d: play this HLS conversion instead of the raw file */
+  hls?: HlsSource | undefined
   info: MediaInfo | undefined
   resumeAt: number
   next: Item | null
   onNext: (item: Item) => void
   onDownload: () => void
+  /** decode failure → offer the conversion (when enabled) */
+  onConvert?: (() => void) | undefined
 }
 
 function PlayerBody({
   item,
   src: initialSrc,
+  hls,
   info,
   resumeAt,
   next,
   onNext,
   onDownload,
+  onConvert,
 }: BodyProps) {
   const { t } = useTranslation('viewer')
   const videoRef = useRef<HTMLVideoElement>(null)
   const [src, setSrc] = useState(initialSrc)
   const [failed, setFailed] = useState(false)
+  const hlsPlayback = useHlsPlayback(videoRef, hls, () => setFailed(true))
   const [autoNext, setAutoNext] = useState(true)
   const [prompt, setPrompt] = useState(resumeAt >= RESUME_MARGIN_S)
   const restoreAt = useRef<number | null>(null)
   const refreshing = useRef(false)
   const store = usePlayer()
-  const poster = info?.thumbState !== 'unsupported' ? `${initialSrc}&variant=thumb` : undefined
+  const poster =
+    initialSrc && info?.thumbState !== 'unsupported' ? `${initialSrc}&variant=thumb` : undefined
 
   // --- signed URL refresh (TTL 2 h) and decode failures ---
   const onError = useCallback(async () => {
@@ -303,21 +365,32 @@ function PlayerBody({
   }, [store])
 
   if (failed) {
-    return <Unsupported message={t('video.failed')} onDownload={onDownload} />
+    return (
+      <Unsupported
+        message={hls ? t('video.transcodeFailed') : t('video.failed')}
+        onDownload={onDownload}
+        onConvert={onConvert}
+      />
+    )
   }
 
   const subtitles = info?.subtitles ?? []
   return (
-    <div className="flex h-full min-h-0 flex-col bg-black" data-testid="video-player">
+    <div
+      className="flex h-full min-h-0 flex-col bg-black"
+      data-testid="video-player"
+      data-hls={hls ? (hlsPlayback.mode ?? 'pending') : undefined}
+    >
       <Container className="group/player relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black">
         <Video
           ref={videoRef}
-          src={src}
+          src={hls ? hlsPlayback.src : src}
           poster={poster}
           preload="metadata"
           playsInline
           className="max-h-full max-w-full"
-          onError={() => void onError()}
+          // HLS errors (expired folder signature, hls.js) are handled by useHlsPlayback
+          onError={() => (hls ? undefined : void onError())}
           onLoadedMetadata={onLoadedMetadata}
           onEnded={onEnded}
           onPlay={() => setPrompt(false)}

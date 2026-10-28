@@ -24,6 +24,9 @@ export function taskLabel(task: Task, t: LooseT, lang: string): string {
       return t('tasks:label.checksum', { name: name(p.path) })
     case 'duplicate_finder':
       return t('tasks:label.duplicates', { name: name(p.path) || '/' })
+    case 'transcode_hls':
+      if (typeof p.path === 'string') return t('tasks:label.transcode', { name: name(p.path) })
+      break
     case 'compress': {
       const n = typeof p.name === 'string' ? p.name : ''
       if (n) return t('tasks:label.compress', { name: n })
@@ -87,6 +90,21 @@ export const MAINTENANCE_TYPES = [
 export function taskMeta(task: Task, t: LooseT, lang: string): string {
   const parts: string[] = []
   const { progress } = task
+  // transcode_hls counts seconds of media in "items" (Step 23d)
+  if (task.type === 'transcode_hls' && task.state === 'running') {
+    if (progress.total > 0)
+      parts.push(
+        t('tasks:meta.mediaTime', {
+          done: formatDuration(progress.done),
+          total: formatDuration(progress.total),
+        }),
+      )
+    if (task.speedBps && task.speedBps > 0)
+      parts.push(t('tasks:meta.speedRealtime', { speed: formatNumber(task.speedBps, lang) }))
+    if (task.etaSeconds !== null && task.etaSeconds >= 0)
+      parts.push(t('tasks:meta.eta', { eta: formatDuration(task.etaSeconds) }))
+    return parts.join(' · ')
+  }
   if (task.state === 'running') {
     if (progress.total > 0) {
       parts.push(

@@ -4,6 +4,17 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id/1.1.0/); versi
 
 ## [Unreleased]
 
+### Added (Step 23d — Transcoding HLS on-the-fly, opsional)
+- Video yang tidak bisa diputar browser (HEVC/MKV/AVI…) dapat diputar lewat konversi ffmpeg → HLS H.264/AAC: tombol "Putar dengan konversi (lambat)" pada kartu "tidak didukung" (hanya bila admin mengaktifkannya dan untuk file milik sendiri), kartu progres (persen, waktu media, ETA, "Batalkan"), pemutaran mulai setelah 2 segmen (±8 s video) sementara konversi berjalan; hls.js (build `light`, chunk lazy) di luar Safari/iOS, HLS native di Safari/iOS; tanda tangan ulang otomatis saat URL kedaluwarsa.
+- Task `transcode_hls` (progress = detik media, label "Konversi …"), endpoint `POST /files/hls`, `GET /files/hls/{id}/playlist.m3u8`, `GET /files/hls/{id}/{segment}` (signed URL purpose `hls`, owner saja; openapi, suite IDOR, gate ganti password).
+- Pengaturan admin baru (kelompok "Media & konversi video", tanpa env): `transcode.enabled` (default mati), `transcode.max_concurrent` (1), `transcode.max_resolution` (720p), `transcode.max_duration_minutes` (180), `transcode.nice` (19); `GET /auth/me` `config.transcodeEnabled`.
+- Batas CPU/disk: `nice`/`ionice` idle, 1 konversi aktif per user, konkurensi global lewat batas per tipe di task engine (`Spec.MaxConcurrent`), durasi ≤ 3 jam, cache `DATA_DIR/tmp/hls` ≤ 10 GiB, folder dihapus 1 jam setelah selesai dan idle (sweeper + job `clean_uploads`), juga saat gagal/batal/dimatikan.
+- Dependensi baru `hls.js` ^1.7.3 (Apache-2.0).
+
+### Fixed (Step 23d)
+- Task engine: ETA dihitung dari laju pecahan (task yang lebih lambat dari 1 unit/detik kini mendapat ETA); snapshot task yang baru selesai tidak lagi melaporkan progres lama (flake `TestProgressThrottleAndETA`).
+- Setelah login di aplikasi (tanpa reload), `config` klien (batas upload, flag fitur) langsung dimuat dari `GET /auth/me` — sebelumnya baru setelah reload.
+
 ### Added (Step 23c — Duplicate finder)
 - Tab "Duplikat" di `/storage` (deep link `?tab=duplicates`): pilih folder, "Cari duplikat" berjalan sebagai task `duplicate_finder` (ukuran → SHA-256 64 KiB awal+akhir → SHA-256 penuh; symlink, berkas kosong, nama staging dilewati, hard link dihitung sekali; batas 1 jam, bisa dibatalkan), hasil disimpan 24 jam.
 - Per grup: pilih salinan yang dipertahankan (default terlama/path terpendek), hapus sisanya ke Recycle Bin (bisa diurungkan) atau "Ganti dengan symlink" (server memeriksa ulang hash; undo memulihkan file asli); peringatan untuk berkas di item yang dibagikan.

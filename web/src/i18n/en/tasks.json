@@ -52,14 +52,17 @@
       "integrity_check": "Integrity check",
       "backup_db": "Database backup",
       "prune_logs": "Prune logs"
-    }
+    },
+    "transcode": "Convert {{name}}"
   },
   "meta": {
     "items": "{{done}} / {{total}} items",
     "itemsDone": "{{done}} items",
     "speedBytes": "{{speed}}/s",
     "speedItems": "{{speed}} items/s",
-    "eta": "{{eta}} left"
+    "eta": "{{eta}} left",
+    "mediaTime": "{{done}} / {{total}}",
+    "speedRealtime": "{{speed}}× real time"
   },
   "toast": {
     "queued": "{{title}} runs as a background task",

@@ -166,8 +166,29 @@
     "restart": "Start over",
     "unsupportedCodec": "This browser does not support the {{codec}} codec.",
     "unsupportedContainer": "This browser does not support the {{format}} format.",
-    "unsupportedHint": "Download the file to play it in another application (no transcoding yet).",
-    "failed": "This browser cannot play the video."
+    "unsupportedHint": "Download the file to play it in another application.",
+    "failed": "This browser cannot play the video.",
+    "transcode": "Play with conversion (slow)",
+    "transcodeOffer": "The server can convert this video into a format the browser supports. Playback starts after a few seconds; quality is capped by the admin settings.",
+    "transcodeStarting": "Preparing the conversion…",
+    "transcodeQueued": "Waiting for a conversion slot…",
+    "transcoding": "Converting video…",
+    "transcodeProgressLabel": "Conversion progress",
+    "transcodeMeta": "{{percent}} % · {{done}} of {{total}}",
+    "transcodeEta": "about {{eta}} left",
+    "transcodeHint": "Playback starts as soon as the beginning is ready. The conversion keeps running in the Tasks panel if you close the viewer.",
+    "transcodeCancel": "Cancel",
+    "transcodeBack": "Back",
+    "transcodeFailed": "The conversion failed. Download the file to play it in another application.",
+    "transcodeError": {
+      "transcode_disabled": "Video conversion is disabled by the administrator.",
+      "already_running": "Another of your video conversions is still running. Wait for it or cancel it in the Tasks panel.",
+      "too_long": "Videos longer than {{max}} minutes cannot be converted.",
+      "unknown_duration": "The video duration is unknown, so it cannot be converted.",
+      "not_video": "This file has no video that can be converted.",
+      "disk_budget": "The conversion cache is full. Try again later.",
+      "disk": "Not enough free disk space on the server to convert."
+    }
   },
   "text": {
     "loading": "Loading the file…",

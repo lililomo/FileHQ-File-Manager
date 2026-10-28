@@ -190,6 +190,11 @@ function SettingsForm({
                     <Label htmlFor={`setting-${it.key}`} className="text-sm">
                       {t(`admin:settings.key.${it.key}`, { defaultValue: it.key })}
                     </Label>
+                    {t(`admin:settings.help.${it.key}`, { defaultValue: '' }) ? (
+                      <p className="mt-0.5 text-xs text-text-muted" id={`setting-${it.key}-help`}>
+                        {t(`admin:settings.help.${it.key}`, { defaultValue: '' })}
+                      </p>
+                    ) : null}
                     <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-text-muted">
                       <code className="font-mono">{it.key}</code>
                       {it.source === 'override' && it.envValue !== undefined ? (

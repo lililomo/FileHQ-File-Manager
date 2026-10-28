@@ -166,8 +166,29 @@
     "restart": "Dari awal",
     "unsupportedCodec": "Codec {{codec}} tidak didukung browser ini.",
     "unsupportedContainer": "Format {{format}} tidak didukung browser ini.",
-    "unsupportedHint": "Unduh file untuk memutarnya di aplikasi lain (transcoding belum tersedia).",
-    "failed": "Video tidak dapat diputar di browser ini."
+    "unsupportedHint": "Unduh file untuk memutarnya di aplikasi lain.",
+    "failed": "Video tidak dapat diputar di browser ini.",
+    "transcode": "Putar dengan konversi (lambat)",
+    "transcodeOffer": "Server dapat mengonversi video ini ke format yang didukung browser. Pemutaran mulai setelah beberapa detik; kualitas dibatasi pengaturan admin.",
+    "transcodeStarting": "Menyiapkan konversi…",
+    "transcodeQueued": "Menunggu giliran konversi…",
+    "transcoding": "Mengonversi video…",
+    "transcodeProgressLabel": "Kemajuan konversi",
+    "transcodeMeta": "{{percent}} % · {{done}} dari {{total}}",
+    "transcodeEta": "sekitar {{eta}} lagi",
+    "transcodeHint": "Video diputar begitu bagian awal siap. Konversi tetap berjalan di panel Tasks bila viewer ditutup.",
+    "transcodeCancel": "Batalkan",
+    "transcodeBack": "Kembali",
+    "transcodeFailed": "Konversi gagal. Unduh file untuk memutarnya di aplikasi lain.",
+    "transcodeError": {
+      "transcode_disabled": "Konversi video dinonaktifkan admin.",
+      "already_running": "Konversi video lain milik Anda masih berjalan. Tunggu sampai selesai atau batalkan di panel Tasks.",
+      "too_long": "Video lebih panjang dari {{max}} menit tidak dapat dikonversi.",
+      "unknown_duration": "Durasi video tidak diketahui sehingga tidak dapat dikonversi.",
+      "not_video": "File ini tidak berisi video yang dapat dikonversi.",
+      "disk_budget": "Cache konversi sedang penuh. Coba lagi nanti.",
+      "disk": "Ruang disk server tidak cukup untuk konversi."
+    }
   },
   "text": {
     "loading": "Memuat isi file…",

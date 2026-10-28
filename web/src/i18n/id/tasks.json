@@ -52,14 +52,17 @@
       "integrity_check": "Pemeriksaan integritas",
       "backup_db": "Backup database",
       "prune_logs": "Pangkas log"
-    }
+    },
+    "transcode": "Konversi {{name}}"
   },
   "meta": {
     "items": "{{done}} / {{total}} item",
     "itemsDone": "{{done}} item",
     "speedBytes": "{{speed}}/dtk",
     "speedItems": "{{speed}} item/dtk",
-    "eta": "{{eta}} tersisa"
+    "eta": "{{eta}} tersisa",
+    "mediaTime": "{{done}} / {{total}}",
+    "speedRealtime": "{{speed}}× waktu nyata"
   },
   "toast": {
     "queued": "{{title}} dijalankan sebagai task di latar belakang",

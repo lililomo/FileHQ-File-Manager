@@ -191,7 +191,8 @@
       "sharing": "Sharing",
       "security": "Security",
       "appearance": "Appearance",
-      "tasks": "Tasks"
+      "tasks": "Tasks",
+      "media": "Media & video conversion"
     },
     "key": {
       "max_upload_size": "Maximum upload size per file",
@@ -221,7 +222,12 @@
       "app_name": "Application name",
       "default_language": "Default language",
       "tz_default": "Server time zone",
-      "branding.logo": "Logo"
+      "branding.logo": "Logo",
+      "transcode.enabled": "On-the-fly HLS video conversion",
+      "transcode.max_concurrent": "Concurrent conversions (all users)",
+      "transcode.max_resolution": "Maximum output resolution",
+      "transcode.max_duration_minutes": "Maximum video duration (minutes)",
+      "transcode.nice": "ffmpeg CPU priority (nice)"
     },
     "hint": {
       "size": "Example: 50GB, 16MB, 512KB",
@@ -249,6 +255,13 @@
       "none": "No logo yet; the application name is used as a text logo.",
       "uploaded": "Logo updated.",
       "removed": "Logo removed."
+    },
+    "help": {
+      "transcode.enabled": "Off by default. Playing HEVC/MKV/AVI through ffmpeg → H.264/AAC (HLS) is CPU heavy; enable only when the server has spare CPU.",
+      "transcode.max_concurrent": "Conversions beyond this limit wait in the queue (without taking a task slot). Still 1 per user.",
+      "transcode.max_resolution": "Caps the output frame height (smaller videos are not upscaled); 720p is recommended for 4 vCPUs.",
+      "transcode.max_duration_minutes": "Longer videos are refused (hard limit 180 minutes).",
+      "transcode.nice": "19 = lowest priority (recommended); 0 = same as other processes. I/O always idle (ionice)."
     }
   },
   "audit": {

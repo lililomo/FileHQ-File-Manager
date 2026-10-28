@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useSessionStore } from '@/stores/session'
 import { AuthCard } from './AuthCard'
 import { LoginForm } from './LoginForm'
-import { applyUserPrefs } from './session'
+import { applyUserPrefs, ensureSession } from './session'
 import type { LoginResponse } from './api'
 
 export function LoginPage({ next }: { next: string | undefined }) {
@@ -12,6 +12,10 @@ export function LoginPage({ next }: { next: string | undefined }) {
   const onSuccess = (res: LoginResponse) => {
     useSessionStore.getState().setAuthenticated(res.user, null, res.csrfToken)
     applyUserPrefs(res.user)
+    // the login answer has no `config` (limits, feature flags such as
+    // transcodeEnabled): load it now instead of after the next reload
+    // (Step 23d; before, an in-app login kept the defaults until a reload)
+    void ensureSession(true).catch(() => undefined)
     if (res.mustChangePassword) {
       void navigate({ to: '/change-password' })
     } else if (next) {
